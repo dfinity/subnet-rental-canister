@@ -4,6 +4,10 @@ ENV RUSTUP_HOME=/opt/rustup
 ENV CARGO_HOME=/opt/cargo
 ENV RUST_VERSION=1.74.0
 
+# Set the timezone to UTC
+ENV TZ=UTC
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # Install a basic environment needed for our build tools
 RUN apt -yq update && \
     apt -yqq install --no-install-recommends curl ca-certificates build-essential
