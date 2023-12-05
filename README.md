@@ -17,6 +17,7 @@ Then, build the canister Wasm by running
 ```bash
 ./scripts/build.sh
 ```
+which will be placed in the root folder of the project.
 Finally, run the tests with 
 ```bash
 cargo test --test integration_tests
