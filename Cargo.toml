@@ -2,3 +2,4 @@
 members = [
     "src/subnet_rental_canister",
 ]
+resolver = "2"
