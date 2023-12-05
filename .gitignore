@@ -23,3 +23,6 @@ dist/
 
 # environment variables
 .env
+
+# PocketIC
+src/subnet_rental_canister/pocket-ic

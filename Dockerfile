@@ -24,4 +24,4 @@ COPY . /subnet-rental-canister
 WORKDIR /subnet-rental-canister
 
 # Build the canister
-RUN ./scripts/build_canister.sh
+RUN ./scripts/build.sh

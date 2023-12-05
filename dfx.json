@@ -5,7 +5,7 @@
       "package": "subnet_rental_canister",
       "type": "rust",
       "wasm": "./subnet_rental_canister.wasm",
-      "build": "scripts/build_script.sh"
+      "build": "scripts/build.sh"
     }
   },
   "defaults": {
