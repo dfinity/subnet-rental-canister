@@ -1,6 +1,6 @@
 # Build the Wasm Module
 
-To build the wasm module, make sure you have docker installed and running.
+To build the wasm module, make sure you have docker version 24.0.7 or later installed and running.
 Then, run the `docker_build.sh` script which builds the wasm and puts it in the root folder of the project.
 
 ```bash
