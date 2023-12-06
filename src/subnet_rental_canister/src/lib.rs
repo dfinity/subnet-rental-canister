@@ -1,7 +1,6 @@
-use std::{cell::RefCell, collections::HashMap};
-
-use candid::{CandidType, Principal};
+use candid::{CandidType, Deserialize, Principal};
 use ic_cdk::{init, query};
+use std::{cell::RefCell, collections::HashMap};
 
 type SubnetId = Principal;
 
@@ -10,8 +9,8 @@ thread_local! {
     static RENTAL_CONDITIONS: RefCell<HashMap<SubnetId, RentalConditions>> = RefCell::new(HashMap::new());
 }
 
-#[derive(Clone, Copy, CandidType)]
-struct RentalConditions {
+#[derive(Debug, Clone, Copy, CandidType, Deserialize)]
+pub struct RentalConditions {
     daily_cost_e8s: u64,
     minimal_rental_period_days: u64,
 }
@@ -32,6 +31,6 @@ fn init() {
 }
 
 #[query]
-fn list_rental_conditions() -> Vec<(SubnetId, RentalConditions)> {
-    RENTAL_CONDITIONS.with(|map| map.borrow().iter().map(|(k, v)| (*k, *v)).collect())
+fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
+    RENTAL_CONDITIONS.with(|map| map.borrow().clone())
 }

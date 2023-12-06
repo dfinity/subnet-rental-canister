@@ -1,11 +1,12 @@
 use candid::{decode_one, encode_one, Principal};
 use pocket_ic::{PocketIc, WasmResult};
-use std::fs;
+use std::{collections::HashMap, fs};
+use subnet_rental_canister::RentalConditions;
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
 
 #[test]
-fn test_call_greet() {
+fn test_list_rental_conditions() {
     let pic = PocketIc::new();
     let canister_id = pic.create_canister();
     let wasm = fs::read(WASM).expect("Please build the wasm first");
@@ -19,11 +20,12 @@ fn test_call_greet() {
             Principal::anonymous(),
             "list_rental_conditions",
             encode_one(()).unwrap(),
-        
-        ).unwrap()
+        )
+        .unwrap()
     else {
         panic!("Expected a reply")
     };
 
-    println!("Reply: {:?}", res);
+    let conditions = decode_one::<HashMap<Principal, RentalConditions>>(&res).unwrap();
+    println!("Reply: {:?}", conditions);
 }
