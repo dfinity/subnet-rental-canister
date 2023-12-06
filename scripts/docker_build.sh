@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPTS_DIR/.."
 
+# Build the Docker image and run it to build the canister
 docker build -t subnet-rental-canister .
 CONTAINER_ID=$(docker run --platform="linux/amd64" -d --rm subnet-rental-canister)
 docker cp $(echo $CONTAINER_ID):/subnet-rental-canister/target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm . 
