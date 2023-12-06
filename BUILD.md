@@ -9,11 +9,7 @@ Then, run the `docker_build.sh` script which builds the wasm and puts it in the 
 
 ## Verify the Build
 
-To verify the build, you can use the `sha256sum` command to verify the hash of the wasm file:
-```bash
-sha256sum subnet_rental_canister.wasm 
-```
-or on macOS with `shasum`:
+To verify the build, you can use the `shasum` command to calculate the hash of the wasm file:
 
 ```bash
 shasum -a 256 subnet_rental_canister.wasm
