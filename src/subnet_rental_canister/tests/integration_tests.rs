@@ -17,13 +17,13 @@ fn test_call_greet() {
         .query_call(
             canister_id,
             Principal::anonymous(),
-            "greet",
-            encode_one("SRC").unwrap(),
-        )
-        .unwrap()
+            "list_rental_conditions",
+            encode_one(()).unwrap(),
+        
+        ).unwrap()
     else {
         panic!("Expected a reply")
     };
 
-    println!("Reply: {:?}", decode_one::<String>(&res).unwrap());
+    println!("Reply: {:?}", res);
 }
