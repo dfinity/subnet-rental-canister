@@ -25,14 +25,18 @@ async fn on_proposal_accept(
     subnet_id: SubnetId,
     principals: Vec<Principal>,
     block_index: usize,
-    refund_address: String,set_authorized_subnetwork_list
+    refund_address: String,
 ) -> Result<(), ExecuteProposalError> {
     // assumptions:
     // - a single deposit transaction exists and covers amount
 
     // whitelist principal
-    let result: CallResult<(_,)> =
-        call(Principal::from_text("cmc_id").unwrap(), "", ()).await;
+    let result = call(
+        Principal::from_text("cmc_id").unwrap(),
+        "set_authorized_subnetwork_list",
+        (),
+    )
+    .await;
 
     // collect rental information
     let RentalConditions {
@@ -42,8 +46,7 @@ async fn on_proposal_accept(
 
     // cost of initial period:
     let initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days; // what about overflows
-    // turn this amount of ICP into cycles and burn them. 
-
+                                                                        // turn this amount of ICP into cycles and burn them.
 
     Ok(())
 }
