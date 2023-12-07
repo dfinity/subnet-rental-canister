@@ -1542,6 +1542,7 @@ dependencies = [
  "candid",
  "ic-cdk 0.11.3",
  "pocket-ic",
+ "serde",
 ]
 
 [[package]]
