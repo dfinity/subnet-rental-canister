@@ -1,9 +1,8 @@
-name: CI workflow
+name: CI
 
 on:
-  push:
-    branches: [ "master" ]
   pull_request:
+  push:
     branches: [ "master" ]
 
 env:
@@ -16,7 +15,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-
     - name: Build
       run: |
         rustup target add wasm32-unknown-unknown
@@ -29,7 +27,7 @@ jobs:
         chmod +x pocket-ic
         mv pocket-ic src/subnet_rental_canister/
     - name: Run tests
-      run: cargo test --all-targets --all-features
+      run: cargo test --all-targets --all-features -- --nocapture
 
   lint:
     name: Lint
@@ -37,7 +35,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-
     - name: Run clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -47,6 +44,5 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-
     - name: Run fmt
       run: cargo fmt --all -- --check
