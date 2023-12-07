@@ -29,7 +29,7 @@ jobs:
         chmod +x pocket-ic
         mv pocket-ic src/subnet_rental_canister/
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --all-targets --all-features
 
   lint:
     name: Lint
