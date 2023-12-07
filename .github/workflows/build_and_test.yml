@@ -1,0 +1,37 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: |
+        rustup target add wasm32-unknown-unknown
+        ./scripts/build.sh
+
+  test:
+    runs-on: ubuntu-latest
+ 
+    steps:
+    - name: Download PocketIC
+      run: curl -sLO https://download.dfinity.systems/ic/69e1408347723dbaa7a6cd2faa9b65c42abbe861/openssl-static-binaries/x86_64-linux/pocket-ic.gz
+    
+    - name: Prepare PocketIC
+      run: | 
+        gunzip pocket-ic.gz
+        chmod +x pocket-ic
+        mv pocket-ic src/subnet_rental_canister/
+    
+    - name: Run tests
+      run: cargo test --verbose
