@@ -1,3 +1,5 @@
+name: CI workflow
+
 on:
   push:
     branches: [ "master" ]
@@ -9,6 +11,7 @@ env:
 
 jobs:
   build-and-test:
+    name: Build and test
     runs-on: ubuntu-latest
 
     steps:
@@ -28,7 +31,8 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
 
-  clippy:
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +41,8 @@ jobs:
     - name: Run clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
 
-  fmt:
+  format:
+    name: Format
     runs-on: ubuntu-latest
 
     steps:
