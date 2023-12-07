@@ -1,9 +1,14 @@
-use candid::{decode_one, encode_one, Principal};
+use candid::{decode_one, encode_one, CandidType, Principal};
 use pocket_ic::{PocketIc, WasmResult};
+use serde::Deserialize;
 use std::{collections::HashMap, fs};
-use subnet_rental_canister::RentalConditions;
-
 const WASM: &str = "../../subnet_rental_canister.wasm";
+
+#[derive(Debug, Clone, Copy, CandidType, Deserialize)]
+pub struct RentalConditions {
+    daily_cost_e8s: u64,
+    minimal_rental_period_days: u64,
+}
 
 #[test]
 fn test_list_rental_conditions() {
