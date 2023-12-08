@@ -39,6 +39,8 @@ jobs:
       run: sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
     - name: Start dfx
       run: dfx start --background
+    - name: Add wasm target
+      run: rustup target add wasm32-unknown-unknown
     - name: Deploy
       run: dfx deploy
 
