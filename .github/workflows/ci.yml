@@ -29,6 +29,19 @@ jobs:
     - name: Run tests
       run: cargo test --all-targets --all-features -- --nocapture
 
+  dfx-deploy:
+    name: Dfx deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Download dfx
+      run: sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+    - name: Start dfx
+      run: dfx start
+    - name: Deploy
+      run: dfx deploy
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
