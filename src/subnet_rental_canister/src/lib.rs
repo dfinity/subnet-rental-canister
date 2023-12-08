@@ -4,10 +4,10 @@ use candid::{CandidType, Deserialize, Principal};
 use ic_cdk::{api::call::CallResult, call, init, query, update};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
-    storable::Blob,
+    storable::{Blob, Bound},
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
-use std::{cell::RefCell, collections::HashMap};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 use time::Date;
 
 const LEDGER_ID: &str = "todo";
@@ -24,20 +24,39 @@ thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
+    // Memory region 0
     static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Blob<29>, RentalConditions, Memory>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
+
+    // Memory region 1
+    // static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Blob<29>, RentalAgreement, Memory>> =
+    //     RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 }
 
 type SubnetId = Principal;
 
 /// Set of conditions for a specific subnet up for rent.
-#[derive(Debug, Clone, Copy, CandidType, Deserialize, Storable)]
+#[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct RentalConditions {
     daily_cost_e8s: u64,
     minimal_rental_period_days: u64,
 }
 
-/// Immutable rental agreement; mutabla data may refer to it via the id, and 
+impl Storable for RentalConditions {
+    const BOUND: Bound = Bound::Bounded {
+        max_size: todo!(),
+        is_fixed_size: true,
+    };
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
+        todo!()
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        todo!()
+    }
+}
+
+/// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug)]
 struct RentalAgreement {
     id: usize,
@@ -105,6 +124,7 @@ async fn on_proposal_accept(
     // 4. burn the cycles with the system api
     // 5. set the end date of the initial period
     // 6. fill in the other rental agreement details
+    // 7. add it to the rental agreement map
 
     // Whitelist the principal
     let result: CallResult<()> = call(
@@ -115,6 +135,7 @@ async fn on_proposal_accept(
     .await;
     match result {
         Ok(_) => {}
+        // TODO: figure out failure modes of this method and consequences. can this call fail at all? the deposit is gone by now..
         Err((code, msg)) => {
             ic_cdk::println!("Call to CMC failed: {:?}, {}", code, msg);
             return Err(ExecuteProposalError::Failure(
