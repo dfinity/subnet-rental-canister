@@ -38,7 +38,7 @@ jobs:
     - name: Download dfx
       run: sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
     - name: Start dfx
-      run: dfx start
+      run: dfx start --background
     - name: Deploy
       run: dfx deploy
 
