@@ -4,6 +4,7 @@
       "candid": "src/subnet_rental_canister/subnet_rental_canister.did",
       "package": "subnet_rental_canister",
       "type": "custom",
+      "shrink": true,
       "wasm": "subnet_rental_canister.wasm",
       "build": "scripts/build.sh"
     }
