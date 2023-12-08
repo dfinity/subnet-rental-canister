@@ -9,9 +9,11 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-candid = "^0.9.11"
-ic-cdk = "^0.11"
+candid = "0.9.11"
+ic-cdk = "0.11"
 serde = "1.0.193"
+time = "0.3.30"
+ic-stable-structures = "0.6.0"
 
 
 [dev-dependencies]

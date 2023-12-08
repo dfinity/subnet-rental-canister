@@ -1,53 +1,53 @@
+#![allow(dead_code)]
+
 use candid::{CandidType, Deserialize, Principal};
-use ic_cdk::{api::call::CallResult, call, init, query};
+use ic_cdk::{api::call::CallResult, call, init, query, update};
+use ic_stable_structures::{
+    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
+    storable::Blob,
+    DefaultMemoryImpl, StableBTreeMap, Storable,
+};
 use std::{cell::RefCell, collections::HashMap};
+use time::Date;
+
+const LEDGER_ID: &str = "todo";
+const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
+// The canister_id of the SRC
+const SRC_PRINCIPAL: &str = "src_principal";
+// During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
+const XDR_COST_PER_DAY: u64 = 1;
+
+const E8S: u64 = 100_000_000;
+
+type Memory = VirtualMemory<DefaultMemoryImpl>;
+thread_local! {
+    static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
+        RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
+
+    static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Blob<29>, RentalConditions, Memory>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
+}
 
 type SubnetId = Principal;
 
-const E8S: u64 = 100_000_000;
-thread_local! {
-    static RENTAL_CONDITIONS: RefCell<HashMap<SubnetId, RentalConditions>> = RefCell::new(HashMap::new());
-}
-
-#[derive(Debug, Clone, Copy, CandidType, Deserialize)]
+/// Set of conditions for a specific subnet up for rent.
+#[derive(Debug, Clone, Copy, CandidType, Deserialize, Storable)]
 pub struct RentalConditions {
     daily_cost_e8s: u64,
     minimal_rental_period_days: u64,
 }
-pub enum ExecuteProposalError {
-    Failure(String),
-}
 
-/// Argument will be ValidatedSRProposal, created by government canister via
-/// SRProposal::validate().
-async fn on_proposal_accept(
-    subnet_id: SubnetId,
+/// Immutable rental agreement; mutabla data may refer to it via the id, and 
+#[derive(Debug)]
+struct RentalAgreement {
+    id: usize,
+    user: Principal,
+    subnet: SubnetId,
     principals: Vec<Principal>,
-    block_index: usize,
-    refund_address: String,
-) -> Result<(), ExecuteProposalError> {
-    // assumptions:
-    // - a single deposit transaction exists and covers amount
-
-    // whitelist principal
-    let result: CallResult<()> = call(
-        Principal::from_text("cmc_id").unwrap(),
-        "set_authorized_subnetwork_list",
-        (),
-    )
-    .await;
-
-    // collect rental information
-    let RentalConditions {
-        daily_cost_e8s,
-        minimal_rental_period_days,
-    } = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id).unwrap().clone());
-
-    // cost of initial period:
-    let initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days; // what about overflows
-                                                                        // turn this amount of ICP into cycles and burn them.
-
-    Ok(())
+    refund_subaccount: String,
+    initial_period_days: u64,
+    initial_period_cost_e8s: u64,
+    creation_date: Date, // https://time-rs.github.io/book/how-to/create-dates.html date might be resolution enough, because we have no sub-day durations, so timezone offsets should be irrelevant.
 }
 
 #[init]
@@ -68,4 +68,60 @@ fn init() {
 #[query]
 fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
     RENTAL_CONDITIONS.with(|map| map.borrow().clone())
+}
+
+#[derive(CandidType)]
+pub enum ExecuteProposalError {
+    Failure(String),
+}
+
+/// TODO: Argument should be something like ValidatedSRProposal, created by government canister via
+/// SRProposal::validate().
+#[update]
+async fn on_proposal_accept(
+    subnet_id: SubnetId,
+    user: Principal,
+    _principals: Vec<Principal>,
+    _block_index: usize,
+    _refund_address: String,
+) -> Result<(), ExecuteProposalError> {
+    // Assumptions:
+    // - A single deposit transaction exists and covers the necessary amount.
+    // - The deposit was made to the <subnet_id>-subaccount of the SRC.
+
+    // Collect rental information
+    // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
+    let RentalConditions {
+        daily_cost_e8s,
+        minimal_rental_period_days,
+    } = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id).unwrap().clone());
+
+    // cost of initial period: TODO: overflows?
+    let initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
+    // turn this amount of ICP into cycles and burn them.
+    // 1. transfer the right amount of ICP to the CMC
+    // 2. create NotifyTopUpArg{ block_index, canister_id } from that transaction
+    // 3. call CMC with the notify arg to get cycles
+    // 4. burn the cycles with the system api
+    // 5. set the end date of the initial period
+    // 6. fill in the other rental agreement details
+
+    // Whitelist the principal
+    let result: CallResult<()> = call(
+        Principal::from_text(CMC_ID).unwrap(),
+        "set_authorized_subnetwork_list",
+        (Some(user), vec![subnet_id]), // TODO: figure out exact semantics of this method.
+    )
+    .await;
+    match result {
+        Ok(_) => {}
+        Err((code, msg)) => {
+            ic_cdk::println!("Call to CMC failed: {:?}, {}", code, msg);
+            return Err(ExecuteProposalError::Failure(
+                "Failed to call CMC".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
 }
