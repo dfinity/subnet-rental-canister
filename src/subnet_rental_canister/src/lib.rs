@@ -130,8 +130,12 @@ fn init() {
 }
 
 #[query]
-fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
-    RENTAL_CONDITIONS.with(|map| map.borrow().clone())
+fn list_rental_conditions() -> Vec<(SubnetId, RentalConditions)> {
+    RENTAL_CONDITIONS.with(|map| {
+        map.borrow()
+            .iter()
+            .collect::<Vec<(SubnetId, RentalConditions)>>()
+    })
 }
 
 #[derive(CandidType)]
