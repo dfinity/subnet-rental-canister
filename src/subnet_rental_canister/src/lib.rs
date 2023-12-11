@@ -161,7 +161,7 @@ async fn on_proposal_accept(
     let RentalConditions {
         daily_cost_e8s,
         minimal_rental_period_days,
-    } = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id).unwrap().clone());
+    } = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id).unwrap());
 
     // cost of initial period: TODO: overflows?
     let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
@@ -176,7 +176,7 @@ async fn on_proposal_accept(
 
     // Whitelist the principal
     let result: CallResult<()> = call(
-        PrincipalImpl::from_text(CMC_ID).unwrap().into(),
+        PrincipalImpl::from_text(CMC_ID).unwrap(),
         "set_authorized_subnetwork_list",
         (Some(user), vec![subnet_id]), // TODO: figure out exact semantics of this method.
     )
