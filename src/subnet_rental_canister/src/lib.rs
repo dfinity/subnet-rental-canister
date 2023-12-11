@@ -6,7 +6,11 @@ use ic_stable_structures::{
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use std::{borrow::Cow, cell::RefCell};
+use std::{
+    borrow::{BorrowMut, Cow},
+    cell::RefCell,
+    collections::HashMap,
+};
 
 const _LEDGER_ID: &str = "todo";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
@@ -14,24 +18,19 @@ const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
 const _SRC_PRINCIPAL: &str = "src_principal";
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const _XDR_COST_PER_DAY: u64 = 1;
-
 const E8S: u64 = 100_000_000;
+const MAX_PRINCIPAL_SIZE: u32 = 29;
 
-type Memory = VirtualMemory<DefaultMemoryImpl>;
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
     // Memory region 0
-    static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Principal, RentalConditions, Memory>> =
+    static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
-    // Memory region 1
-    static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, Memory>> =
-        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
+    static RENTAL_CONDITIONS: HashMap<Principal, RentalConditions> = HashMap::new();
 }
-
-const MAX_PRINCIPAL_SIZE: u32 = 29;
 
 #[derive(
     Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize, CandidType, Hash,
@@ -67,20 +66,6 @@ pub struct RentalConditions {
     minimal_rental_period_days: u64,
 }
 
-impl Storable for RentalConditions {
-    const BOUND: Bound = Bound::Bounded {
-        max_size: 37,
-        is_fixed_size: true,
-    };
-    fn to_bytes(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        Decode!(&bytes, Self).unwrap()
-    }
-}
-
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug, CandidType, Deserialize)]
 struct RentalAgreement {
@@ -111,7 +96,7 @@ impl Storable for RentalAgreement {
 #[init]
 fn init() {
     RENTAL_CONDITIONS.with(|map| {
-        map.borrow_mut().insert(
+        map.clone().borrow_mut().insert(
             PrincipalImpl::from_text(
                 "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
             )
@@ -121,18 +106,14 @@ fn init() {
                 daily_cost_e8s: 100 * E8S,
                 minimal_rental_period_days: 183,
             },
-        );
+        )
     });
     ic_cdk::println!("Subnet rental canister initialized");
 }
 
 #[query]
-fn list_rental_conditions() -> Vec<(SubnetId, RentalConditions)> {
-    RENTAL_CONDITIONS.with(|map| {
-        map.borrow()
-            .iter()
-            .collect::<Vec<(SubnetId, RentalConditions)>>()
-    })
+fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
+    RENTAL_CONDITIONS.with(|rc| rc.clone())
 }
 
 #[derive(CandidType)]
@@ -159,7 +140,7 @@ async fn on_proposal_accept(
     let RentalConditions {
         daily_cost_e8s,
         minimal_rental_period_days,
-    } = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id).unwrap());
+    } = RENTAL_CONDITIONS.with(|rc| *rc.get(&subnet_id).unwrap());
 
     // cost of initial period: TODO: overflows?
     let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
