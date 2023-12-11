@@ -4,12 +4,11 @@ use candid::{CandidType, Decode, Deserialize, Encode, Principal as PrincipalImpl
 use ic_cdk::{api::call::CallResult, call, init, query, update};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
-    storable::{Blob, Bound},
+    storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use std::{borrow::Cow, cell::RefCell, collections::HashMap};
-use time::Date;
+use std::{borrow::Cow, cell::RefCell};
 
 const LEDGER_ID: &str = "todo";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
@@ -165,7 +164,7 @@ async fn on_proposal_accept(
     } = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id).unwrap().clone());
 
     // cost of initial period: TODO: overflows?
-    let initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
+    let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
     // turn this amount of ICP into cycles and burn them.
     // 1. transfer the right amount of ICP to the CMC
     // 2. create NotifyTopUpArg{ block_index, canister_id } from that transaction
