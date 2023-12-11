@@ -6,11 +6,7 @@ use ic_stable_structures::{
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use std::{
-    borrow::{BorrowMut, Cow},
-    cell::RefCell,
-    collections::HashMap,
-};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
 const _LEDGER_ID: &str = "todo";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
@@ -29,7 +25,7 @@ thread_local! {
     static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
-    static RENTAL_CONDITIONS: HashMap<Principal, RentalConditions> = HashMap::new();
+    static RENTAL_CONDITIONS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::new().into();
 }
 
 #[derive(
@@ -96,24 +92,25 @@ impl Storable for RentalAgreement {
 #[init]
 fn init() {
     RENTAL_CONDITIONS.with(|map| {
-        map.clone().borrow_mut().insert(
-            PrincipalImpl::from_text(
-                "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
-            )
-            .unwrap()
-            .into(),
+        map.borrow_mut().insert(
+            Principal(
+                candid::Principal::from_text(
+                    "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
+                )
+                .unwrap(),
+            ),
             RentalConditions {
                 daily_cost_e8s: 100 * E8S,
                 minimal_rental_period_days: 183,
             },
-        )
+        );
     });
     ic_cdk::println!("Subnet rental canister initialized");
 }
 
 #[query]
 fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
-    RENTAL_CONDITIONS.with(|rc| rc.clone())
+    RENTAL_CONDITIONS.with(|map| map.borrow().clone())
 }
 
 #[derive(CandidType)]
@@ -140,7 +137,7 @@ async fn on_proposal_accept(
     let RentalConditions {
         daily_cost_e8s,
         minimal_rental_period_days,
-    } = RENTAL_CONDITIONS.with(|rc| *rc.get(&subnet_id).unwrap());
+    } = RENTAL_CONDITIONS.with(|rc| *rc.borrow().get(&subnet_id).unwrap());
 
     // cost of initial period: TODO: overflows?
     let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
