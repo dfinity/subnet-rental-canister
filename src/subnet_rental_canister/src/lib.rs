@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use candid::{CandidType, Decode, Deserialize, Encode, Principal as PrincipalImpl};
 use ic_cdk::{api::call::CallResult, call, init, query, update};
 use ic_stable_structures::{
@@ -10,12 +8,12 @@ use ic_stable_structures::{
 use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell};
 
-const LEDGER_ID: &str = "todo";
+const _LEDGER_ID: &str = "todo";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
 // The canister_id of the SRC
-const SRC_PRINCIPAL: &str = "src_principal";
+const _SRC_PRINCIPAL: &str = "src_principal";
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
-const XDR_COST_PER_DAY: u64 = 1;
+const _XDR_COST_PER_DAY: u64 = 1;
 
 const E8S: u64 = 100_000_000;
 
