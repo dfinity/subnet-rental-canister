@@ -71,7 +71,7 @@ pub struct RentalConditions {
 
 impl Storable for RentalConditions {
     const BOUND: Bound = Bound::Bounded {
-        max_size: 16,
+        max_size: 37,
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
