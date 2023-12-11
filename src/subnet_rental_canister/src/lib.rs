@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
-use candid::{CandidType, Deserialize, Principal};
+use candid::{CandidType, Decode, Deserialize, Encode, Principal as PrincipalImpl};
 use ic_cdk::{api::call::CallResult, call, init, query, update};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::{Blob, Bound},
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
+use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 use time::Date;
 
@@ -25,12 +26,39 @@ thread_local! {
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
     // Memory region 0
-    static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Blob<29>, RentalConditions, Memory>> =
+    static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Principal, RentalConditions, Memory>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
     // Memory region 1
-    // static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Blob<29>, RentalAgreement, Memory>> =
-    //     RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
+    static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, Memory>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
+}
+
+const MAX_PRINCIPAL_SIZE: u32 = 29;
+
+#[derive(
+    Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize, CandidType, Hash,
+)]
+pub struct Principal(PrincipalImpl);
+
+impl From<PrincipalImpl> for Principal {
+    fn from(value: PrincipalImpl) -> Self {
+        Self(value)
+    }
+}
+
+impl Storable for Principal {
+    const BOUND: Bound = Bound::Bounded {
+        max_size: MAX_PRINCIPAL_SIZE,
+        is_fixed_size: false,
+    };
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        Cow::Owned(self.0.as_slice().to_vec())
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        Self(PrincipalImpl::try_from_slice(bytes.as_ref()).unwrap())
+    }
 }
 
 type SubnetId = Principal;
@@ -44,20 +72,20 @@ pub struct RentalConditions {
 
 impl Storable for RentalConditions {
     const BOUND: Bound = Bound::Bounded {
-        max_size: todo!(),
+        max_size: 16,
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
-        todo!()
+        Cow::Owned(Encode!(self).unwrap())
     }
 
     fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        todo!()
+        Decode!(&bytes, Self).unwrap()
     }
 }
 
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
-#[derive(Debug)]
+#[derive(Debug, CandidType, Deserialize)]
 struct RentalAgreement {
     id: usize,
     user: Principal,
@@ -66,15 +94,32 @@ struct RentalAgreement {
     refund_subaccount: String,
     initial_period_days: u64,
     initial_period_cost_e8s: u64,
-    creation_date: Date, // https://time-rs.github.io/book/how-to/create-dates.html date might be resolution enough, because we have no sub-day durations, so timezone offsets should be irrelevant.
+    // nanos since epoch?  TODO: figure out how times are handled in NNS canisters
+    // creation_date: Date, // https://time-rs.github.io/book/how-to/create-dates.html date might be resolution enough, because we have no sub-day durations, so timezone offsets should be irrelevant.
+    creation_date: u64,
+}
+
+impl Storable for RentalAgreement {
+    // should be bounded once we replace string with real type
+    const BOUND: Bound = Bound::Unbounded;
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        Decode!(&bytes, Self).unwrap()
+    }
 }
 
 #[init]
 fn init() {
     RENTAL_CONDITIONS.with(|map| {
         map.borrow_mut().insert(
-            Principal::from_text("fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae")
-                .unwrap(),
+            PrincipalImpl::from_text(
+                "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
+            )
+            .unwrap()
+            .into(),
             RentalConditions {
                 daily_cost_e8s: 100 * E8S,
                 minimal_rental_period_days: 183,
@@ -128,7 +173,7 @@ async fn on_proposal_accept(
 
     // Whitelist the principal
     let result: CallResult<()> = call(
-        Principal::from_text(CMC_ID).unwrap(),
+        PrincipalImpl::from_text(CMC_ID).unwrap().into(),
         "set_authorized_subnetwork_list",
         (Some(user), vec![subnet_id]), // TODO: figure out exact semantics of this method.
     )
