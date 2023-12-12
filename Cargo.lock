@@ -1550,6 +1550,7 @@ dependencies = [
  "ic-stable-structures",
  "pocket-ic",
  "serde",
+ "serde_bytes",
  "time",
 ]
 

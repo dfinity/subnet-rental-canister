@@ -10,9 +10,13 @@ use std::{
     borrow::{BorrowMut, Cow},
     cell::RefCell,
     collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
 };
+use types::TransferArgs;
 
-const _LEDGER_ID: &str = "todo";
+mod types;
+
+const LEDGER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
 // The canister_id of the SRC
 const _SRC_PRINCIPAL: &str = "src_principal";
@@ -69,7 +73,6 @@ pub struct RentalConditions {
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug, CandidType, Deserialize)]
 struct RentalAgreement {
-    id: usize,
     user: Principal,
     subnet: SubnetId,
     principals: Vec<Principal>,
@@ -135,6 +138,11 @@ async fn on_proposal_accept(
     // - A single deposit transaction exists and covers the necessary amount.
     // - The deposit was made to the <subnet_id>-subaccount of the SRC.
 
+    let creation_date = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
     // Collect rental information
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
     let RentalConditions {
@@ -145,7 +153,13 @@ async fn on_proposal_accept(
     // cost of initial period: TODO: overflows?
     let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
     // turn this amount of ICP into cycles and burn them.
+    let initial_period_end = todo!();
+
+    let CMC = PrincipalImpl::from_text(CMC_ID).unwrap();
+    let LEDGER = PrincipalImpl::from_text(LEDGER_ID).unwrap();
+
     // 1. transfer the right amount of ICP to the CMC
+    // let result: CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
     // 2. create NotifyTopUpArg{ block_index, canister_id } from that transaction
     // 3. call CMC with the notify arg to get cycles
     // 4. burn the cycles with the system api
@@ -154,22 +168,7 @@ async fn on_proposal_accept(
     // 7. add it to the rental agreement map
 
     // Whitelist the principal
-    let result: CallResult<()> = call(
-        PrincipalImpl::from_text(CMC_ID).unwrap(),
-        "set_authorized_subnetwork_list",
-        (Some(user), vec![subnet_id]), // TODO: figure out exact semantics of this method.
-    )
-    .await;
-    match result {
-        Ok(_) => {}
-        // TODO: figure out failure modes of this method and consequences. can this call fail at all? the deposit is gone by now..
-        Err((code, msg)) => {
-            ic_cdk::println!("Call to CMC failed: {:?}, {}", code, msg);
-            return Err(ExecuteProposalError::Failure(
-                "Failed to call CMC".to_string(),
-            ));
-        }
-    }
+    // let result: CallResult<()> = call(CMC, "set_authorized_subnetwork_list", (Some(user), vec![subnet_id])).await;
 
     Ok(())
 }
