@@ -28,7 +28,7 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
     /// Hardcoded subnets and their rental conditions.
-    static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = RefCell::new(HashMap::from([
+    static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
         (
             Principal(
                 candid::Principal::from_text(
@@ -53,7 +53,7 @@ thread_local! {
                 minimal_rental_period_days: 183,
             },
         ),
-    ]));
+    ]).into();
 }
 
 type SubnetId = Principal;
