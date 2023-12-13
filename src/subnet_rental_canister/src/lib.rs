@@ -1,5 +1,7 @@
+#![allow(non_snake_case)]
+
 use candid::{CandidType, Decode, Deserialize, Encode, Principal as PrincipalImpl};
-use ic_cdk::{api::call::CallResult, call, init, query, update};
+use ic_cdk::{api::cycles_burn, init, query, update};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
@@ -12,7 +14,6 @@ use std::{
     collections::HashMap,
     time::{SystemTime, UNIX_EPOCH},
 };
-use types::TransferArgs;
 
 mod types;
 
@@ -74,13 +75,12 @@ pub struct RentalConditions {
 #[derive(Debug, CandidType, Deserialize)]
 struct RentalAgreement {
     user: Principal,
-    subnet: SubnetId,
+    subnet_id: SubnetId,
     principals: Vec<Principal>,
-    refund_subaccount: String,
+    refund_address: String,
     initial_period_days: u64,
     initial_period_cost_e8s: u64,
-    // nanos since epoch?  TODO: figure out how times are handled in NNS canisters
-    // creation_date: Date, // https://time-rs.github.io/book/how-to/create-dates.html date might be resolution enough, because we have no sub-day durations, so timezone offsets should be irrelevant.
+    // nanoseconds since epoch
     creation_date: u64,
 }
 
@@ -126,23 +126,20 @@ pub enum ExecuteProposalError {
 
 /// TODO: Argument should be something like ValidatedSRProposal, created by government canister via
 /// SRProposal::validate().
+/// validate needs to ensure:
+/// - subnet not currently rented
+/// - A single deposit transaction exists and covers the necessary amount.
+/// - The deposit was made to the <subnet_id>-subaccount of the SRC.
 #[update]
 async fn on_proposal_accept(
     subnet_id: SubnetId,
+    // TODO: not this local Principal type
     user: Principal,
-    _principals: Vec<Principal>,
+    principals: Vec<Principal>,
     _block_index: usize,
-    _refund_address: String,
+    refund_address: String,
 ) -> Result<(), ExecuteProposalError> {
-    // Assumptions:
-    // - A single deposit transaction exists and covers the necessary amount.
-    // - The deposit was made to the <subnet_id>-subaccount of the SRC.
-
-    let creation_date = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
+    // TODO: need access control: only the governance canister may call this method.
     // Collect rental information
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
     let RentalConditions {
@@ -150,24 +147,44 @@ async fn on_proposal_accept(
         minimal_rental_period_days,
     } = RENTAL_CONDITIONS.with(|rc| *rc.get(&subnet_id).unwrap());
 
-    // cost of initial period: TODO: overflows?
-    let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
-    // turn this amount of ICP into cycles and burn them.
-    let initial_period_end = todo!();
+    // nanoseconds since epoch.
+    let creation_date = ic_cdk::api::time();
+    let _initial_period_end = creation_date + minimal_rental_period_days * 86400 * 1_000_000_000;
 
-    let CMC = PrincipalImpl::from_text(CMC_ID).unwrap();
-    let LEDGER = PrincipalImpl::from_text(LEDGER_ID).unwrap();
+    // cost of initial period: TODO: overflows?
+    let initial_period_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
+    // turn this amount of ICP into cycles and burn them.
+
+    let _CMC = PrincipalImpl::from_text(CMC_ID).unwrap();
+    let _LEDGER = PrincipalImpl::from_text(LEDGER_ID).unwrap();
 
     // 1. transfer the right amount of ICP to the CMC
     // let result: CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
     // 2. create NotifyTopUpArg{ block_index, canister_id } from that transaction
     // 3. call CMC with the notify arg to get cycles
-    // 4. burn the cycles with the system api
+    // 4. burn the cycles with the system api. the amount depends on the current exchange rate.
+    cycles_burn(0);
     // 5. set the end date of the initial period
     // 6. fill in the other rental agreement details
-    // 7. add it to the rental agreement map
+    let rental_agreement = RentalAgreement {
+        user,
+        subnet_id,
+        principals,
+        refund_address,
+        initial_period_days: minimal_rental_period_days,
+        initial_period_cost_e8s,
+        creation_date,
+    };
+    // TODO: log this event in the persisted log
+    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
 
-    // Whitelist the principal
+    // 7. add it to the rental agreement map
+    // TODO: double check if there exists a rental agreement with this subnet_id.
+    RENTAL_AGREEMENTS.with(|map| {
+        map.borrow_mut().insert(subnet_id.into(), rental_agreement);
+    });
+
+    // 8. Whitelist the principal
     // let result: CallResult<()> = call(CMC, "set_authorized_subnetwork_list", (Some(user), vec![subnet_id])).await;
 
     Ok(())
