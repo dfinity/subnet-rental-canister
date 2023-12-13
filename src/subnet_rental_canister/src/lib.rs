@@ -32,32 +32,20 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
     /// Hardcoded subnets and their rental conditions.
-    static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = RefCell::new(HashMap::from([
-        (
-            Principal(
-                candid::Principal::from_text(
-                    "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
-                )
-                .unwrap(),
-            ),
+    static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
+        (candid::Principal::from_text("bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe").unwrap().into(),
             RentalConditions {
                 daily_cost_e8s: 333 * E8S,
                 minimal_rental_period_days: 365,
             },
         ),
-        (
-            Principal(
-                candid::Principal::from_text(
-                    "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
-                )
-                .unwrap(),
-            ),
+        (candid::Principal::from_text("fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae").unwrap().into(),
             RentalConditions {
                 daily_cost_e8s: 100 * E8S,
                 minimal_rental_period_days: 183,
             },
         ),
-    ]));
+    ]).into();
 }
 
 type SubnetId = Principal;
