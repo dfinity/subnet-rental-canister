@@ -155,7 +155,7 @@ pub struct ValidatedSubnetRentalProposal {
 
 #[query]
 fn list_rental_agreements() -> Vec<RentalAgreement> {
-    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v.clone()).collect())
+    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
 }
 
 #[query]
@@ -237,7 +237,7 @@ async fn on_proposal_accept(
     // TODO: log this event in the persisted log
     ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
-        map.borrow_mut().insert(subnet_id.into(), rental_agreement);
+        map.borrow_mut().insert(subnet_id, rental_agreement);
     });
 
     // 8. Whitelist the principal
