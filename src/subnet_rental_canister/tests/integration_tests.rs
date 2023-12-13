@@ -13,6 +13,13 @@ fn setup() -> (PocketIc, PrincipalImpl) {
 
     pic.add_cycles(canister_id, 2_000_000_000_000);
     pic.install_canister(canister_id, wasm, vec![], None);
+    pic.update_call(
+        canister_id,
+        candid::Principal::anonymous(),
+        "canister_init",
+        vec![],
+    )
+    .unwrap();
     (pic, canister_id)
 }
 
@@ -57,7 +64,16 @@ fn test_proposal_accepted() {
             canister_id,
             candid::Principal::anonymous(),
             "on_proposal_accept",
+            encode_one(arg.clone()).unwrap(),
+        )
+        .is_ok());
+    // using the same subnet again must fail
+    assert!(pic
+        .update_call(
+            canister_id,
+            candid::Principal::anonymous(),
+            "on_proposal_accept",
             encode_one(arg).unwrap(),
         )
-        .is_ok())
+        .is_err());
 }

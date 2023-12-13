@@ -12,7 +12,6 @@ use std::{
     borrow::{BorrowMut, Cow},
     cell::RefCell,
     collections::HashMap,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 mod types;
@@ -99,7 +98,7 @@ impl Storable for RentalAgreement {
 #[init]
 fn init() {
     RENTAL_CONDITIONS.with(|map| {
-        map.clone().borrow_mut().insert(
+        map.borrow_mut().insert(
             PrincipalImpl::from_text(
                 "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
             )
@@ -119,7 +118,7 @@ fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
     RENTAL_CONDITIONS.with(|rc| rc.clone())
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(Clone, CandidType, Deserialize)]
 pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: Principal,
     pub user: Principal,
@@ -152,6 +151,8 @@ async fn on_proposal_accept(
     // TODO: need access control: only the governance canister may call this method.
     // Collect rental information
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
+    let keys: Vec<Principal> = RENTAL_CONDITIONS.with(|m| m.keys().cloned().collect());
+    ic_cdk::println!("subnet id {:?}, ras {:?}", subnet_id, keys);
     let RentalConditions {
         daily_cost_e8s,
         minimal_rental_period_days,
@@ -189,7 +190,11 @@ async fn on_proposal_accept(
     ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
 
     // 7. add it to the rental agreement map
-    // TODO: double check if there exists a rental agreement with this subnet_id.
+    if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id)) {
+        return Err(ExecuteProposalError::Failure(
+            "subnet is already in an active rental agreement".to_string(),
+        ));
+    }
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(subnet_id.into(), rental_agreement);
     });
