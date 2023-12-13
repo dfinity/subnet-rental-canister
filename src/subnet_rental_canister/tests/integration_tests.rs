@@ -1,7 +1,7 @@
 use candid::{decode_one, encode_one};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
-use subnet_rental_canister::{Principal, RentalConditions};
+use subnet_rental_canister::{Principal, RentalConditions, ValidatedSubnetRentalProposal};
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
 
@@ -18,6 +18,14 @@ fn setup() -> (PocketIc, Principal) {
 #[test]
 fn test_list_rental_conditions() {
     let (pic, canister_id) = setup();
+
+    let arg = ValidatedSubnetRentalProposal {
+        subnet_id: candid::Principal::from_text("").unwrap().into(),
+        user: candid::Principal::from_text("").unwrap().into(),
+        principals: vec![],
+        block_index: 0,
+        refund_address: "ok".to_string(),
+    };
 
     let WasmResult::Reply(res) = pic
         .query_call(
@@ -47,5 +55,4 @@ fn test_proposal_accepted() {
             encode_one(()).unwrap(),
         )
         .is_ok())
-
 }

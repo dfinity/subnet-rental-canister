@@ -119,6 +119,15 @@ fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
     RENTAL_CONDITIONS.with(|rc| rc.clone())
 }
 
+#[derive(CandidType, Deserialize)]
+pub struct ValidatedSubnetRentalProposal {
+    pub subnet_id: Principal,
+    pub user: Principal,
+    pub principals: Vec<Principal>,
+    pub block_index: u64,
+    pub refund_address: String,
+}
+
 #[derive(CandidType)]
 pub enum ExecuteProposalError {
     Failure(String),
@@ -132,12 +141,13 @@ pub enum ExecuteProposalError {
 /// - The deposit was made to the <subnet_id>-subaccount of the SRC.
 #[update]
 async fn on_proposal_accept(
-    subnet_id: SubnetId,
-    // TODO: not this local Principal type
-    user: Principal,
-    principals: Vec<Principal>,
-    _block_index: usize,
-    refund_address: String,
+    ValidatedSubnetRentalProposal {
+        subnet_id,
+        user,
+        principals,
+        block_index: _block_index,
+        refund_address,
+    }: ValidatedSubnetRentalProposal,
 ) -> Result<(), ExecuteProposalError> {
     // TODO: need access control: only the governance canister may call this method.
     // Collect rental information
