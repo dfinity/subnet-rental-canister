@@ -6,11 +6,7 @@ use ic_stable_structures::{
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use std::{
-    borrow::{BorrowMut, Cow},
-    cell::RefCell,
-    collections::HashMap,
-};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
 const _LEDGER_ID: &str = "todo";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
@@ -20,6 +16,8 @@ const _SRC_PRINCIPAL: &str = "src_principal";
 const _XDR_COST_PER_DAY: u64 = 1;
 const E8S: u64 = 100_000_000;
 const MAX_PRINCIPAL_SIZE: u32 = 29;
+const HTML_HEAD: &str =
+    r#"<!DOCTYPE html><html lang="en"><head><title>Subnet Rental Canister</title></head>"#;
 
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
@@ -29,8 +27,24 @@ thread_local! {
     static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
-    static RENTAL_CONDITIONS: HashMap<Principal, RentalConditions> = HashMap::new();
+    /// Hardcoded subnets and their rental conditions.
+    static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
+        (candid::Principal::from_text("bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe").unwrap().into(),
+            RentalConditions {
+                daily_cost_e8s: 333 * E8S,
+                minimal_rental_period_days: 365,
+            },
+        ),
+        (candid::Principal::from_text("fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae").unwrap().into(),
+            RentalConditions {
+                daily_cost_e8s: 100 * E8S,
+                minimal_rental_period_days: 183,
+            },
+        ),
+    ]).into();
 }
+
+type SubnetId = Principal;
 
 #[derive(
     Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize, CandidType, Hash,
@@ -57,7 +71,10 @@ impl Storable for Principal {
     }
 }
 
-type SubnetId = Principal;
+#[derive(CandidType)]
+pub enum ExecuteProposalError {
+    Failure(String),
+}
 
 /// Set of conditions for a specific subnet up for rent.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
@@ -67,9 +84,9 @@ pub struct RentalConditions {
 }
 
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
-#[derive(Debug, CandidType, Deserialize)]
+#[derive(Debug, Clone, CandidType, Deserialize)]
 struct RentalAgreement {
-    id: usize,
+    id: u64,
     user: Principal,
     subnet: SubnetId,
     principals: Vec<Principal>,
@@ -95,30 +112,53 @@ impl Storable for RentalAgreement {
 
 #[init]
 fn init() {
-    RENTAL_CONDITIONS.with(|map| {
-        map.clone().borrow_mut().insert(
-            PrincipalImpl::from_text(
-                "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
-            )
-            .unwrap()
-            .into(),
-            RentalConditions {
-                daily_cost_e8s: 100 * E8S,
-                minimal_rental_period_days: 183,
+    // Hardcoded rental agreement for testing
+    let subnet = Principal(
+        candid::Principal::from_text(
+            "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
+        )
+        .unwrap(),
+    );
+    let renter = Principal(candid::Principal::from_slice(b"user1"));
+    let user = Principal(candid::Principal::from_slice(b"user2"));
+    RENTAL_AGREEMENTS.with(|map| {
+        map.borrow_mut().insert(
+            subnet,
+            RentalAgreement {
+                id: 120345,
+                user: renter,
+                subnet,
+                principals: vec![renter, user],
+                refund_subaccount: "my-wallet-address".to_owned(),
+                initial_period_days: 365,
+                initial_period_cost_e8s: 333 * 365 * E8S,
+                creation_date: 1702394252000000000,
             },
         )
     });
-    ic_cdk::println!("Subnet rental canister initialized");
 }
 
 #[query]
-fn list_rental_conditions() -> HashMap<SubnetId, RentalConditions> {
-    RENTAL_CONDITIONS.with(|rc| rc.clone())
+fn list_subnet_conditions() -> HashMap<SubnetId, RentalConditions> {
+    SUBNETS.with(|map| map.borrow().clone())
 }
 
-#[derive(CandidType)]
-pub enum ExecuteProposalError {
-    Failure(String),
+#[query]
+fn list_rental_agreements() -> Vec<RentalAgreement> {
+    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v.clone()).collect())
+}
+
+#[query]
+fn http_request(req: HttpRequest) -> HttpResponse {
+    match req.url.as_str() {
+        "/" => html_ok_response(format!(
+            r#"{}<body><h1>Subnet Rental Canister</h1><ul><li><a href="/subnets">Subnets for Rent</a></li><li><a href="/rental_agreements">Rental Agreements</a></li></ul></body></html>"#,
+            HTML_HEAD
+        )),
+        "/subnets" => html_ok_response(generate_rental_conditions_html()),
+        "/rental_agreements" => html_ok_response(generate_rental_agreements_html()),
+        _ => html_response(404, "Not found".to_string()),
+    }
 }
 
 /// TODO: Argument should be something like ValidatedSRProposal, created by government canister via
@@ -140,7 +180,7 @@ async fn on_proposal_accept(
     let RentalConditions {
         daily_cost_e8s,
         minimal_rental_period_days,
-    } = RENTAL_CONDITIONS.with(|rc| *rc.get(&subnet_id).unwrap());
+    } = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id).unwrap());
 
     // cost of initial period: TODO: overflows?
     let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
@@ -172,4 +212,90 @@ async fn on_proposal_accept(
     }
 
     Ok(())
+}
+
+fn html_ok_response(html: String) -> HttpResponse {
+    html_response(200, html)
+}
+
+fn html_response(status_code: u16, html: String) -> HttpResponse {
+    HttpResponse {
+        status_code,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/html; charset=utf-8".to_string(),
+        )],
+        body: html.as_bytes().to_vec(),
+    }
+}
+
+fn generate_rental_agreements_html() -> String {
+    let rental_agreements = list_rental_agreements();
+
+    let mut html = String::new();
+    html.push_str(HTML_HEAD);
+    html.push_str(
+        r#"<body><h1>Rental Agreements</h1><table border="1"><tr><th>Subnet ID</th><th>Renter</th><th>Allowed Principals</th><th>Refund Address</th><th>Initial Period (days)</th><th>Initial Period Cost (ICP)</th><th>Creation Date</th><th>Status</th></tr>"#,
+    );
+    for agreement in rental_agreements {
+        html.push_str("<tr>");
+        html.push_str(&format!(
+            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td><td>{}</td>",
+            agreement.subnet.0,
+            agreement.user.0,
+            agreement
+                .principals
+                .iter()
+                .map(|p| p.0.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            agreement.refund_subaccount,
+            agreement.initial_period_days,
+            agreement.initial_period_cost_e8s / 100_000_000,
+            Duration::from_nanos(agreement.creation_date),
+            "Healthy"
+        ));
+        html.push_str("</tr>");
+    }
+    html.push_str("</table></body></html>");
+    html
+}
+
+fn generate_rental_conditions_html() -> String {
+    let rental_conditions = list_subnet_conditions();
+
+    let mut html = String::new();
+    html.push_str(HTML_HEAD);
+    html.push_str(
+        r#"<body><h1>Subnets for Rent</h1><table border="1"><tr><th>Subnet ID</th><th>Daily Cost (ICP)</th><th>Minimal Rental Period (days)</th><th>Status</th></tr>"#,
+    );
+    for (subnet_id, conditions) in rental_conditions {
+        html.push_str("<tr>");
+        let rented = RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id));
+        html.push_str(&format!(
+            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
+            subnet_id.0,
+            conditions.daily_cost_e8s / 100_000_000,
+            conditions.minimal_rental_period_days,
+            if rented { "Rented" } else { "Available" }
+        ));
+        html.push_str("</tr>");
+    }
+    html.push_str("</table></body></html>");
+    html
+}
+
+#[derive(CandidType)]
+struct HttpResponse {
+    status_code: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+#[derive(CandidType, Deserialize, Debug)]
+struct HttpRequest {
+    method: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
 }
