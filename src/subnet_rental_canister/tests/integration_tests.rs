@@ -2,7 +2,9 @@ use candid::Principal as PrincipalImpl;
 use candid::{decode_one, encode_one};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
-use subnet_rental_canister::{Principal, RentalConditions, ValidatedSubnetRentalProposal};
+use subnet_rental_canister::{
+    ExecuteProposalError, Principal, RentalConditions, ValidatedSubnetRentalProposal,
+};
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
 
@@ -10,16 +12,8 @@ fn setup() -> (PocketIc, PrincipalImpl) {
     let pic = PocketIc::new();
     let canister_id = pic.create_canister();
     let wasm = fs::read(WASM).expect("Please build the wasm with ./scripts/build.sh");
-
     pic.add_cycles(canister_id, 2_000_000_000_000);
     pic.install_canister(canister_id, wasm, vec![], None);
-    pic.update_call(
-        canister_id,
-        candid::Principal::anonymous(),
-        "canister_init",
-        vec![],
-    )
-    .unwrap();
     (pic, canister_id)
 }
 
@@ -59,21 +53,33 @@ fn test_proposal_accepted() {
         refund_address: "ok".to_string(),
     };
 
-    assert!(pic
+    let WasmResult::Reply(res) = pic
         .update_call(
             canister_id,
             candid::Principal::anonymous(),
             "on_proposal_accept",
             encode_one(arg.clone()).unwrap(),
         )
-        .is_ok());
+        .unwrap()
+    else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(res.is_ok());
+
     // using the same subnet again must fail
-    assert!(pic
-        .update_call(
-            canister_id,
-            candid::Principal::anonymous(),
-            "on_proposal_accept",
-            encode_one(arg).unwrap(),
-        )
-        .is_err());
+    let WasmResult::Reply(res) = pic.update_call(
+        canister_id,
+        candid::Principal::anonymous(),
+        "on_proposal_accept",
+        encode_one(arg).unwrap(),
+    ).unwrap()
+    else {
+        panic!("Expected a reply");
+    };
+    let Err(ExecuteProposalError::Failure(_msg)) =
+        decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap()
+    else {
+        panic!("Expected an Err");
+    };
 }

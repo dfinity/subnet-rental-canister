@@ -87,7 +87,7 @@ impl Storable for Principal {
     }
 }
 
-#[derive(CandidType)]
+#[derive(CandidType, Deserialize)]
 pub enum ExecuteProposalError {
     Failure(String),
 }
@@ -127,7 +127,7 @@ impl Storable for RentalAgreement {
 #[init]
 fn init() {
     // Hardcoded rental agreement for testing
-    let subnet = Principal(
+    let subnet_id = Principal(
         candid::Principal::from_text(
             "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
         )
@@ -137,7 +137,7 @@ fn init() {
     let user = Principal(candid::Principal::from_slice(b"user2"));
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(
-            subnet,
+            subnet_id,
             RentalAgreement {
                 user: renter,
                 subnet_id,
@@ -202,8 +202,6 @@ async fn on_proposal_accept(
     // TODO: need access control: only the governance canister may call this method.
     // Collect rental information
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
-    let keys: Vec<Principal> = SUBNETS.with(|m| m.borrow().keys().cloned().collect());
-    ic_cdk::println!("subnet id {:?}, ras {:?}", subnet_id, keys);
     let RentalConditions {
         daily_cost_e8s,
         minimal_rental_period_days,
@@ -237,15 +235,19 @@ async fn on_proposal_accept(
         initial_period_cost_e8s,
         creation_date,
     };
-    // TODO: log this event in the persisted log
-    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
 
     // 7. add it to the rental agreement map
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id)) {
+        ic_cdk::println!(
+            "Subnet is already in an active rental agreement: {:?}",
+            &subnet_id
+        );
         return Err(ExecuteProposalError::Failure(
-            "subnet is already in an active rental agreement".to_string(),
+            "Subnet is already in an active rental agreement".to_string(),
         ));
     }
+    // TODO: log this event in the persisted log
+    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(subnet_id.into(), rental_agreement);
     });
