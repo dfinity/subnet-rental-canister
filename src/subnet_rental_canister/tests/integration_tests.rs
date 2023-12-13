@@ -31,7 +31,7 @@ fn test_list_rental_conditions() {
         .query_call(
             canister_id,
             candid::Principal::anonymous(),
-            "list_rental_conditions",
+            "list_subnet_conditions",
             encode_one(()).unwrap(),
         )
         .unwrap()
@@ -40,7 +40,7 @@ fn test_list_rental_conditions() {
     };
 
     let conditions = decode_one::<Vec<(Principal, RentalConditions)>>(&res).unwrap();
-    println!("Reply: {:?}", conditions);
+    assert!(!conditions.is_empty());
 }
 
 #[test]
