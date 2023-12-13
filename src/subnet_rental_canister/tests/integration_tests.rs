@@ -1,6 +1,6 @@
 use candid::{decode_one, encode_one};
 use pocket_ic::{PocketIc, WasmResult};
-use std::{fs, str::FromStr};
+use std::fs;
 use subnet_rental_canister::{
     ExecuteProposalError, Principal, RejectedSubnetRentalProposal, RentalConditions,
     ValidatedSubnetRentalProposal,
@@ -56,7 +56,7 @@ fn test_proposal_accepted() {
     let WasmResult::Reply(res) = pic
         .update_call(
             canister_id,
-            candid::Principal::from_str(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
+            candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
             "on_proposal_accept",
             encode_one(arg.clone()).unwrap(),
         )
@@ -71,7 +71,7 @@ fn test_proposal_accepted() {
     let WasmResult::Reply(res) = pic
         .update_call(
             canister_id,
-            candid::Principal::from_str(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
+            candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
             "on_proposal_accept",
             encode_one(arg).unwrap(),
         )
