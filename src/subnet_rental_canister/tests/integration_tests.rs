@@ -1,3 +1,4 @@
+use candid::Principal as PrincipalImpl;
 use candid::{decode_one, encode_one};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
@@ -5,7 +6,7 @@ use subnet_rental_canister::{Principal, RentalConditions, ValidatedSubnetRentalP
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
 
-fn setup() -> (PocketIc, Principal) {
+fn setup() -> (PocketIc, PrincipalImpl) {
     let pic = PocketIc::new();
     let canister_id = pic.create_canister();
     let wasm = fs::read(WASM).expect("Please build the wasm with ./scripts/build.sh");
@@ -18,14 +19,6 @@ fn setup() -> (PocketIc, Principal) {
 #[test]
 fn test_list_rental_conditions() {
     let (pic, canister_id) = setup();
-
-    let arg = ValidatedSubnetRentalProposal {
-        subnet_id: candid::Principal::from_text("").unwrap().into(),
-        user: candid::Principal::from_text("").unwrap().into(),
-        principals: vec![],
-        block_index: 0,
-        refund_address: "ok".to_string(),
-    };
 
     let WasmResult::Reply(res) = pic
         .query_call(
@@ -47,12 +40,24 @@ fn test_list_rental_conditions() {
 fn test_proposal_accepted() {
     let (pic, canister_id) = setup();
 
+    let arg = ValidatedSubnetRentalProposal {
+        subnet_id: candid::Principal::from_text(
+            "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
+        )
+        .unwrap()
+        .into(),
+        user: candid::Principal::from_slice(b"user1").into(),
+        principals: vec![],
+        block_index: 0,
+        refund_address: "ok".to_string(),
+    };
+
     assert!(pic
         .update_call(
             canister_id,
             candid::Principal::anonymous(),
             "on_proposal_accept",
-            encode_one(()).unwrap(),
+            encode_one(arg).unwrap(),
         )
         .is_ok())
 }

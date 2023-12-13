@@ -159,7 +159,7 @@ async fn on_proposal_accept(
 
     // nanoseconds since epoch.
     let creation_date = ic_cdk::api::time();
-    let _initial_period_end = creation_date + minimal_rental_period_days * 86400 * 1_000_000_000;
+    let _initial_period_end = creation_date + (minimal_rental_period_days * 86400 * 1_000_000_000);
 
     // cost of initial period: TODO: overflows?
     let initial_period_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
