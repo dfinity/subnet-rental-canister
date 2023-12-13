@@ -1,6 +1,4 @@
-#![allow(non_snake_case)]
-
-use candid::{CandidType, Decode, Deserialize, Encode, Principal as PrincipalImpl};
+use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::{api::cycles_burn, init, query, update};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -53,10 +51,10 @@ type SubnetId = Principal;
 #[derive(
     Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize, CandidType, Hash,
 )]
-pub struct Principal(PrincipalImpl);
+pub struct Principal(candid::Principal);
 
-impl From<PrincipalImpl> for Principal {
-    fn from(value: PrincipalImpl) -> Self {
+impl From<candid::Principal> for Principal {
+    fn from(value: candid::Principal) -> Self {
         Self(value)
     }
 }
@@ -71,7 +69,7 @@ impl Storable for Principal {
     }
 
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Self(PrincipalImpl::try_from_slice(bytes.as_ref()).unwrap())
+        Self(candid::Principal::try_from_slice(bytes.as_ref()).unwrap())
     }
 }
 
@@ -203,8 +201,8 @@ async fn on_proposal_accept(
     let initial_period_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
     // turn this amount of ICP into cycles and burn them.
 
-    let _CMC = PrincipalImpl::from_text(CMC_ID).unwrap();
-    let _LEDGER = PrincipalImpl::from_text(LEDGER_ID).unwrap();
+    let _cmc_canister = candid::Principal::from_text(CMC_ID).unwrap();
+    let _ledger_canister = candid::Principal::from_text(LEDGER_ID).unwrap();
 
     // 1. transfer the right amount of ICP to the CMC
     // let result: CallResult<> = call(LEDGER, "transfer", TransferArgs).await;

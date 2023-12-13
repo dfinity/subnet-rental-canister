@@ -1,4 +1,3 @@
-use candid::Principal as PrincipalImpl;
 use candid::{decode_one, encode_one};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
@@ -8,7 +7,7 @@ use subnet_rental_canister::{
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
 
-fn setup() -> (PocketIc, PrincipalImpl) {
+fn setup() -> (PocketIc, candid::Principal) {
     let pic = PocketIc::new();
     let canister_id = pic.create_canister();
     let wasm = fs::read(WASM).expect("Please build the wasm with ./scripts/build.sh");
