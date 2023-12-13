@@ -67,12 +67,14 @@ fn test_proposal_accepted() {
     assert!(res.is_ok());
 
     // using the same subnet again must fail
-    let WasmResult::Reply(res) = pic.update_call(
-        canister_id,
-        candid::Principal::anonymous(),
-        "on_proposal_accept",
-        encode_one(arg).unwrap(),
-    ).unwrap()
+    let WasmResult::Reply(res) = pic
+        .update_call(
+            canister_id,
+            candid::Principal::anonymous(),
+            "on_proposal_accept",
+            encode_one(arg).unwrap(),
+        )
+        .unwrap()
     else {
         panic!("Expected a reply");
     };
