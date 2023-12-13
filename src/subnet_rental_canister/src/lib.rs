@@ -1,5 +1,5 @@
-use candid::{CandidType, Decode, Deserialize, Encode, Principal as PrincipalImpl};
-use ic_cdk::{api::call::CallResult, call, init, query, update};
+use candid::{CandidType, Decode, Deserialize, Encode};
+use ic_cdk::{api::cycles_burn, init, query, update};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
@@ -8,7 +8,9 @@ use ic_stable_structures::{
 use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
-const _LEDGER_ID: &str = "todo";
+mod types;
+
+const LEDGER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
 // The canister_id of the SRC
 const _SRC_PRINCIPAL: &str = "src_principal";
@@ -49,10 +51,10 @@ type SubnetId = Principal;
 #[derive(
     Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize, CandidType, Hash,
 )]
-pub struct Principal(PrincipalImpl);
+pub struct Principal(candid::Principal);
 
-impl From<PrincipalImpl> for Principal {
-    fn from(value: PrincipalImpl) -> Self {
+impl From<candid::Principal> for Principal {
+    fn from(value: candid::Principal) -> Self {
         Self(value)
     }
 }
@@ -67,11 +69,11 @@ impl Storable for Principal {
     }
 
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Self(PrincipalImpl::try_from_slice(bytes.as_ref()).unwrap())
+        Self(candid::Principal::try_from_slice(bytes.as_ref()).unwrap())
     }
 }
 
-#[derive(CandidType)]
+#[derive(CandidType, Deserialize)]
 pub enum ExecuteProposalError {
     Failure(String),
 }
@@ -86,15 +88,13 @@ pub struct RentalConditions {
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug, Clone, CandidType, Deserialize)]
 struct RentalAgreement {
-    id: u64,
     user: Principal,
-    subnet: SubnetId,
+    subnet_id: SubnetId,
     principals: Vec<Principal>,
-    refund_subaccount: String,
+    refund_address: String,
     initial_period_days: u64,
     initial_period_cost_e8s: u64,
-    // nanos since epoch?  TODO: figure out how times are handled in NNS canisters
-    // creation_date: Date, // https://time-rs.github.io/book/how-to/create-dates.html date might be resolution enough, because we have no sub-day durations, so timezone offsets should be irrelevant.
+    // nanoseconds since epoch
     creation_date: u64,
 }
 
@@ -113,7 +113,7 @@ impl Storable for RentalAgreement {
 #[init]
 fn init() {
     // Hardcoded rental agreement for testing
-    let subnet = Principal(
+    let subnet_id = Principal(
         candid::Principal::from_text(
             "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
         )
@@ -123,13 +123,12 @@ fn init() {
     let user = Principal(candid::Principal::from_slice(b"user2"));
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(
-            subnet,
+            subnet_id,
             RentalAgreement {
-                id: 120345,
                 user: renter,
-                subnet,
+                subnet_id,
                 principals: vec![renter, user],
-                refund_subaccount: "my-wallet-address".to_owned(),
+                refund_address: "my-wallet-address".to_owned(),
                 initial_period_days: 365,
                 initial_period_cost_e8s: 333 * 365 * E8S,
                 creation_date: 1702394252000000000,
@@ -143,9 +142,18 @@ fn list_subnet_conditions() -> HashMap<SubnetId, RentalConditions> {
     SUBNETS.with(|map| map.borrow().clone())
 }
 
+#[derive(Clone, CandidType, Deserialize)]
+pub struct ValidatedSubnetRentalProposal {
+    pub subnet_id: Principal,
+    pub user: Principal,
+    pub principals: Vec<Principal>,
+    pub block_index: u64,
+    pub refund_address: String,
+}
+
 #[query]
 fn list_rental_agreements() -> Vec<RentalAgreement> {
-    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v.clone()).collect())
+    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
 }
 
 #[query]
@@ -163,18 +171,21 @@ fn http_request(req: HttpRequest) -> HttpResponse {
 
 /// TODO: Argument should be something like ValidatedSRProposal, created by government canister via
 /// SRProposal::validate().
+/// validate needs to ensure:
+/// - subnet not currently rented
+/// - A single deposit transaction exists and covers the necessary amount.
+/// - The deposit was made to the <subnet_id>-subaccount of the SRC.
 #[update]
 async fn on_proposal_accept(
-    subnet_id: SubnetId,
-    user: Principal,
-    _principals: Vec<Principal>,
-    _block_index: usize,
-    _refund_address: String,
+    ValidatedSubnetRentalProposal {
+        subnet_id,
+        user,
+        principals,
+        block_index: _block_index,
+        refund_address,
+    }: ValidatedSubnetRentalProposal,
 ) -> Result<(), ExecuteProposalError> {
-    // Assumptions:
-    // - A single deposit transaction exists and covers the necessary amount.
-    // - The deposit was made to the <subnet_id>-subaccount of the SRC.
-
+    // TODO: need access control: only the governance canister may call this method.
     // Collect rental information
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
     let RentalConditions {
@@ -182,34 +193,53 @@ async fn on_proposal_accept(
         minimal_rental_period_days,
     } = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id).unwrap());
 
+    // nanoseconds since epoch.
+    let creation_date = ic_cdk::api::time();
+    let _initial_period_end = creation_date + (minimal_rental_period_days * 86400 * 1_000_000_000);
+
     // cost of initial period: TODO: overflows?
-    let _initial_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
+    let initial_period_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
     // turn this amount of ICP into cycles and burn them.
+
+    let _cmc_canister = candid::Principal::from_text(CMC_ID).unwrap();
+    let _ledger_canister = candid::Principal::from_text(LEDGER_ID).unwrap();
+
     // 1. transfer the right amount of ICP to the CMC
+    // let result: CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
     // 2. create NotifyTopUpArg{ block_index, canister_id } from that transaction
     // 3. call CMC with the notify arg to get cycles
-    // 4. burn the cycles with the system api
+    // 4. burn the cycles with the system api. the amount depends on the current exchange rate.
+    cycles_burn(0);
     // 5. set the end date of the initial period
     // 6. fill in the other rental agreement details
-    // 7. add it to the rental agreement map
+    let rental_agreement = RentalAgreement {
+        user,
+        subnet_id,
+        principals,
+        refund_address,
+        initial_period_days: minimal_rental_period_days,
+        initial_period_cost_e8s,
+        creation_date,
+    };
 
-    // Whitelist the principal
-    let result: CallResult<()> = call(
-        PrincipalImpl::from_text(CMC_ID).unwrap(),
-        "set_authorized_subnetwork_list",
-        (Some(user), vec![subnet_id]), // TODO: figure out exact semantics of this method.
-    )
-    .await;
-    match result {
-        Ok(_) => {}
-        // TODO: figure out failure modes of this method and consequences. can this call fail at all? the deposit is gone by now..
-        Err((code, msg)) => {
-            ic_cdk::println!("Call to CMC failed: {:?}, {}", code, msg);
-            return Err(ExecuteProposalError::Failure(
-                "Failed to call CMC".to_string(),
-            ));
-        }
+    // 7. add it to the rental agreement map
+    if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id)) {
+        ic_cdk::println!(
+            "Subnet is already in an active rental agreement: {:?}",
+            &subnet_id
+        );
+        return Err(ExecuteProposalError::Failure(
+            "Subnet is already in an active rental agreement".to_string(),
+        ));
     }
+    // TODO: log this event in the persisted log
+    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
+    RENTAL_AGREEMENTS.with(|map| {
+        map.borrow_mut().insert(subnet_id, rental_agreement);
+    });
+
+    // 8. Whitelist the principal
+    // let result: CallResult<()> = call(CMC, "set_authorized_subnetwork_list", (Some(user), vec![subnet_id])).await;
 
     Ok(())
 }
@@ -241,7 +271,7 @@ fn generate_rental_agreements_html() -> String {
         html.push_str("<tr>");
         html.push_str(&format!(
             "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td><td>{}</td>",
-            agreement.subnet.0,
+            agreement.subnet_id.0,
             agreement.user.0,
             agreement
                 .principals
@@ -249,7 +279,7 @@ fn generate_rental_agreements_html() -> String {
                 .map(|p| p.0.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            agreement.refund_subaccount,
+            agreement.refund_address,
             agreement.initial_period_days,
             agreement.initial_period_cost_e8s / 100_000_000,
             Duration::from_nanos(agreement.creation_date),
