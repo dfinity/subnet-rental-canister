@@ -3,8 +3,7 @@ use pocket_ic::{PocketIc, WasmResult};
 use sha2::{Digest, Sha256};
 use std::fs;
 use subnet_rental_canister::{
-    ExecuteProposalError, RejectedSubnetRentalProposal, RentalConditions,
-    ValidatedSubnetRentalProposal,
+    ExecuteProposalError, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
@@ -84,7 +83,7 @@ fn add_test_rental_agreement(
     pic.update_call(
         *canister_id,
         candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
-        "on_proposal_accept",
+        "accept_rental_agreement",
         encode_one(arg.clone()).unwrap(),
     )
     .unwrap()
@@ -126,7 +125,7 @@ fn test_proposal_accepted() {
 }
 
 #[test]
-fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
+fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
     let (pic, canister_id) = setup();
 
     let arg = ValidatedSubnetRentalProposal {
@@ -143,7 +142,7 @@ fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
         .update_call(
             canister_id,
             candid::Principal::anonymous(),
-            "on_proposal_accept",
+            "accept_rental_agreement",
             encode_one(arg.clone()).unwrap(),
         )
         .unwrap()
@@ -152,29 +151,5 @@ fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
     };
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
     println!("res {:?}", res);
-    assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
-}
-
-#[test]
-fn test_on_proposal_reject_cannot_be_called_by_non_governance() {
-    let (pic, canister_id) = setup();
-
-    let arg = RejectedSubnetRentalProposal {
-        nns_proposal_id: 11111111,
-        refund_address: [0u8; 32],
-    };
-
-    let WasmResult::Reply(res) = pic
-        .update_call(
-            canister_id,
-            candid::Principal::anonymous(),
-            "on_proposal_reject",
-            encode_one(arg.clone()).unwrap(),
-        )
-        .unwrap()
-    else {
-        panic!("Expected a reply");
-    };
-    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
     assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
 }

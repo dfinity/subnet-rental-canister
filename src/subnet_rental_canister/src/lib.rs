@@ -187,7 +187,7 @@ pub enum ExecuteProposalError {
 /// - A single deposit transaction exists and covers the necessary amount.
 /// - The deposit was made to the <subnet_id>-subaccount of the SRC.
 #[update]
-async fn on_proposal_accept(
+async fn accept_rental_agreement(
     ValidatedSubnetRentalProposal {
         subnet_id,
         user,
@@ -261,32 +261,6 @@ async fn on_proposal_accept(
 pub struct RejectedSubnetRentalProposal {
     pub nns_proposal_id: u64,
     pub refund_address: [u8; 32],
-}
-
-#[update]
-async fn on_proposal_reject(
-    RejectedSubnetRentalProposal {
-        nns_proposal_id,
-        refund_address: _,
-    }: RejectedSubnetRentalProposal,
-) -> Result<(), ExecuteProposalError> {
-    verify_caller_is_governance()?;
-
-    // 1. create failed proposal event
-    // TODO: log this event in the persisted log and/or in a list of failed proposals
-    ic_cdk::println!(
-        "Subnet rental proposal with ID {} was rejected",
-        nns_proposal_id
-    );
-
-    // 2. refund deposit to user
-    ic_cdk::println!("Attempting refund of deposit");
-    let _icp_ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
-    // TODO: make the transfer call
-    // let result = ic_cdk::call(icp_ledger_canister, "transfer", (transfer_args,)).await;
-    // ...
-
-    Ok(())
 }
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
