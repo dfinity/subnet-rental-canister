@@ -114,6 +114,12 @@ impl Storable for RentalAgreement {
 
 #[init]
 fn init() {
+    ic_cdk::println!("Subnet rental canister initialized");
+}
+
+#[update]
+fn demo_add_rental_agreement() {
+    // TODO: remove this endpoint before release
     // Hardcoded rental agreement for testing
     let subnet_id = candid::Principal::from_text(
         "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
