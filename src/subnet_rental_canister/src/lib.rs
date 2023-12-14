@@ -8,8 +8,8 @@ use ic_stable_structures::{
 use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
-mod api;
-mod types;
+mod http_request;
+mod external_types;
 
 const ICP_LEDGER_CANISTER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
