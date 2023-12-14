@@ -112,7 +112,7 @@ fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
 
     let WasmResult::Reply(res) = pic
         .update_call(
-            *canister_id,
+            canister_id,
             candid::Principal::anonymous(),
             "on_proposal_accept",
             encode_one(arg.clone()).unwrap(),
