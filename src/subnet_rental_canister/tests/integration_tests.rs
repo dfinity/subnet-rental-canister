@@ -51,7 +51,7 @@ fn add_test_rental_agreement(
     };
 
     pic.update_call(
-        canister_id.clone(),
+        *canister_id,
         candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
         "on_proposal_accept",
         encode_one(arg.clone()).unwrap(),
@@ -112,7 +112,7 @@ fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
 
     let WasmResult::Reply(res) = pic
         .update_call(
-            canister_id.clone(),
+            *canister_id,
             candid::Principal::anonymous(),
             "on_proposal_accept",
             encode_one(arg.clone()).unwrap(),
