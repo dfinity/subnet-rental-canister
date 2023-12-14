@@ -2,7 +2,7 @@ use candid::{decode_one, encode_one};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
 use subnet_rental_canister::{
-    ExecuteProposalError, Principal, RentalConditions, ValidatedSubnetRentalProposal,
+    ExecuteProposalError, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
@@ -32,7 +32,7 @@ fn test_list_rental_conditions() {
         panic!("Expected a reply")
     };
 
-    let conditions = decode_one::<Vec<(Principal, RentalConditions)>>(&res).unwrap();
+    let conditions = decode_one::<Vec<(candid::Principal, RentalConditions)>>(&res).unwrap();
     assert!(!conditions.is_empty());
 }
 
