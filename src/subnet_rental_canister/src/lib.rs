@@ -6,9 +6,10 @@ use ic_stable_structures::{
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
-mod types;
+mod external_types;
+mod http_request;
 
 const ICP_LEDGER_CANISTER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
@@ -17,9 +18,8 @@ pub const GOVERNANCE_CANISTER_ID: &str = "rrkah-fqaaa-aaaaa-aaaaq-cai";
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const _XDR_COST_PER_DAY: u64 = 1;
 const E8S: u64 = 100_000_000;
-const MAX_PRINCIPAL_SIZE: u32 = 29;
-const HTML_HEAD: &str =
-    r#"<!DOCTYPE html><html lang="en"><head><title>Subnet Rental Canister</title></head>"#;
+
+type SubnetId = Principal;
 
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
@@ -46,12 +46,12 @@ thread_local! {
     ]).into();
 }
 
-type SubnetId = Principal;
+const MAX_PRINCIPAL_SIZE: u32 = 29;
 
 #[derive(
     Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize, CandidType, Hash,
 )]
-pub struct Principal(candid::Principal);
+pub struct Principal(pub candid::Principal);
 
 impl From<candid::Principal> for Principal {
     fn from(value: candid::Principal) -> Self {
@@ -71,13 +71,6 @@ impl Storable for Principal {
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
         Self(candid::Principal::try_from_slice(bytes.as_ref()).unwrap())
     }
-}
-
-#[derive(CandidType, Debug, Clone, Deserialize)]
-pub enum ExecuteProposalError {
-    Failure(String),
-    SubnetAlreadyRented,
-    UnauthorizedCaller,
 }
 
 /// Set of conditions for a specific subnet up for rent.
@@ -149,6 +142,11 @@ fn list_subnet_conditions() -> HashMap<SubnetId, RentalConditions> {
     SUBNETS.with(|map| map.borrow().clone())
 }
 
+#[query]
+fn list_rental_agreements() -> Vec<RentalAgreement> {
+    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
+}
+
 #[derive(Clone, CandidType, Deserialize)]
 pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: Principal,
@@ -158,22 +156,11 @@ pub struct ValidatedSubnetRentalProposal {
     pub refund_address: String,
 }
 
-#[query]
-fn list_rental_agreements() -> Vec<RentalAgreement> {
-    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
-}
-
-#[query]
-fn http_request(req: HttpRequest) -> HttpResponse {
-    match req.url.as_str() {
-        "/" => html_ok_response(format!(
-            r#"{}<body><h1>Subnet Rental Canister</h1><ul><li><a href="/subnets">Subnets for Rent</a></li><li><a href="/rental_agreements">Rental Agreements</a></li></ul></body></html>"#,
-            HTML_HEAD
-        )),
-        "/subnets" => html_ok_response(generate_rental_conditions_html()),
-        "/rental_agreements" => html_ok_response(generate_rental_agreements_html()),
-        _ => html_response(404, "Not found".to_string()),
-    }
+#[derive(CandidType, Debug, Clone, Deserialize)]
+pub enum ExecuteProposalError {
+    Failure(String),
+    SubnetAlreadyRented,
+    UnauthorizedCaller,
 }
 
 /// TODO: Argument should be something like ValidatedSRProposal, created by government canister via
@@ -288,90 +275,4 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
     Ok(())
-}
-
-fn html_ok_response(html: String) -> HttpResponse {
-    html_response(200, html)
-}
-
-fn html_response(status_code: u16, html: String) -> HttpResponse {
-    HttpResponse {
-        status_code,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/html; charset=utf-8".to_string(),
-        )],
-        body: html.as_bytes().to_vec(),
-    }
-}
-
-fn generate_rental_agreements_html() -> String {
-    let rental_agreements = list_rental_agreements();
-
-    let mut html = String::new();
-    html.push_str(HTML_HEAD);
-    html.push_str(
-        r#"<body><h1>Rental Agreements</h1><table border="1"><tr><th>Subnet ID</th><th>Renter</th><th>Allowed Principals</th><th>Refund Address</th><th>Initial Period (days)</th><th>Initial Period Cost (ICP)</th><th>Creation Date</th><th>Status</th></tr>"#,
-    );
-    for agreement in rental_agreements {
-        html.push_str("<tr>");
-        html.push_str(&format!(
-            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td><td>{}</td>",
-            agreement.subnet_id.0,
-            agreement.user.0,
-            agreement
-                .principals
-                .iter()
-                .map(|p| p.0.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
-            agreement.refund_address,
-            agreement.initial_period_days,
-            agreement.initial_period_cost_e8s / 100_000_000,
-            Duration::from_nanos(agreement.creation_date),
-            "Healthy"
-        ));
-        html.push_str("</tr>");
-    }
-    html.push_str("</table></body></html>");
-    html
-}
-
-fn generate_rental_conditions_html() -> String {
-    let rental_conditions = list_subnet_conditions();
-
-    let mut html = String::new();
-    html.push_str(HTML_HEAD);
-    html.push_str(
-        r#"<body><h1>Subnets for Rent</h1><table border="1"><tr><th>Subnet ID</th><th>Daily Cost (ICP)</th><th>Minimal Rental Period (days)</th><th>Status</th></tr>"#,
-    );
-    for (subnet_id, conditions) in rental_conditions {
-        html.push_str("<tr>");
-        let rented = RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id));
-        html.push_str(&format!(
-            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
-            subnet_id.0,
-            conditions.daily_cost_e8s / 100_000_000,
-            conditions.minimal_rental_period_days,
-            if rented { "Rented" } else { "Available" }
-        ));
-        html.push_str("</tr>");
-    }
-    html.push_str("</table></body></html>");
-    html
-}
-
-#[derive(CandidType)]
-struct HttpResponse {
-    status_code: u16,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-}
-
-#[derive(CandidType, Deserialize, Debug)]
-struct HttpRequest {
-    method: String,
-    url: String,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
 }
