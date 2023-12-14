@@ -10,10 +10,10 @@ use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
 mod types;
 
-const LEDGER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+const ICP_LEDGER_CANISTER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
-// The canister_id of the SRC
-const _SRC_PRINCIPAL: &str = "src_principal";
+pub const GOVERNANCE_CANISTER_ID: &str = "rrkah-fqaaa-aaaaa-aaaaq-cai";
+
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const _XDR_COST_PER_DAY: u64 = 1;
 const E8S: u64 = 100_000_000;
@@ -73,9 +73,11 @@ impl Storable for Principal {
     }
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Debug, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     Failure(String),
+    SubnetAlreadyRented,
+    UnauthorizedCaller,
 }
 
 /// Set of conditions for a specific subnet up for rent.
@@ -112,15 +114,20 @@ impl Storable for RentalAgreement {
 
 #[init]
 fn init() {
+    ic_cdk::println!("Subnet rental canister initialized");
+}
+
+#[update]
+fn demo_add_rental_agreement() {
+    // TODO: remove this endpoint before release
     // Hardcoded rental agreement for testing
-    let subnet_id = Principal(
-        candid::Principal::from_text(
-            "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
-        )
-        .unwrap(),
-    );
-    let renter = Principal(candid::Principal::from_slice(b"user1"));
-    let user = Principal(candid::Principal::from_slice(b"user2"));
+    let subnet_id = candid::Principal::from_text(
+        "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
+    )
+    .unwrap()
+    .into();
+    let renter = candid::Principal::from_slice(b"user1").into();
+    let user = candid::Principal::from_slice(b"user2").into();
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(
             subnet_id,
@@ -181,11 +188,12 @@ async fn on_proposal_accept(
         subnet_id,
         user,
         principals,
-        block_index: _block_index,
+        block_index: _,
         refund_address,
     }: ValidatedSubnetRentalProposal,
 ) -> Result<(), ExecuteProposalError> {
-    // TODO: need access control: only the governance canister may call this method.
+    verify_caller_is_governance()?;
+
     // Collect rental information
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
     let RentalConditions {
@@ -202,7 +210,7 @@ async fn on_proposal_accept(
     // turn this amount of ICP into cycles and burn them.
 
     let _cmc_canister = candid::Principal::from_text(CMC_ID).unwrap();
-    let _ledger_canister = candid::Principal::from_text(LEDGER_ID).unwrap();
+    let _ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
 
     // 1. transfer the right amount of ICP to the CMC
     // let result: CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
@@ -228,9 +236,7 @@ async fn on_proposal_accept(
             "Subnet is already in an active rental agreement: {:?}",
             &subnet_id
         );
-        return Err(ExecuteProposalError::Failure(
-            "Subnet is already in an active rental agreement".to_string(),
-        ));
+        return Err(ExecuteProposalError::SubnetAlreadyRented);
     }
     // TODO: log this event in the persisted log
     ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
@@ -241,6 +247,46 @@ async fn on_proposal_accept(
     // 8. Whitelist the principal
     // let result: CallResult<()> = call(CMC, "set_authorized_subnetwork_list", (Some(user), vec![subnet_id])).await;
 
+    Ok(())
+}
+
+#[derive(Clone, CandidType, Deserialize, Debug)]
+pub struct RejectedSubnetRentalProposal {
+    pub nns_proposal_id: u64,
+    pub refund_address: [u8; 32],
+}
+
+#[update]
+async fn on_proposal_reject(
+    RejectedSubnetRentalProposal {
+        nns_proposal_id,
+        refund_address: _,
+    }: RejectedSubnetRentalProposal,
+) -> Result<(), ExecuteProposalError> {
+    verify_caller_is_governance()?;
+
+    // 1. create failed proposal event
+    // TODO: log this event in the persisted log and/or in a list of failed proposals
+    ic_cdk::println!(
+        "Subnet rental proposal with ID {} was rejected",
+        nns_proposal_id
+    );
+
+    // 2. refund deposit to user
+    ic_cdk::println!("Attempting refund of deposit");
+    let _icp_ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
+    // TODO: make the transfer call
+    // let result = ic_cdk::call(icp_ledger_canister, "transfer", (transfer_args,)).await;
+    // ...
+
+    Ok(())
+}
+
+fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
+    if ic_cdk::caller() != candid::Principal::from_text(GOVERNANCE_CANISTER_ID).unwrap() {
+        ic_cdk::println!("Caller is not the governance canister");
+        return Err(ExecuteProposalError::UnauthorizedCaller);
+    }
     Ok(())
 }
 

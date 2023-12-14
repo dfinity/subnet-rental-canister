@@ -2,7 +2,8 @@ use candid::{decode_one, encode_one};
 use pocket_ic::{PocketIc, WasmResult};
 use std::fs;
 use subnet_rental_canister::{
-    ExecuteProposalError, Principal, RentalConditions, ValidatedSubnetRentalProposal,
+    ExecuteProposalError, Principal, RejectedSubnetRentalProposal, RentalConditions,
+    ValidatedSubnetRentalProposal,
 };
 
 const WASM: &str = "../../subnet_rental_canister.wasm";
@@ -55,7 +56,7 @@ fn test_proposal_accepted() {
     let WasmResult::Reply(res) = pic
         .update_call(
             canister_id,
-            candid::Principal::anonymous(),
+            candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
             "on_proposal_accept",
             encode_one(arg.clone()).unwrap(),
         )
@@ -70,7 +71,7 @@ fn test_proposal_accepted() {
     let WasmResult::Reply(res) = pic
         .update_call(
             canister_id,
-            candid::Principal::anonymous(),
+            candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
             "on_proposal_accept",
             encode_one(arg).unwrap(),
         )
@@ -78,9 +79,65 @@ fn test_proposal_accepted() {
     else {
         panic!("Expected a reply");
     };
-    let Err(ExecuteProposalError::Failure(_msg)) =
-        decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap()
-    else {
-        panic!("Expected an Err");
+
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(
+        res,
+        Err(ExecuteProposalError::SubnetAlreadyRented)
+    ));
+}
+
+#[test]
+fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
+    let (pic, canister_id) = setup();
+
+    let arg = ValidatedSubnetRentalProposal {
+        subnet_id: candid::Principal::from_text(
+            "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
+        )
+        .unwrap()
+        .into(),
+        user: candid::Principal::from_slice(b"user1").into(),
+        principals: vec![],
+        block_index: 0,
+        refund_address: "ok".to_string(),
     };
+
+    let WasmResult::Reply(res) = pic
+        .update_call(
+            canister_id,
+            candid::Principal::anonymous(),
+            "on_proposal_accept",
+            encode_one(arg.clone()).unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
+}
+
+#[test]
+fn test_on_proposal_reject_cannot_be_called_by_non_governance() {
+    let (pic, canister_id) = setup();
+
+    let arg = RejectedSubnetRentalProposal {
+        nns_proposal_id: 11111111,
+        refund_address: [0u8; 32],
+    };
+
+    let WasmResult::Reply(res) = pic
+        .update_call(
+            canister_id,
+            candid::Principal::anonymous(),
+            "on_proposal_reject",
+            encode_one(arg.clone()).unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
 }
