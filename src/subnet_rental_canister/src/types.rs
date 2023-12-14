@@ -50,3 +50,12 @@ pub struct TransferArgs {
     pub created_at_time: Option<TimeStamp>,
     pub amount: Tokens,
 }
+
+#[derive(CandidType, Deserialize)]
+pub enum TransferError {
+    TxTooOld { allowed_window_nanos: u64 },
+    BadFee { expected_fee: Tokens },
+    TxDuplicate { duplicate_of: u64 },
+    TxCreatedInFuture,
+    InsufficientFunds { balance: Tokens },
+}
