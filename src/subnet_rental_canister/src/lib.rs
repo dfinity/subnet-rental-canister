@@ -1,7 +1,8 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::{api::cycles_burn, init, query, update};
 use ic_ledger_types::{
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    TransferError, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -136,10 +137,10 @@ fn demo_add_rental_agreement() {
 }
 
 #[update]
-fn attempt_refund(subnet_id: candid::Principal) -> Result<(), external_types::TransferError> {
+fn attempt_refund(subnet_id: candid::Principal) -> Result<(), TransferError> {
     let caller = ic_cdk::caller();
     let _subaccount = get_sub_account(caller, subnet_id);
-    let _icp_ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
+    let _icp_ledger_canister = MAINNET_LEDGER_CANISTER_ID;
     // TODO: try to withdraw all funds from the SRC's subaccount to the caller.
     // - fee is paid by the caller
 

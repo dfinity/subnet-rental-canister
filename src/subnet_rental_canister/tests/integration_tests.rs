@@ -1,9 +1,17 @@
-use candid::{decode_one, encode_one};
-use pocket_ic::{PocketIc, WasmResult};
-use std::fs;
+use candid::{decode_one, encode_args, encode_one};
+use ic_ledger_types::{
+    AccountIdentifier, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
+};
+use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+};
 use subnet_rental_canister::{
-    ExecuteProposalError, RejectedSubnetRentalProposal, RentalConditions,
-    ValidatedSubnetRentalProposal,
+    external_types::{NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload},
+    ExecuteProposalError, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -115,8 +123,8 @@ fn add_test_rental_agreement(
 
     pic.update_call(
         *canister_id,
-        candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
-        "on_proposal_accept",
+        MAINNET_GOVERNANCE_CANISTER_ID,
+        "accept_rental_agreement",
         encode_one(arg.clone()).unwrap(),
     )
     .unwrap()
