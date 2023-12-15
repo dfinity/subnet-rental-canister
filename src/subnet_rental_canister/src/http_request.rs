@@ -4,7 +4,7 @@ use candid::CandidType;
 use ic_cdk::query;
 use serde::Deserialize;
 
-use crate::{list_rental_agreements, list_subnet_conditions, RENTAL_AGREEMENTS};
+use crate::{get_sub_account, list_rental_agreements, list_subnet_conditions, RENTAL_AGREEMENTS};
 
 const HTML_HEAD: &str =
     r#"<!DOCTYPE html><html lang="en"><head><title>Subnet Rental Canister</title></head>"#;
@@ -58,7 +58,7 @@ fn generate_rental_agreements_html() -> String {
     let mut html = String::new();
     html.push_str(HTML_HEAD);
     html.push_str(
-        r#"<body><h1>Rental Agreements</h1><table border="1"><tr><th>Subnet ID</th><th>Renter</th><th>Allowed Principals</th><th>Refund Address</th><th>Initial Period (days)</th><th>Initial Period Cost (ICP)</th><th>Creation Date</th><th>Status</th></tr>"#,
+        r#"<body><h1>Rental Agreements</h1><table border="1"><tr><th>Subnet ID</th><th>Renter</th><th>Allowed Principals</th><th>Wallet Subaccount</th><th>Initial Period (days)</th><th>Initial Period Cost (ICP)</th><th>Creation Date</th><th>Status</th></tr>"#,
     );
     for agreement in rental_agreements {
         html.push_str("<tr>");
@@ -72,7 +72,7 @@ fn generate_rental_agreements_html() -> String {
                 .map(|p| p.0.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            agreement.refund_address,
+            hex::encode(get_sub_account(agreement.user.0, agreement.subnet_id.0)),
             agreement.initial_period_days,
             agreement.initial_period_cost_e8s / 100_000_000,
             Duration::from_nanos(agreement.creation_date),

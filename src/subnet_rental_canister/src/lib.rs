@@ -6,6 +6,7 @@ use ic_stable_structures::{
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
 mod external_types;
@@ -86,7 +87,6 @@ struct RentalAgreement {
     user: Principal,
     subnet_id: SubnetId,
     principals: Vec<Principal>,
-    refund_address: String,
     initial_period_days: u64,
     initial_period_cost_e8s: u64,
     // nanoseconds since epoch
@@ -128,13 +128,31 @@ fn demo_add_rental_agreement() {
                 user: renter,
                 subnet_id,
                 principals: vec![renter, user],
-                refund_address: "my-wallet-address".to_owned(),
                 initial_period_days: 365,
                 initial_period_cost_e8s: 333 * 365 * E8S,
                 creation_date: 1702394252000000000,
             },
         )
     });
+}
+
+#[update]
+fn attempt_refund(subnet_id: candid::Principal) -> Result<(), external_types::TransferError> {
+    let caller = ic_cdk::caller();
+    let _subaccount = get_sub_account(caller, subnet_id);
+    let _icp_ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
+    // TODO: try to withdraw all funds from the SRC's subaccount to the caller.
+    // - fee is paid by the caller
+
+    Ok(())
+}
+
+#[query]
+fn get_sub_account(user: candid::Principal, subnet_id: candid::Principal) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(user.as_slice());
+    hasher.update(subnet_id.as_slice());
+    hasher.finalize().into()
 }
 
 #[query]
@@ -152,8 +170,6 @@ pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: Principal,
     pub user: Principal,
     pub principals: Vec<Principal>,
-    pub block_index: u64,
-    pub refund_address: String,
 }
 
 #[derive(CandidType, Debug, Clone, Deserialize)]
@@ -161,6 +177,7 @@ pub enum ExecuteProposalError {
     Failure(String),
     SubnetAlreadyRented,
     UnauthorizedCaller,
+    InsufficientFunds,
 }
 
 /// TODO: Argument should be something like ValidatedSRProposal, created by government canister via
@@ -170,13 +187,11 @@ pub enum ExecuteProposalError {
 /// - A single deposit transaction exists and covers the necessary amount.
 /// - The deposit was made to the <subnet_id>-subaccount of the SRC.
 #[update]
-async fn on_proposal_accept(
+async fn accept_rental_agreement(
     ValidatedSubnetRentalProposal {
         subnet_id,
         user,
         principals,
-        block_index: _,
-        refund_address,
     }: ValidatedSubnetRentalProposal,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
@@ -199,8 +214,14 @@ async fn on_proposal_accept(
     let _cmc_canister = candid::Principal::from_text(CMC_ID).unwrap();
     let _ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
 
-    // 1. transfer the right amount of ICP to the CMC
-    // let result: CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
+    // 1. transfer the right amount of ICP to the CMC, if it fails, return an error
+    let _sub_account = get_sub_account(user.0, subnet_id.0);
+    // let result::CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
+    let txn_failed = false;
+    if txn_failed {
+        ic_cdk::println!("Balance is insufficient");
+        return Err(ExecuteProposalError::InsufficientFunds);
+    }
     // 2. create NotifyTopUpArg{ block_index, canister_id } from that transaction
     // 3. call CMC with the notify arg to get cycles
     // 4. burn the cycles with the system api. the amount depends on the current exchange rate.
@@ -211,7 +232,6 @@ async fn on_proposal_accept(
         user,
         subnet_id,
         principals,
-        refund_address,
         initial_period_days: minimal_rental_period_days,
         initial_period_cost_e8s,
         creation_date,
@@ -241,32 +261,6 @@ async fn on_proposal_accept(
 pub struct RejectedSubnetRentalProposal {
     pub nns_proposal_id: u64,
     pub refund_address: [u8; 32],
-}
-
-#[update]
-async fn on_proposal_reject(
-    RejectedSubnetRentalProposal {
-        nns_proposal_id,
-        refund_address: _,
-    }: RejectedSubnetRentalProposal,
-) -> Result<(), ExecuteProposalError> {
-    verify_caller_is_governance()?;
-
-    // 1. create failed proposal event
-    // TODO: log this event in the persisted log and/or in a list of failed proposals
-    ic_cdk::println!(
-        "Subnet rental proposal with ID {} was rejected",
-        nns_proposal_id
-    );
-
-    // 2. refund deposit to user
-    ic_cdk::println!("Attempting refund of deposit");
-    let _icp_ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
-    // TODO: make the transfer call
-    // let result = ic_cdk::call(icp_ledger_canister, "transfer", (transfer_args,)).await;
-    // ...
-
-    Ok(())
 }
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {

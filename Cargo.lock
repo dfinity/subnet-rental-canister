@@ -1546,11 +1546,13 @@ name = "subnet_rental_canister"
 version = "0.1.0"
 dependencies = [
  "candid",
+ "hex",
  "ic-cdk 0.11.3",
  "ic-stable-structures",
  "pocket-ic",
  "serde",
  "serde_bytes",
+ "sha2",
 ]
 
 [[package]]
