@@ -78,7 +78,7 @@ fn test_ledger_canister_wasm() {
     #[derive(candid::CandidType, candid::Deserialize)]
     struct Symbol {
         symbol: String,
-    };
+    }
     let actual = decode_one::<Symbol>(&res).unwrap();
     assert_eq!(actual.symbol, "ICP");
 }
