@@ -1,20 +1,61 @@
 use candid::{decode_one, encode_one};
-use pocket_ic::{PocketIc, WasmResult};
-use std::fs;
+use ic_ledger_types::{
+    AccountIdentifier, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
+};
+use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+};
 use subnet_rental_canister::{
+    external_types::{NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload},
     ExecuteProposalError, RejectedSubnetRentalProposal, RentalConditions,
     ValidatedSubnetRentalProposal,
 };
 
-const WASM: &str = "../../subnet_rental_canister.wasm";
+const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
+const LEDGER_WASM: &str = "./tests/ledger-canister_notify-method.wasm.gz";
 
 fn setup() -> (PocketIc, candid::Principal) {
-    let pic = PocketIc::new();
-    let canister_id = pic.create_canister();
-    let wasm = fs::read(WASM).expect("Please build the wasm with ./scripts/build.sh");
-    pic.add_cycles(canister_id, 2_000_000_000_000);
-    pic.install_canister(canister_id, wasm, vec![], None);
-    (pic, canister_id)
+    let pic = PocketIcBuilder::new().with_nns_subnet().build();
+
+    // Install subnet rental canister.
+    let subnet_rental_canister = pic.create_canister();
+    let src_wasm = fs::read(SRC_WASM).expect("Please build the wasm with ./scripts/build.sh");
+    pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
+
+    // Install ICP ledger canister.
+    pic.create_canister_with_id(
+        Some(MAINNET_LEDGER_CANISTER_ID),
+        None,
+        MAINNET_LEDGER_CANISTER_ID,
+    )
+    .unwrap();
+    let icp_ledger_canister_wasm = fs::read(LEDGER_WASM).expect("Ledger canister wasm not found");
+
+    let controller_and_minter =
+        AccountIdentifier::new(&MAINNET_LEDGER_CANISTER_ID, &DEFAULT_SUBACCOUNT);
+
+    let icp_ledger_init_args = NnsLedgerCanisterPayload::Init(NnsLedgerCanisterInitPayload {
+        minting_account: controller_and_minter.to_string(),
+        initial_values: HashMap::from([(
+            controller_and_minter.to_string(),
+            Tokens::from_e8s(1_000_000_000_000),
+        )]),
+        send_whitelist: HashSet::new(),
+        transfer_fee: Some(DEFAULT_FEE),
+        token_symbol: Some("ICP".to_string()),
+        token_name: Some("Internet Computer".to_string()),
+    });
+    pic.install_canister(
+        MAINNET_LEDGER_CANISTER_ID,
+        icp_ledger_canister_wasm,
+        encode_one(&icp_ledger_init_args).unwrap(),
+        Some(MAINNET_LEDGER_CANISTER_ID),
+    );
+
+    (pic, subnet_rental_canister)
 }
 
 #[test]
@@ -52,7 +93,7 @@ fn add_test_rental_agreement(
 
     pic.update_call(
         *canister_id,
-        candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
+        MAINNET_GOVERNANCE_CANISTER_ID,
         "on_proposal_accept",
         encode_one(arg.clone()).unwrap(),
     )
