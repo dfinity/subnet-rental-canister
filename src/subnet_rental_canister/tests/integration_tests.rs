@@ -353,14 +353,13 @@ fn test_get_subaccount() {
     let (pic, canister_id) = setup();
 
     let subnet_id = Principal::from_text(SUBNET_FOR_RENT).unwrap();
-    let user = Principal::from_slice(b"user1");
 
     let WasmResult::Reply(res) = pic
         .query_call(
             canister_id,
             Principal::anonymous(),
             "get_subaccount",
-            encode_args((user, subnet_id)).unwrap(),
+            encode_args((USER_1, subnet_id)).unwrap(),
         )
         .unwrap()
     else {
@@ -370,7 +369,7 @@ fn test_get_subaccount() {
     let actual = decode_one::<Subaccount>(&res).unwrap();
 
     let mut hasher = Sha256::new();
-    hasher.update(user.as_slice());
+    hasher.update(USER_1.as_slice());
     hasher.update(subnet_id.as_slice());
     let should = Subaccount(hasher.finalize().into());
 
@@ -404,7 +403,7 @@ fn add_test_rental_agreement(
 ) -> WasmResult {
     let arg = ValidatedSubnetRentalProposal {
         subnet_id: Principal::from_text(subnet_id_str).unwrap().into(),
-        user: Principal::from_slice(b"user1").into(),
+        user: USER_1.into(),
         principals: vec![],
     };
 
@@ -450,7 +449,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
 
     let arg = ValidatedSubnetRentalProposal {
         subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap().into(),
-        user: Principal::from_slice(b"user1").into(),
+        user: USER_1.into(),
         principals: vec![],
     };
 

@@ -140,11 +140,14 @@ fn demo_add_rental_agreement() {
 #[update]
 /// Attempts to refund the user's deposit. If the user has insufficient funds, returns an error.
 /// Otherwise, returns the block index of the transaction.
+// TODO: what to do if calling ledger canister fails?
 async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, TransferError> {
-    // TODO: what to do if calling ledger canister fails?
     let caller = ic_cdk::caller();
+
+    // Generate subaccount for caller and specified subnet
     let subaccount = get_subaccount(caller, subnet_id);
 
+    // Check SRC's balance of that subaccount
     let balance_args = AccountBalanceArgs {
         account: AccountIdentifier::new(&ic_cdk::id(), &subaccount),
     };
