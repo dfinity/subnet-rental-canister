@@ -1,15 +1,7 @@
 use candid::{decode_one, encode_one};
-use ic_ledger_types::{
-    AccountIdentifier, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
-};
-use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
-use std::{
-    collections::{HashMap, HashSet},
-    fs,
-};
+use pocket_ic::{PocketIc, WasmResult};
+use std::fs;
 use subnet_rental_canister::{
-    external_types::{NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload},
     ExecuteProposalError, RejectedSubnetRentalProposal, RentalConditions,
     ValidatedSubnetRentalProposal,
 };
@@ -59,6 +51,38 @@ fn setup() -> (PocketIc, candid::Principal) {
 }
 
 #[test]
+fn test_get_sub_account() {
+    let (pic, canister_id) = setup();
+
+    let subnet_id = candid::Principal::from_text(
+        "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
+    )
+    .unwrap();
+    let user = candid::Principal::from_slice(b"user1");
+
+    let WasmResult::Reply(res) = pic
+        .query_call(
+            canister_id,
+            candid::Principal::anonymous(),
+            "get_sub_account",
+            encode_args((user, subnet_id)).unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected a reply")
+    };
+
+    let actual = decode_one::<[u8; 32]>(&res).unwrap();
+
+    let mut hasher = Sha256::new();
+    hasher.update(user.as_slice());
+    hasher.update(subnet_id.as_slice());
+    let should: [u8; 32] = hasher.finalize().into();
+
+    assert_eq!(actual, should);
+}
+
+#[test]
 fn test_list_rental_conditions() {
     let (pic, canister_id) = setup();
 
@@ -87,13 +111,11 @@ fn add_test_rental_agreement(
         subnet_id: candid::Principal::from_text(subnet_id_str).unwrap().into(),
         user: candid::Principal::from_slice(b"user1").into(),
         principals: vec![],
-        block_index: 0,
-        refund_address: "ok".to_string(),
     };
 
     pic.update_call(
         *canister_id,
-        MAINNET_GOVERNANCE_CANISTER_ID,
+        candid::Principal::from_text(subnet_rental_canister::GOVERNANCE_CANISTER_ID).unwrap(),
         "on_proposal_accept",
         encode_one(arg.clone()).unwrap(),
     )
@@ -136,7 +158,7 @@ fn test_proposal_accepted() {
 }
 
 #[test]
-fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
+fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
     let (pic, canister_id) = setup();
 
     let arg = ValidatedSubnetRentalProposal {
@@ -147,15 +169,13 @@ fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
         .into(),
         user: candid::Principal::from_slice(b"user1").into(),
         principals: vec![],
-        block_index: 0,
-        refund_address: "ok".to_string(),
     };
 
     let WasmResult::Reply(res) = pic
         .update_call(
             canister_id,
             candid::Principal::anonymous(),
-            "on_proposal_accept",
+            "accept_rental_agreement",
             encode_one(arg.clone()).unwrap(),
         )
         .unwrap()
@@ -164,29 +184,5 @@ fn test_on_proposal_accept_cannot_be_called_by_non_governance() {
     };
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
     println!("res {:?}", res);
-    assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
-}
-
-#[test]
-fn test_on_proposal_reject_cannot_be_called_by_non_governance() {
-    let (pic, canister_id) = setup();
-
-    let arg = RejectedSubnetRentalProposal {
-        nns_proposal_id: 11111111,
-        refund_address: [0u8; 32],
-    };
-
-    let WasmResult::Reply(res) = pic
-        .update_call(
-            canister_id,
-            candid::Principal::anonymous(),
-            "on_proposal_reject",
-            encode_one(arg.clone()).unwrap(),
-        )
-        .unwrap()
-    else {
-        panic!("Expected a reply");
-    };
-    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
     assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
 }
