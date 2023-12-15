@@ -12,7 +12,8 @@
 
 # generated files
 src/declarations/
-*.wasm
+**/*.wasm
+**/*.wasm.gz
 
 # rust
 target/

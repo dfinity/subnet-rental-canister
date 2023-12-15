@@ -15,14 +15,14 @@ use subnet_rental_canister::{
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
-const LEDGER_WASM: &str = "./tests/ledger-canister_notify-method.wasm.gz";
+const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 
 fn setup() -> (PocketIc, candid::Principal) {
     let pic = PocketIcBuilder::new().with_nns_subnet().build();
 
     // Install subnet rental canister.
     let subnet_rental_canister = pic.create_canister();
-    let src_wasm = fs::read(SRC_WASM).expect("Please build the wasm with ./scripts/build.sh");
+    let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
 
     // Install ICP ledger canister.
@@ -32,7 +32,8 @@ fn setup() -> (PocketIc, candid::Principal) {
         MAINNET_LEDGER_CANISTER_ID,
     )
     .unwrap();
-    let icp_ledger_canister_wasm = fs::read(LEDGER_WASM).expect("Ledger canister wasm not found");
+    let icp_ledger_canister_wasm = fs::read(LEDGER_WASM)
+        .expect("Download the test wasm files with ./scripts/download_wasms.sh");
 
     let controller_and_minter =
         AccountIdentifier::new(&MAINNET_LEDGER_CANISTER_ID, &DEFAULT_SUBACCOUNT);

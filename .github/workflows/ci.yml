@@ -26,6 +26,8 @@ jobs:
         gunzip pocket-ic.gz
         chmod +x pocket-ic
         mv pocket-ic src/subnet_rental_canister/
+    - name: Download wasms
+      run: ./scripts/download_wasms.sh
     - name: Run tests
       run: cargo test --all-targets --all-features -- --nocapture
       env:
