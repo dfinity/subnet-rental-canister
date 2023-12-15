@@ -60,6 +60,30 @@ fn setup() -> (PocketIc, candid::Principal) {
 }
 
 #[test]
+fn test_ledger_canister_wasm() {
+    let (pic, _) = setup();
+
+    let WasmResult::Reply(res) = pic
+        .query_call(
+            MAINNET_LEDGER_CANISTER_ID,
+            candid::Principal::anonymous(),
+            "symbol",
+            encode_one(()).unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected a reply")
+    };
+
+    #[derive(candid::CandidType, candid::Deserialize)]
+    struct Symbol {
+        symbol: String,
+    };
+    let actual = decode_one::<Symbol>(&res).unwrap();
+    assert_eq!(actual.symbol, "ICP");
+}
+
+#[test]
 fn test_get_sub_account() {
     let (pic, canister_id) = setup();
 
