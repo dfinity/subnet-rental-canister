@@ -13,12 +13,19 @@ dfx deploy
 
 ## Testing
 To run the integration tests, first download PocketIC from [GitHub](https://github.com/dfinity/pocketic) and move the binary into [/src/subnet_rental_canister](/src/subnet_rental_canister/).
-Then, build the canister Wasm by running:
+Then, build the subnet rental canister Wasm by running:
 
 ```bash
 ./scripts/build.sh
 ```
 which will be placed in the root folder of the project.
+
+Next, download the required NNS canister Wasms with:
+
+```bash
+./scripts/download_wasms.sh
+```
+
 Finally, run the tests with:
 
 ```bash

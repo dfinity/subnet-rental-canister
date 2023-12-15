@@ -1,5 +1,9 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::{api::cycles_burn, init, query, update};
+use ic_ledger_types::{
+    TransferError, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
+};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
@@ -9,12 +13,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
-mod external_types;
+pub mod external_types;
 mod http_request;
-
-const ICP_LEDGER_CANISTER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
-const CMC_ID: &str = "rkp4c-7iaaa-aaaaa-aaaca-cai";
-pub const GOVERNANCE_CANISTER_ID: &str = "rrkah-fqaaa-aaaaa-aaaaq-cai";
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const _XDR_COST_PER_DAY: u64 = 1;
@@ -137,10 +137,10 @@ fn demo_add_rental_agreement() {
 }
 
 #[update]
-fn attempt_refund(subnet_id: candid::Principal) -> Result<(), external_types::TransferError> {
+fn attempt_refund(subnet_id: candid::Principal) -> Result<(), TransferError> {
     let caller = ic_cdk::caller();
     let _subaccount = get_sub_account(caller, subnet_id);
-    let _icp_ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
+    let _icp_ledger_canister = MAINNET_LEDGER_CANISTER_ID;
     // TODO: try to withdraw all funds from the SRC's subaccount to the caller.
     // - fee is paid by the caller
 
@@ -211,8 +211,8 @@ async fn accept_rental_agreement(
     let initial_period_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
     // turn this amount of ICP into cycles and burn them.
 
-    let _cmc_canister = candid::Principal::from_text(CMC_ID).unwrap();
-    let _ledger_canister = candid::Principal::from_text(ICP_LEDGER_CANISTER_ID).unwrap();
+    let _cmc_canister = MAINNET_CYCLES_MINTING_CANISTER_ID;
+    let _ledger_canister = MAINNET_LEDGER_CANISTER_ID;
 
     // 1. transfer the right amount of ICP to the CMC, if it fails, return an error
     let _sub_account = get_sub_account(user.0, subnet_id.0);
@@ -264,7 +264,7 @@ pub struct RejectedSubnetRentalProposal {
 }
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
-    if ic_cdk::caller() != candid::Principal::from_text(GOVERNANCE_CANISTER_ID).unwrap() {
+    if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         ic_cdk::println!("Caller is not the governance canister");
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
