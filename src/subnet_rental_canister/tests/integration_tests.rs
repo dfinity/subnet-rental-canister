@@ -1,8 +1,8 @@
 use candid::{decode_one, encode_args, encode_one, Principal};
 use ic_ledger_types::{
     AccountBalanceArgs, AccountIdentifier, BlockIndex, Memo, Subaccount, Tokens, TransferArgs,
-    TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
+    TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
+    MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 use sha2::{Digest, Sha256};
@@ -11,12 +11,15 @@ use std::{
     fs,
 };
 use subnet_rental_canister::{
-    external_types::{NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload},
+    external_types::{
+        CyclesCanisterInitPayload, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
+    },
     ExecuteProposalError, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
+const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 
 const SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const E8S: u64 = 100_000_000;
@@ -24,6 +27,38 @@ const USER_1: Principal = Principal::from_slice(b"user1");
 const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
+
+fn install_cmc() {
+    let pic = PocketIcBuilder::new().with_nns_subnet().build();
+    pic.create_canister_with_id(
+        Some(candid::Principal::anonymous()),
+        None,
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+    )
+    .unwrap();
+    let cmc_wasm =
+        fs::read(CMC_WASM).expect("Download the test wasm files with ./scripts/download_wasms.sh");
+
+    let init_arg: Option<CyclesCanisterInitPayload> = Some(CyclesCanisterInitPayload {
+        exchange_rate_canister: None,
+        last_purged_notification: None,
+        governance_canister_id: Some(MAINNET_GOVERNANCE_CANISTER_ID),
+        minting_account_id: None,
+        ledger_canister_id: Some(MAINNET_LEDGER_CANISTER_ID),
+    });
+
+    pic.install_canister(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        cmc_wasm,
+        encode_args((init_arg,)).unwrap(),
+        None,
+    );
+}
+
+#[test]
+fn test_cmc() {
+    install_cmc();
+}
 
 fn setup() -> (PocketIc, Principal) {
     let pic = PocketIcBuilder::new().with_nns_subnet().build();
@@ -34,27 +69,19 @@ fn setup() -> (PocketIc, Principal) {
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
 
     // Install ICP ledger canister.
-    pic.create_canister_with_id(
-        Some(MAINNET_LEDGER_CANISTER_ID),
-        None,
-        MAINNET_LEDGER_CANISTER_ID,
-    )
-    .unwrap();
+    pic.create_canister_with_id(None, None, MAINNET_LEDGER_CANISTER_ID)
+        .unwrap();
     let icp_ledger_canister_wasm = fs::read(LEDGER_WASM)
         .expect("Download the test wasm files with ./scripts/download_wasms.sh");
 
-    let controller_and_minter =
-        AccountIdentifier::new(&MAINNET_LEDGER_CANISTER_ID, &DEFAULT_SUBACCOUNT);
+    let minter = AccountIdentifier::new(&MAINNET_LEDGER_CANISTER_ID, &DEFAULT_SUBACCOUNT);
     let user_1 = AccountIdentifier::new(&USER_1, &DEFAULT_SUBACCOUNT);
     let user_2 = AccountIdentifier::new(&USER_2, &DEFAULT_SUBACCOUNT);
 
     let icp_ledger_init_args = NnsLedgerCanisterPayload::Init(NnsLedgerCanisterInitPayload {
-        minting_account: controller_and_minter.to_string(),
+        minting_account: minter.to_string(),
         initial_values: HashMap::from([
-            (
-                controller_and_minter.to_string(),
-                Tokens::from_e8s(1_000_000_000 * E8S),
-            ),
+            (minter.to_string(), Tokens::from_e8s(1_000_000_000 * E8S)),
             (user_1.to_string(), USER_1_INITIAL_BALANCE),
             (user_2.to_string(), USER_2_INITIAL_BALANCE),
         ]),
@@ -67,7 +94,7 @@ fn setup() -> (PocketIc, Principal) {
         MAINNET_LEDGER_CANISTER_ID,
         icp_ledger_canister_wasm,
         encode_one(&icp_ledger_init_args).unwrap(),
-        Some(MAINNET_LEDGER_CANISTER_ID),
+        None,
     );
 
     (pic, subnet_rental_canister)
