@@ -28,14 +28,9 @@ const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
 
-fn install_cmc() {
-    let pic = PocketIcBuilder::new().with_nns_subnet().build();
-    pic.create_canister_with_id(
-        Some(candid::Principal::anonymous()),
-        None,
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-    )
-    .unwrap();
+fn install_cmc(pic: &PocketIc) {
+    pic.create_canister_with_id(None, None, MAINNET_CYCLES_MINTING_CANISTER_ID)
+        .unwrap();
     let cmc_wasm =
         fs::read(CMC_WASM).expect("Download the test wasm files with ./scripts/download_wasms.sh");
 
@@ -55,20 +50,7 @@ fn install_cmc() {
     );
 }
 
-#[test]
-fn test_cmc() {
-    install_cmc();
-}
-
-fn setup() -> (PocketIc, Principal) {
-    let pic = PocketIcBuilder::new().with_nns_subnet().build();
-
-    // Install subnet rental canister.
-    let subnet_rental_canister = pic.create_canister();
-    let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
-    pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
-
-    // Install ICP ledger canister.
+fn install_ledger(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, MAINNET_LEDGER_CANISTER_ID)
         .unwrap();
     let icp_ledger_canister_wasm = fs::read(LEDGER_WASM)
@@ -96,6 +78,18 @@ fn setup() -> (PocketIc, Principal) {
         encode_one(&icp_ledger_init_args).unwrap(),
         None,
     );
+}
+
+fn setup() -> (PocketIc, Principal) {
+    let pic = PocketIcBuilder::new().with_nns_subnet().build();
+
+    install_ledger(&pic);
+    install_cmc(&pic);
+
+    // Install subnet rental canister.
+    let subnet_rental_canister = pic.create_canister();
+    let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
+    pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
 
     (pic, subnet_rental_canister)
 }
