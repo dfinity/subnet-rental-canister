@@ -93,15 +93,16 @@ fn generate_rental_conditions_html() -> String {
     let mut html = String::new();
     html.push_str(HTML_HEAD);
     html.push_str(
-        r#"<body><h1>Subnets for Rent</h1><table border="1"><tr><th>Subnet ID</th><th>Daily Cost (ICP)</th><th>Minimal Rental Period (days)</th><th>Status</th></tr>"#,
+        r#"<body><h1>Subnets for Rent</h1><table border="1"><tr><th>Subnet ID</th><th>Daily Cost (XDR)</th><th>Minimal Rental Period (days)</th><th>Billing Period (days)</th><th>Status</th></tr>"#,
     );
     for (subnet_id, conditions) in rental_conditions {
         html.push_str("<tr>");
         let rented = RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id));
         html.push_str(&format!(
-            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
+            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
             subnet_id.0,
-            conditions.daily_cost_cycles / 100_000_000,
+            conditions.daily_cost_cycles / TRILLION,
+            conditions.initial_rental_period_days,
             conditions.billing_period_days,
             if rented { "Rented" } else { "Available" }
         ));

@@ -263,28 +263,30 @@ async fn accept_rental_agreement(
     // temp args for CMC call:
     #[derive(candid::CandidType)]
     struct Arg {
-        pub who: Option<candid::Principal>,
-        pub subnets: Vec<candid::Principal>,
+        who: Option<candid::Principal>,
+        subnets: Vec<candid::Principal>,
     }
-    let _arg = Arg {
+    let arg = Arg {
         who: Some(user.0),
-        subnets: vec![subnet_id.0],
+        subnets: vec![subnet_id.0], // TODO: append this subnet to to ALL App subnets (?)
     };
 
     // TODO: need to call this for all principals in the principals vec
+    ic_cdk::call::<_, ()>(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        "set_authorized_subnetwork_list",
+        (arg,),
+    )
+    .await
+    .expect("Failed to call CMC");
 
-    // let result: CallResult<()> = ic_cdk::call(
-    //     MAINNET_CYCLES_MINTING_CANISTER_ID,
-    //     "set_authorized_subnetwork_list",
-    //     (arg,),
-    // )
-    // .await;
+    // TODO: disallow non-renter principals from installing canisters on the subnet
 
     // ----------------------------------------------------------
     // check if previous call successful
     #[derive(CandidType, Deserialize, Debug)]
     struct Res {
-        pub data: Vec<(Principal, Vec<Principal>)>,
+        data: Vec<(Principal, Vec<Principal>)>,
     }
 
     let result: CallResult<(Res,)> = ic_cdk::call(

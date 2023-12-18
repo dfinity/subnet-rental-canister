@@ -13,7 +13,7 @@
 # generated files
 src/declarations/
 **/*.wasm
-**/*.wasm.gz
+src/subnet_rental_canister/tests/ledger-canister.wasm.gz
 
 # rust
 target/

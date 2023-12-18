@@ -31,8 +31,7 @@ const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
 fn install_cmc(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, MAINNET_CYCLES_MINTING_CANISTER_ID)
         .unwrap();
-    let cmc_wasm =
-        fs::read(CMC_WASM).expect("Download the test wasm files with ./scripts/download_wasms.sh");
+    let cmc_wasm = fs::read(CMC_WASM).expect("Could not find the patched CMC wasm");
 
     let init_arg: Option<CyclesCanisterInitPayload> = Some(CyclesCanisterInitPayload {
         exchange_rate_canister: None,
