@@ -267,12 +267,11 @@ async fn accept_rental_agreement(
         pub subnets: Vec<candid::Principal>,
     }
     let _arg = Arg {
-        who: Some(candid::Principal::from_slice(b"user")),
-        subnets: vec![candid::Principal::from_text(
-            "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
-        )
-        .unwrap()],
+        who: Some(user.0),
+        subnets: vec![subnet_id.0],
     };
+
+    // TODO: need to call this for all principals in the principals vec
 
     // let result: CallResult<()> = ic_cdk::call(
     //     MAINNET_CYCLES_MINTING_CANISTER_ID,
