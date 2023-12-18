@@ -297,7 +297,8 @@ fn test_attempt_refund_close_to_zero() {
     let transfer_result = decode_one::<Result<BlockIndex, TransferError>>(&res).unwrap();
     assert!(transfer_result.is_ok());
 
-    // Balance is reduced by transfer amount and fee = 0
+    // Balance is reduced by transfer amount and fee
+    // Balance is now 0
     let balance = check_user_2_balance(&pic);
     assert_eq!(balance, initial_balance - transfer_amount - DEFAULT_FEE);
     assert_eq!(balance, Tokens::ZERO);
