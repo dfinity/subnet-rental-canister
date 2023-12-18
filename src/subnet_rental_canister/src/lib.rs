@@ -18,7 +18,6 @@ pub mod external_types;
 mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
-const _XDR_COST_PER_DAY: u64 = 1;
 const T: u128 = 1_000_000_000_000;
 
 type SubnetId = Principal;
