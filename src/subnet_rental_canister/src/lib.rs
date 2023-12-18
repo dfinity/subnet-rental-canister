@@ -1,9 +1,9 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
-use ic_cdk::{init, query, update};
+use ic_cdk::{api::call::CallResult, init, query, update};
 use ic_ledger_types::{
     account_balance, transfer, AccountBalanceArgs, AccountIdentifier, BlockIndex, Memo, Subaccount,
-    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
+    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
+    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -260,8 +260,42 @@ async fn accept_rental_agreement(
         map.borrow_mut().insert(subnet_id, rental_agreement);
     });
 
-    // TODO: Whitelist the principal
-    // let result: CallResult<()> = call(CMC, "set_authorized_subnetwork_list", (Some(user), vec![subnet_id])).await;
+    // temp args for CMC call:
+    #[derive(candid::CandidType)]
+    struct Arg {
+        pub who: Option<candid::Principal>,
+        pub subnets: Vec<candid::Principal>,
+    }
+    let _arg = Arg {
+        who: Some(candid::Principal::from_slice(b"user")),
+        subnets: vec![candid::Principal::from_text(
+            "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
+        )
+        .unwrap()],
+    };
+
+    // let result: CallResult<()> = ic_cdk::call(
+    //     MAINNET_CYCLES_MINTING_CANISTER_ID,
+    //     "set_authorized_subnetwork_list",
+    //     (arg,),
+    // )
+    // .await;
+
+    // ----------------------------------------------------------
+    // check if previous call successful
+    #[derive(CandidType, Deserialize, Debug)]
+    struct Res {
+        pub data: Vec<(Principal, Vec<Principal>)>,
+    }
+
+    let result: CallResult<(Res,)> = ic_cdk::call(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        "get_principals_authorized_to_create_canisters_to_subnets",
+        (),
+    )
+    .await;
+    ic_cdk::println!("res {:?}", result);
+    // ---------------------------------------------
 
     Ok(())
 }

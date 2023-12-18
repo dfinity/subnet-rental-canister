@@ -94,6 +94,41 @@ fn setup() -> (PocketIc, Principal) {
     (pic, subnet_rental_canister)
 }
 
+// #[test]
+fn _test_authorization() {
+    // This test is incomplete because with PocketIC, we cannot create negative whitelist tests.
+    let pic = PocketIcBuilder::new()
+        .with_nns_subnet()
+        .with_application_subnet()
+        .with_application_subnet()
+        .build();
+    let _subnet_nns = pic.topology().get_nns().unwrap();
+    let subnet_1 = pic.topology().get_app_subnets()[0];
+    let _subnet_2 = pic.topology().get_app_subnets()[1];
+
+    install_cmc(&pic);
+    let user1 = Principal::from_slice(b"user1");
+    let _user2 = Principal::from_slice(b"user2");
+
+    #[derive(candid::CandidType)]
+    struct Arg {
+        pub who: Option<candid::Principal>,
+        pub subnets: Vec<candid::Principal>,
+    }
+    let arg = Arg {
+        who: Some(user1),
+        subnets: vec![subnet_1],
+    };
+
+    pic.update_call(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        MAINNET_GOVERNANCE_CANISTER_ID,
+        "set_authorized_subnetwork_list",
+        encode_one(arg).unwrap(),
+    )
+    .unwrap();
+}
+
 #[test]
 fn test_attempt_refund_balance_zero() {
     let (pic, src_id) = setup();
