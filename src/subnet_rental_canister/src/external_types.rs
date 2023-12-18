@@ -1,6 +1,21 @@
 use candid::CandidType;
-use ic_ledger_types::Tokens;
+use ic_ledger_types::{AccountIdentifier, Tokens};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+
+#[derive(CandidType, Deserialize)]
+pub enum ExchangeRateCanister {
+    Set(candid::Principal),
+    Unset,
+}
+#[derive(CandidType, Deserialize, Default)]
+pub struct CyclesCanisterInitPayload {
+    pub exchange_rate_canister: Option<ExchangeRateCanister>,
+    pub last_purged_notification: Option<u64>,
+    pub governance_canister_id: Option<candid::Principal>,
+    pub minting_account_id: Option<AccountIdentifier>,
+    pub ledger_canister_id: Option<candid::Principal>,
+}
 
 #[derive(CandidType)]
 pub enum NnsLedgerCanisterPayload {
