@@ -1,8 +1,9 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::{api::cycles_burn, init, query, update};
 use ic_ledger_types::{
-    TransferError, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
+    account_balance, transfer, AccountBalanceArgs, AccountIdentifier, BlockIndex, Memo, Subaccount,
+    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
+    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -137,22 +138,49 @@ fn demo_add_rental_agreement() {
 }
 
 #[update]
-fn attempt_refund(subnet_id: candid::Principal) -> Result<(), TransferError> {
+/// Attempts to refund the user's deposit. If the user has insufficient funds, returns an error.
+/// Otherwise, returns the block index of the transaction.
+// TODO: what to do if calling ledger canister fails?
+async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, TransferError> {
     let caller = ic_cdk::caller();
-    let _subaccount = get_sub_account(caller, subnet_id);
-    let _icp_ledger_canister = MAINNET_LEDGER_CANISTER_ID;
-    // TODO: try to withdraw all funds from the SRC's subaccount to the caller.
-    // - fee is paid by the caller
 
-    Ok(())
+    // Generate subaccount for caller and specified subnet
+    let subaccount = get_subaccount(caller, subnet_id);
+
+    // Check SRC's balance of that subaccount
+    let balance_args = AccountBalanceArgs {
+        account: AccountIdentifier::new(&ic_cdk::id(), &subaccount),
+    };
+    let balance = account_balance(MAINNET_LEDGER_CANISTER_ID, balance_args)
+        .await
+        .expect("Failed to call ledger canister");
+
+    if balance < DEFAULT_FEE {
+        ic_cdk::println!("Balance is insufficient");
+        return Err(TransferError::InsufficientFunds { balance });
+    }
+
+    transfer(
+        MAINNET_LEDGER_CANISTER_ID,
+        TransferArgs {
+            memo: Memo(0), // TODO: should we use a memo?
+            amount: balance - DEFAULT_FEE,
+            fee: DEFAULT_FEE,
+            from_subaccount: Some(subaccount),
+            to: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
+            created_at_time: None,
+        },
+    )
+    .await
+    .expect("Failed to call ledger canister")
 }
 
 #[query]
-fn get_sub_account(user: candid::Principal, subnet_id: candid::Principal) -> [u8; 32] {
+fn get_subaccount(user: candid::Principal, subnet_id: candid::Principal) -> Subaccount {
     let mut hasher = Sha256::new();
     hasher.update(user.as_slice());
     hasher.update(subnet_id.as_slice());
-    hasher.finalize().into()
+    Subaccount(hasher.finalize().into())
 }
 
 #[query]
@@ -215,7 +243,7 @@ async fn accept_rental_agreement(
     let _ledger_canister = MAINNET_LEDGER_CANISTER_ID;
 
     // 1. transfer the right amount of ICP to the CMC, if it fails, return an error
-    let _sub_account = get_sub_account(user.0, subnet_id.0);
+    let _subaccount = get_subaccount(user.0, subnet_id.0);
     // let result::CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
     let txn_failed = false;
     if txn_failed {
