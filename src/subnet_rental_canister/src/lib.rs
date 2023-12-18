@@ -1,9 +1,9 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
-use ic_cdk::{api::cycles_burn, init, query, update};
+use ic_cdk::{init, query, update};
 use ic_ledger_types::{
     account_balance, transfer, AccountBalanceArgs, AccountIdentifier, BlockIndex, Memo, Subaccount,
-    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -18,8 +18,7 @@ pub mod external_types;
 mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
-const _XDR_COST_PER_DAY: u64 = 1;
-const E8S: u64 = 100_000_000;
+const TRILLION: u128 = 1_000_000_000_000;
 
 type SubnetId = Principal;
 
@@ -35,14 +34,18 @@ thread_local! {
     static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
         (candid::Principal::from_text("bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe").unwrap().into(),
             RentalConditions {
-                daily_cost_e8s: 333 * E8S,
-                minimal_rental_period_days: 365,
+                daily_cost_cycles: 1_000 * TRILLION,
+                initial_rental_period_days: 365,
+                billing_period_days: 30,
+                warning_threshold_days: 60,
             },
         ),
         (candid::Principal::from_text("fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae").unwrap().into(),
             RentalConditions {
-                daily_cost_e8s: 100 * E8S,
-                minimal_rental_period_days: 183,
+                daily_cost_cycles: 2_000 * TRILLION,
+                initial_rental_period_days: 183,
+                billing_period_days: 30,
+                warning_threshold_days: 4 * 7,
             },
         ),
     ]).into();
@@ -78,8 +81,10 @@ impl Storable for Principal {
 /// Set of conditions for a specific subnet up for rent.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct RentalConditions {
-    daily_cost_e8s: u64,
-    minimal_rental_period_days: u64,
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+    billing_period_days: u64,
+    warning_threshold_days: u64,
 }
 
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
@@ -88,8 +93,7 @@ struct RentalAgreement {
     user: Principal,
     subnet_id: SubnetId,
     principals: Vec<Principal>,
-    initial_period_days: u64,
-    initial_period_cost_e8s: u64,
+    rental_conditions: RentalConditions,
     // nanoseconds since epoch
     creation_date: u64,
 }
@@ -129,8 +133,12 @@ fn demo_add_rental_agreement() {
                 user: renter,
                 subnet_id,
                 principals: vec![renter, user],
-                initial_period_days: 365,
-                initial_period_cost_e8s: 333 * 365 * E8S,
+                rental_conditions: RentalConditions {
+                    daily_cost_cycles: 1_000 * TRILLION,
+                    initial_rental_period_days: 365,
+                    billing_period_days: 30,
+                    warning_threshold_days: 60,
+                },
                 creation_date: 1702394252000000000,
             },
         )
@@ -140,7 +148,7 @@ fn demo_add_rental_agreement() {
 #[update]
 /// Attempts to refund the user's deposit. If the user has insufficient funds, returns an error.
 /// Otherwise, returns the block index of the transaction.
-// TODO: what to do if calling ledger canister fails?
+// TODO: what to do if calling ICP ledger canister fails?
 async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, TransferError> {
     let caller = ic_cdk::caller();
 
@@ -153,7 +161,7 @@ async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, Tran
     };
     let balance = account_balance(MAINNET_LEDGER_CANISTER_ID, balance_args)
         .await
-        .expect("Failed to call ledger canister");
+        .expect("Failed to call ICP ledger canister");
 
     if balance < DEFAULT_FEE {
         ic_cdk::println!("Balance is insufficient");
@@ -168,11 +176,11 @@ async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, Tran
             fee: DEFAULT_FEE,
             from_subaccount: Some(subaccount),
             to: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
-            created_at_time: None,
+            created_at_time: None, // Use ledger canister's timestamp
         },
     )
     .await
-    .expect("Failed to call ledger canister")
+    .expect("Failed to call ICP ledger canister")
 }
 
 #[query]
@@ -224,48 +232,21 @@ async fn accept_rental_agreement(
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
 
-    // Collect rental information
+    // Get rental conditions.
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
-    let RentalConditions {
-        daily_cost_e8s,
-        minimal_rental_period_days,
-    } = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id).unwrap());
-
-    // nanoseconds since epoch.
+    let rental_conditions = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id).unwrap());
+    // Creation date in nanoseconds since epoch.
     let creation_date = ic_cdk::api::time();
-    let _initial_period_end = creation_date + (minimal_rental_period_days * 86400 * 1_000_000_000);
 
-    // cost of initial period: TODO: overflows?
-    let initial_period_cost_e8s = daily_cost_e8s * minimal_rental_period_days;
-    // turn this amount of ICP into cycles and burn them.
-
-    let _cmc_canister = MAINNET_CYCLES_MINTING_CANISTER_ID;
-    let _ledger_canister = MAINNET_LEDGER_CANISTER_ID;
-
-    // 1. transfer the right amount of ICP to the CMC, if it fails, return an error
-    let _subaccount = get_subaccount(user.0, subnet_id.0);
-    // let result::CallResult<> = call(LEDGER, "transfer", TransferArgs).await;
-    let txn_failed = false;
-    if txn_failed {
-        ic_cdk::println!("Balance is insufficient");
-        return Err(ExecuteProposalError::InsufficientFunds);
-    }
-    // 2. create NotifyTopUpArg{ block_index, canister_id } from that transaction
-    // 3. call CMC with the notify arg to get cycles
-    // 4. burn the cycles with the system api. the amount depends on the current exchange rate.
-    cycles_burn(0);
-    // 5. set the end date of the initial period
-    // 6. fill in the other rental agreement details
     let rental_agreement = RentalAgreement {
         user,
         subnet_id,
         principals,
-        initial_period_days: minimal_rental_period_days,
-        initial_period_cost_e8s,
+        rental_conditions,
         creation_date,
     };
 
-    // 7. add it to the rental agreement map
+    // Add the rental agreement to the rental agreement map.
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id)) {
         ic_cdk::println!(
             "Subnet is already in an active rental agreement: {:?}",
@@ -279,7 +260,7 @@ async fn accept_rental_agreement(
         map.borrow_mut().insert(subnet_id, rental_agreement);
     });
 
-    // 8. Whitelist the principal
+    // TODO: Whitelist the principal
     // let result: CallResult<()> = call(CMC, "set_authorized_subnetwork_list", (Some(user), vec![subnet_id])).await;
 
     Ok(())
