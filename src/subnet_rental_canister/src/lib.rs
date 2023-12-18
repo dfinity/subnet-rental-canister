@@ -176,7 +176,7 @@ async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, Tran
             fee: DEFAULT_FEE,
             from_subaccount: Some(subaccount),
             to: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
-            created_at_time: None, // TODO: should we use a timestamp?
+            created_at_time: None, // Use ledger canister's timestamp
         },
     )
     .await
