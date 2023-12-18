@@ -4,7 +4,9 @@ use candid::CandidType;
 use ic_cdk::query;
 use serde::Deserialize;
 
-use crate::{get_subaccount, list_rental_agreements, list_subnet_conditions, RENTAL_AGREEMENTS, T};
+use crate::{
+    get_subaccount, list_rental_agreements, list_subnet_conditions, RENTAL_AGREEMENTS, TRILLION,
+};
 
 const HTML_HEAD: &str =
     r#"<!DOCTYPE html><html lang="en"><head><title>Subnet Rental Canister</title></head>"#;
@@ -75,7 +77,7 @@ fn generate_rental_agreements_html() -> String {
             hex::encode(get_subaccount(agreement.user.0, agreement.subnet_id.0).0),
             agreement.rental_conditions.billing_period_days,
             agreement.rental_conditions.initial_rental_period_days,
-            agreement.rental_conditions.daily_cost_cycles / T,
+            agreement.rental_conditions.daily_cost_cycles / TRILLION,
             Duration::from_nanos(agreement.creation_date),
             "Healthy"
         ));

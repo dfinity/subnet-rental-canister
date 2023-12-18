@@ -18,7 +18,7 @@ pub mod external_types;
 mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
-const T: u128 = 1_000_000_000_000;
+const TRILLION: u128 = 1_000_000_000_000;
 
 type SubnetId = Principal;
 
@@ -34,7 +34,7 @@ thread_local! {
     static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
         (candid::Principal::from_text("bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe").unwrap().into(),
             RentalConditions {
-                daily_cost_cycles: 1_000 * T,
+                daily_cost_cycles: 1_000 * TRILLION,
                 initial_rental_period_days: 365,
                 billing_period_days: 30,
                 warning_threshold_days: 60,
@@ -42,7 +42,7 @@ thread_local! {
         ),
         (candid::Principal::from_text("fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae").unwrap().into(),
             RentalConditions {
-                daily_cost_cycles: 2_000 * T,
+                daily_cost_cycles: 2_000 * TRILLION,
                 initial_rental_period_days: 183,
                 billing_period_days: 30,
                 warning_threshold_days: 4 * 7,
@@ -134,7 +134,7 @@ fn demo_add_rental_agreement() {
                 subnet_id,
                 principals: vec![renter, user],
                 rental_conditions: RentalConditions {
-                    daily_cost_cycles: 1_000 * T,
+                    daily_cost_cycles: 1_000 * TRILLION,
                     initial_rental_period_days: 365,
                     billing_period_days: 30,
                     warning_threshold_days: 60,
