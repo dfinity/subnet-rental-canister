@@ -459,9 +459,9 @@ fn add_test_rental_agreement(
 ) -> WasmResult {
     let user = Principal::from_text(subnet_id_str).unwrap();
     let arg = ValidatedSubnetRentalProposal {
-        subnet_id: user.into(),
-        user: USER_1.into(),
-        principals: vec![user.into()],
+        subnet_id: user,
+        user: USER_1,
+        principals: vec![user],
     };
 
     pic.update_call(
@@ -505,8 +505,8 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
     let (pic, canister_id) = setup();
 
     let arg = ValidatedSubnetRentalProposal {
-        subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap().into(),
-        user: USER_1.into(),
+        subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
+        user: USER_1,
         principals: vec![],
     };
 
