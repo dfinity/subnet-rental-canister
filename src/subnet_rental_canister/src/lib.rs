@@ -14,6 +14,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
+use crate::external_types::SetAuthorizedSubnetworkListArgs;
+
 pub mod external_types;
 mod http_request;
 
@@ -203,9 +205,9 @@ fn list_rental_agreements() -> Vec<RentalAgreement> {
 
 #[derive(Clone, CandidType, Deserialize)]
 pub struct ValidatedSubnetRentalProposal {
-    pub subnet_id: Principal,
-    pub user: Principal,
-    pub principals: Vec<Principal>,
+    pub subnet_id: candid::Principal,
+    pub user: candid::Principal,
+    pub principals: Vec<candid::Principal>,
 }
 
 #[derive(CandidType, Debug, Clone, Deserialize)]
@@ -234,20 +236,20 @@ async fn accept_rental_agreement(
 
     // Get rental conditions.
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
-    let rental_conditions = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id).unwrap());
+    let rental_conditions = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id.into()).unwrap());
     // Creation date in nanoseconds since epoch.
     let creation_date = ic_cdk::api::time();
 
     let rental_agreement = RentalAgreement {
-        user,
-        subnet_id,
-        principals,
+        user: user.into(),
+        subnet_id: subnet_id.into(),
+        principals: principals.into_iter().map(|p| p.into()).collect(),
         rental_conditions,
         creation_date,
     };
 
     // Add the rental agreement to the rental agreement map.
-    if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id)) {
+    if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
         ic_cdk::println!(
             "Subnet is already in an active rental agreement: {:?}",
             &subnet_id
@@ -257,36 +259,31 @@ async fn accept_rental_agreement(
     // TODO: log this event in the persisted log
     ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
-        map.borrow_mut().insert(subnet_id, rental_agreement);
+        map.borrow_mut()
+            .insert(subnet_id.into(), rental_agreement.clone());
     });
 
-    // temp args for CMC call:
-    #[derive(candid::CandidType)]
-    struct Arg {
-        who: Option<candid::Principal>,
-        subnets: Vec<candid::Principal>,
+    // Whitelist principals for subnet
+    for user in &rental_agreement.principals {
+        // TODO: what about duplicates in rental_agreement.principals?
+        // TODO: what about duplicates in rental_agreement.principals and existing principals in the list?
+        ic_cdk::call::<_, ()>(
+            MAINNET_CYCLES_MINTING_CANISTER_ID,
+            "set_authorized_subnetwork_list",
+            (SetAuthorizedSubnetworkListArgs {
+                who: Some(user.0),
+                subnets: vec![subnet_id],
+            },),
+        )
+        .await
+        .expect("Failed to call CMC");
     }
-    let arg = Arg {
-        who: Some(user.0),
-        subnets: vec![subnet_id.0], // TODO: append this subnet to to ALL App subnets (?)
-    };
-
-    // TODO: need to call this for all principals in the principals vec
-    ic_cdk::call::<_, ()>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "set_authorized_subnetwork_list",
-        (arg,),
-    )
-    .await
-    .expect("Failed to call CMC");
-
-    // TODO: disallow non-renter principals from installing canisters on the subnet
 
     // ----------------------------------------------------------
     // check if previous call successful
     #[derive(CandidType, Deserialize, Debug)]
     struct Res {
-        data: Vec<(Principal, Vec<Principal>)>,
+        data: Vec<(candid::Principal, Vec<candid::Principal>)>,
     }
 
     let result: CallResult<(Res,)> = ic_cdk::call(
