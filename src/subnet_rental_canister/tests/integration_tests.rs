@@ -457,10 +457,11 @@ fn add_test_rental_agreement(
     canister_id: &Principal,
     subnet_id_str: &str,
 ) -> WasmResult {
+    let user = Principal::from_text(subnet_id_str).unwrap();
     let arg = ValidatedSubnetRentalProposal {
-        subnet_id: Principal::from_text(subnet_id_str).unwrap().into(),
+        subnet_id: user.into(),
         user: USER_1.into(),
-        principals: vec![],
+        principals: vec![user.into()],
     };
 
     pic.update_call(
