@@ -83,6 +83,12 @@ impl Storable for Principal {
 fn get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
     RENTAL_AGREEMENTS.with(|map| map.borrow().get(subnet_id))
 }
+
+#[query]
+fn get_rental_accounts() -> Vec<(Principal, RentalAccount)> {
+    RENTAL_ACCOUNTS.with(|map| map.borrow().iter().collect())
+}
+
 /// Set of conditions for a specific subnet up for rent.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct RentalConditions {
@@ -122,7 +128,7 @@ impl Storable for RentalAgreement {
 }
 
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
-struct RentalAccount {
+pub struct RentalAccount {
     /// The date (in nanos since epoch) until which the rental agreement is paid for.
     pub covered_until: u64,
     /// This account's share of cycles among the SRC's cycles.
@@ -136,7 +142,7 @@ struct RentalAccount {
 impl Storable for RentalAccount {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Bounded {
-        max_size: 43,
+        max_size: 54,
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
@@ -268,9 +274,9 @@ async fn accept_rental_agreement(
             subnet_id.into(),
             RentalAccount {
                 covered_until: creation_date
-                    + rental_conditions.billing_period_days * 86400 * 1_000_000_000, // TODO
-                cycles_balance: 0, // TODO: what about remaining cycles? what if this rental account already exists?
-                last_burned: 0,
+                    + rental_conditions.billing_period_days * 86400 * 1_000_000_000,
+                cycles_balance: TRILLION * TRILLION, // TODO: what about remaining cycles? what if this rental account already exists?
+                last_burned: ic_cdk::api::time(),
             },
         )
     });
@@ -326,11 +332,16 @@ fn canister_heartbeat() {
             let cost_cycles_per_second = daily_cost_cycles / 86400;
             let now = ic_cdk::api::time();
             let delta_t = now - account.last_burned;
-            let amount = cost_cycles_per_second * delta_t as u128;
+            // let amount = cost_cycles_per_second * (delta_t / 1_000_000_000) as u128;
+            let amount = 100;
             if account.cycles_balance >= amount {
                 ic_cdk::api::cycles_burn(amount);
                 account.last_burned = now;
                 account.cycles_balance -= amount;
+                println!(
+                    "Burned {} cycles for agreement {:?}, remaining: {}",
+                    amount, subnet_id, account.cycles_balance
+                );
             } else {
                 println!("Failed to burn cycles for agreement {:?}", subnet_id);
             }
