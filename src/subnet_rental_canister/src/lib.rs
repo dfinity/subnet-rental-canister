@@ -32,7 +32,11 @@ thread_local! {
     static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
-    /// Hardcoded subnets and their rental conditions.
+    // Memory region 1
+    static RENTAL_ACCOUNTS: RefCell<StableBTreeMap<Principal, RentalAccount, VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
+
+    /// Hardcoded subnets and their rental conditions. TODO: make this editable via proposal (method), not canister upgrade.
     static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
         (candid::Principal::from_text("bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe").unwrap().into(),
             RentalConditions {
@@ -103,6 +107,33 @@ struct RentalAgreement {
 impl Storable for RentalAgreement {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Unbounded;
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        Decode!(&bytes, Self).unwrap()
+    }
+}
+
+#[derive(Debug, Clone, Copy, CandidType, Deserialize)]
+struct RentalAccount {
+    /// The date (in nanos since epoch) until which the rental agreement is paid for.
+    covered_until: u64,
+    /// This account's share of cycles among the SRC's cycles.
+    /// Increased by the payment process (via timer).
+    /// Decreased by the burning process (via heartbeat).
+    cycles_balance: u128,
+    /// The last point in time (nanos since epoch) when cycles were burned in a heartbeat.
+    last_burned: u64,
+}
+
+impl Storable for RentalAccount {
+    // should be bounded once we replace string with real type
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 32, // TODO: confirm.
+        is_fixed_size: true,
+    };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
@@ -277,4 +308,10 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
     Ok(())
+}
+
+#[update]
+fn canister_heartbeat() {
+    // let amount = burn_rate * delta_t;
+    // ic_cdk::api::cycles_burn(amount);
 }
