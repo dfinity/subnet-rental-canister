@@ -1,17 +1,12 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::{init, query, update};
-use ic_ledger_types::{
-    account_balance, transfer, AccountBalanceArgs, AccountIdentifier, BlockIndex, Memo, Subaccount,
-    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
-};
+use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
 use crate::external_types::SetAuthorizedSubnetworkListArgs;
@@ -131,7 +126,7 @@ struct RentalAccount {
 impl Storable for RentalAccount {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Bounded {
-        max_size: 32, // TODO: confirm.
+        max_size: 43,
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
@@ -174,6 +169,16 @@ fn demo_add_rental_agreement() {
                     warning_threshold_days: 60,
                 },
                 creation_date,
+            },
+        )
+    });
+    RENTAL_ACCOUNTS.with(|map| {
+        map.borrow_mut().insert(
+            subnet_id,
+            RentalAccount {
+                covered_until: creation_date,
+                cycles_balance: 0,
+                last_burned: 0,
             },
         )
     });
@@ -249,6 +254,17 @@ async fn accept_rental_agreement(
             .insert(subnet_id.into(), rental_agreement.clone());
     });
 
+    RENTAL_ACCOUNTS.with(|map| {
+        map.borrow_mut().insert(
+            subnet_id.into(),
+            RentalAccount {
+                covered_until: creation_date,
+                cycles_balance: 0, // TODO: what about remaining cycles? what if this rental account already exists?
+                last_burned: 0,
+            },
+        )
+    });
+
     // Whitelist principals for subnet
     for user in &rental_agreement.principals {
         // TODO: what about duplicates in rental_agreement.principals?
@@ -269,32 +285,7 @@ async fn accept_rental_agreement(
 }
 
 #[update]
-fn check_payment_coverage() {
-    RENTAL_AGREEMENTS.with(|map| {
-        for (subnet_id, rental_agreement) in map.borrow().iter() {
-            // Check if subnet is covered for next billing_period amount of days.
-            let mut covered_until =
-                PAYMENT_COVERED_UNTIL.with(|map| map.borrow_mut().get(&subnet_id).unwrap());
-            let now = ic_cdk::api::time();
-            let billing_period = rental_agreement.rental_conditions.billing_period_days
-                * 24
-                * 60
-                * 60
-                * 1_000_000_000;
-
-            if covered_until < now + billing_period {
-                // check if user has enough cycles in his locally bookkept account
-                // if so, burn a month's worth of cycles
-                // if not, try to withdraw ICP from the user's account, convert to cycles, and burn a month's worth of cycles
-                ic_cdk::println!("Let's mint some cycles {}", covered_until);
-                covered_until += billing_period;
-                ic_cdk::println!("Now covered until {}", covered_until);
-            } else {
-                ic_cdk::println!("Subnet is covered until {} now is {}", covered_until, now);
-            }
-        }
-    });
-}
+fn billing() {}
 
 #[derive(Clone, CandidType, Deserialize, Debug)]
 pub struct RejectedSubnetRentalProposal {
