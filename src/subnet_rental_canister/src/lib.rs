@@ -1,4 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
+use ic_cdk::println;
 use ic_cdk::{api::call::CallResult, init, query, update};
 use ic_ledger_types::{
     account_balance, transfer, AccountBalanceArgs, AccountIdentifier, BlockIndex, Memo, Subaccount,
@@ -145,7 +146,7 @@ impl Storable for RentalAccount {
 
 #[init]
 fn init() {
-    ic_cdk::println!("Subnet rental canister initialized");
+    println!("Subnet rental canister initialized");
 }
 
 #[update]
@@ -197,7 +198,7 @@ async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, Tran
         .expect("Failed to call ICP ledger canister");
 
     if balance < DEFAULT_FEE {
-        ic_cdk::println!("Balance is insufficient");
+        println!("Balance is insufficient");
         return Err(TransferError::InsufficientFunds { balance });
     }
 
@@ -281,14 +282,14 @@ async fn accept_rental_agreement(
 
     // Add the rental agreement to the rental agreement map.
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
-        ic_cdk::println!(
+        println!(
             "Subnet is already in an active rental agreement: {:?}",
             &subnet_id
         );
         return Err(ExecuteProposalError::SubnetAlreadyRented);
     }
     // TODO: log this event in the persisted log
-    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
+    println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut()
             .insert(subnet_id.into(), rental_agreement.clone());
@@ -323,7 +324,7 @@ async fn accept_rental_agreement(
         (),
     )
     .await;
-    ic_cdk::println!("res {:?}", result);
+    println!("res {:?}", result);
     // ---------------------------------------------
 
     Ok(())
@@ -337,7 +338,7 @@ pub struct RejectedSubnetRentalProposal {
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
-        ic_cdk::println!("Caller is not the governance canister");
+        println!("Caller is not the governance canister");
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
     Ok(())
@@ -345,6 +346,12 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 
 #[update]
 fn canister_heartbeat() {
+    RENTAL_ACCOUNTS.with(|map| {
+        for (subnet_id, account) in map.borrow().iter() {
+            println!("ok");
+        }
+    });
+
     // let amount = burn_rate * delta_t;
     // ic_cdk::api::cycles_burn(amount);
 }
