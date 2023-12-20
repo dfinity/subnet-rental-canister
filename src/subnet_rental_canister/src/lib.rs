@@ -258,7 +258,7 @@ async fn accept_rental_agreement(
         map.borrow_mut().insert(
             subnet_id.into(),
             RentalAccount {
-                covered_until: creation_date,
+                covered_until: creation_date, // TODO
                 cycles_balance: 0, // TODO: what about remaining cycles? what if this rental account already exists?
                 last_burned: 0,
             },
