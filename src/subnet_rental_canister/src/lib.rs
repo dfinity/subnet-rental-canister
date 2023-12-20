@@ -285,7 +285,40 @@ async fn accept_rental_agreement(
 }
 
 #[update]
-fn billing() {}
+fn billing() {
+    // wip
+    RENTAL_AGREEMENTS.with(|map| {
+        for (subnet_id, rental_agreement) in map.borrow().iter() {
+            // Check if subnet is covered for next billing_period amount of days.
+            let mut covered_until =
+                RENTAL_ACCOUNTS.with(|map| map.borrow_mut().get(&subnet_id).unwrap().covered_until);
+            let now = ic_cdk::api::time();
+            let billing_period = rental_agreement.rental_conditions.billing_period_days
+                * 24
+                * 60
+                * 60
+                * 1_000_000_000;
+
+            if covered_until < now + billing_period {
+                // check if user has enough cycles in his locally bookkept account
+                // if so, burn a month's worth of cycles
+                // if not, try to withdraw ICP from the user's account, convert to cycles, and burn a month's worth of cycles
+                ic_cdk::println!("Let's mint some cycles! {}", covered_until);
+                // withdraw ICP from the user's account
+                // send to CMC
+                // add minted cycles into local bookkeeping thing, DONT burn here
+                covered_until += billing_period;
+                RENTAL_ACCOUNTS.with(|map| {
+                    map.borrow_mut().get(&subnet_id).unwrap().covered_until = covered_until
+                    // TODO: not properly persisted!
+                });
+                ic_cdk::println!("Now covered until {}", covered_until);
+            } else {
+                ic_cdk::println!("Subnet is covered until {} now is {}", covered_until, now);
+            }
+        }
+    });
+}
 
 #[derive(Clone, CandidType, Deserialize, Debug)]
 pub struct RejectedSubnetRentalProposal {
