@@ -1,18 +1,13 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::println;
-use ic_cdk::{api::call::CallResult, init, query, update};
-use ic_ledger_types::{
-    account_balance, transfer, AccountBalanceArgs, AccountIdentifier, BlockIndex, Memo, Subaccount,
-    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
-};
+use ic_cdk::{init, query, update};
+use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::{borrow::Cow, cell::RefCell, collections::HashMap};
 
 use crate::external_types::SetAuthorizedSubnetworkListArgs;
@@ -132,7 +127,7 @@ struct RentalAccount {
 impl Storable for RentalAccount {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Bounded {
-        max_size: 32, // TODO: confirm.
+        max_size: 43,
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
@@ -160,6 +155,7 @@ fn demo_add_rental_agreement() {
     .into();
     let renter = candid::Principal::from_slice(b"user1").into();
     let user = candid::Principal::from_slice(b"user2").into();
+    let creation_date = ic_cdk::api::time();
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(
             subnet_id,
@@ -173,56 +169,20 @@ fn demo_add_rental_agreement() {
                     billing_period_days: 30,
                     warning_threshold_days: 60,
                 },
-                creation_date: 1702394252000000000,
+                creation_date,
             },
         )
     });
-}
-
-#[update]
-/// Attempts to refund the user's deposit. If the user has insufficient funds, returns an error.
-/// Otherwise, returns the block index of the transaction.
-// TODO: what to do if calling ICP ledger canister fails?
-async fn attempt_refund(subnet_id: candid::Principal) -> Result<BlockIndex, TransferError> {
-    let caller = ic_cdk::caller();
-
-    // Generate subaccount for caller and specified subnet
-    let subaccount = get_subaccount(caller, subnet_id);
-
-    // Check SRC's balance of that subaccount
-    let balance_args = AccountBalanceArgs {
-        account: AccountIdentifier::new(&ic_cdk::id(), &subaccount),
-    };
-    let balance = account_balance(MAINNET_LEDGER_CANISTER_ID, balance_args)
-        .await
-        .expect("Failed to call ICP ledger canister");
-
-    if balance < DEFAULT_FEE {
-        println!("Balance is insufficient");
-        return Err(TransferError::InsufficientFunds { balance });
-    }
-
-    transfer(
-        MAINNET_LEDGER_CANISTER_ID,
-        TransferArgs {
-            memo: Memo(0), // TODO: should we use a memo?
-            amount: balance - DEFAULT_FEE,
-            fee: DEFAULT_FEE,
-            from_subaccount: Some(subaccount),
-            to: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
-            created_at_time: None, // Use ledger canister's timestamp
-        },
-    )
-    .await
-    .expect("Failed to call ICP ledger canister")
-}
-
-#[query]
-fn get_subaccount(user: candid::Principal, subnet_id: candid::Principal) -> Subaccount {
-    let mut hasher = Sha256::new();
-    hasher.update(user.as_slice());
-    hasher.update(subnet_id.as_slice());
-    Subaccount(hasher.finalize().into())
+    RENTAL_ACCOUNTS.with(|map| {
+        map.borrow_mut().insert(
+            subnet_id,
+            RentalAccount {
+                covered_until: creation_date,
+                cycles_balance: 0,
+                last_burned: 0,
+            },
+        )
+    });
 }
 
 #[query]
@@ -280,7 +240,6 @@ async fn accept_rental_agreement(
         creation_date,
     };
 
-    // Add the rental agreement to the rental agreement map.
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
         println!(
             "Subnet is already in an active rental agreement: {:?}",
@@ -288,11 +247,22 @@ async fn accept_rental_agreement(
         );
         return Err(ExecuteProposalError::SubnetAlreadyRented);
     }
-    // TODO: log this event in the persisted log
+
     println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut()
             .insert(subnet_id.into(), rental_agreement.clone());
+    });
+
+    RENTAL_ACCOUNTS.with(|map| {
+        map.borrow_mut().insert(
+            subnet_id.into(),
+            RentalAccount {
+                covered_until: creation_date, // TODO
+                cycles_balance: 0, // TODO: what about remaining cycles? what if this rental account already exists?
+                last_burned: 0,
+            },
+        )
     });
 
     // Whitelist principals for subnet
@@ -311,24 +281,11 @@ async fn accept_rental_agreement(
         .expect("Failed to call CMC");
     }
 
-    // ----------------------------------------------------------
-    // check if previous call successful
-    #[derive(CandidType, Deserialize, Debug)]
-    struct Res {
-        data: Vec<(candid::Principal, Vec<candid::Principal>)>,
-    }
-
-    let result: CallResult<(Res,)> = ic_cdk::call(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "get_principals_authorized_to_create_canisters_to_subnets",
-        (),
-    )
-    .await;
-    println!("res {:?}", result);
-    // ---------------------------------------------
-
     Ok(())
 }
+
+#[update]
+fn billing() {}
 
 #[derive(Clone, CandidType, Deserialize, Debug)]
 pub struct RejectedSubnetRentalProposal {

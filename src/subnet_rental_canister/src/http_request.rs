@@ -4,9 +4,7 @@ use candid::CandidType;
 use ic_cdk::query;
 use serde::Deserialize;
 
-use crate::{
-    get_subaccount, list_rental_agreements, list_subnet_conditions, RENTAL_AGREEMENTS, TRILLION,
-};
+use crate::{list_rental_agreements, list_subnet_conditions, RENTAL_AGREEMENTS, TRILLION};
 
 const HTML_HEAD: &str =
     r#"<!DOCTYPE html><html lang="en"><head><title>Subnet Rental Canister</title></head>"#;
@@ -60,12 +58,12 @@ fn generate_rental_agreements_html() -> String {
     let mut html = String::new();
     html.push_str(HTML_HEAD);
     html.push_str(
-        r#"<body><h1>Rental Agreements</h1><table border="1"><tr><th>Subnet ID</th><th>Renter</th><th>Allowed Principals</th><th>Wallet Subaccount</th><th>Billing Period (days)</th><th>Initial Rental Period (days)</th><th>Daily Cost (XDR)</th><th>Creation Date</th><th>Status</th></tr>"#,
+        r#"<body><h1>Rental Agreements</h1><table border="1"><tr><th>Subnet ID</th><th>Renter</th><th>Allowed Principals</th><th>Billing Period (days)</th><th>Initial Rental Period (days)</th><th>Daily Cost (XDR)</th><th>Creation Date</th><th>Status</th></tr>"#,
     );
     for agreement in rental_agreements {
         html.push_str("<tr>");
         html.push_str(&format!(
-            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td><td>{}</td>",
+            "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td><td>{}</td>",
             agreement.subnet_id.0,
             agreement.user.0,
             agreement
@@ -74,7 +72,6 @@ fn generate_rental_agreements_html() -> String {
                 .map(|p| p.0.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            hex::encode(get_subaccount(agreement.user.0, agreement.subnet_id.0).0),
             agreement.rental_conditions.billing_period_days,
             agreement.rental_conditions.initial_rental_period_days,
             agreement.rental_conditions.daily_cost_cycles / TRILLION,
