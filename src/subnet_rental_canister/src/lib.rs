@@ -80,6 +80,9 @@ impl Storable for Principal {
     }
 }
 
+fn get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
+    RENTAL_AGREEMENTS.with(|map| map.borrow().get(subnet_id))
+}
 /// Set of conditions for a specific subnet up for rent.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct RentalConditions {
@@ -100,6 +103,12 @@ struct RentalAgreement {
     creation_date: u64,
 }
 
+impl RentalAgreement {
+    fn get_rental_conditions(&self) -> RentalConditions {
+        self.rental_conditions.clone()
+    }
+}
+
 impl Storable for RentalAgreement {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Unbounded;
@@ -115,13 +124,13 @@ impl Storable for RentalAgreement {
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 struct RentalAccount {
     /// The date (in nanos since epoch) until which the rental agreement is paid for.
-    covered_until: u64,
+    pub covered_until: u64,
     /// This account's share of cycles among the SRC's cycles.
     /// Increased by the payment process (via timer).
     /// Decreased by the burning process (via heartbeat).
-    cycles_balance: u128,
+    pub cycles_balance: u128,
     /// The last point in time (nanos since epoch) when cycles were burned in a heartbeat.
-    last_burned: u64,
+    pub last_burned: u64,
 }
 
 impl Storable for RentalAccount {
@@ -258,7 +267,8 @@ async fn accept_rental_agreement(
         map.borrow_mut().insert(
             subnet_id.into(),
             RentalAccount {
-                covered_until: creation_date, // TODO
+                covered_until: creation_date
+                    + rental_conditions.billing_period_days * 86400 * 1_000_000_000, // TODO
                 cycles_balance: 0, // TODO: what about remaining cycles? what if this rental account already exists?
                 last_burned: 0,
             },
@@ -304,11 +314,26 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 #[update]
 fn canister_heartbeat() {
     RENTAL_ACCOUNTS.with(|map| {
-        for (subnet_id, account) in map.borrow().iter() {
-            println!("ok");
+        for (subnet_id, mut account) in map.borrow().iter() {
+            // TODO: what if the rental agreement does not exist (anymore)?
+            let RentalConditions {
+                daily_cost_cycles, ..
+            } = RENTAL_AGREEMENTS
+                .with(|map| map.borrow().get(&subnet_id))
+                .unwrap()
+                .get_rental_conditions();
+
+            let cost_cycles_per_second = daily_cost_cycles / 86400;
+            let now = ic_cdk::api::time();
+            let delta_t = now - account.last_burned;
+            let amount = cost_cycles_per_second * delta_t as u128;
+            if account.cycles_balance >= amount {
+                ic_cdk::api::cycles_burn(amount);
+                account.last_burned = now;
+                account.cycles_balance -= amount;
+            } else {
+                println!("Failed to burn cycles for agreement {:?}", subnet_id);
+            }
         }
     });
-
-    // let amount = burn_rate * delta_t;
-    // ic_cdk::api::cycles_burn(amount);
 }
