@@ -318,6 +318,7 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     Ok(())
 }
 
+/// Pass one of the global StableBTreeMaps and a function that transforms a value.
 fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
 where
     K: Storable + Ord + Clone,
