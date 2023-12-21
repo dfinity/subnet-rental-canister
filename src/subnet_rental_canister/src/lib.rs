@@ -2,6 +2,7 @@ use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::println;
 use ic_cdk::{init, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_stable_structures::Memory;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
@@ -317,10 +318,23 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     Ok(())
 }
 
+fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
+where
+    K: Storable + Ord + Clone,
+    V: Storable,
+    M: Memory,
+{
+    let keys: Vec<K> = map.borrow().iter().map(|(k, _v)| k).collect();
+    for key in keys {
+        let value = map.borrow().get(&key).unwrap();
+        map.borrow_mut().insert(key.clone(), f(key, value));
+    }
+}
+
 #[update]
 fn canister_heartbeat() {
     RENTAL_ACCOUNTS.with(|map| {
-        for (subnet_id, mut account) in map.borrow().iter() {
+        update_map(map, |subnet_id, account| {
             // TODO: what if the rental agreement does not exist (anymore)?
             let RentalConditions {
                 daily_cost_cycles, ..
@@ -336,15 +350,21 @@ fn canister_heartbeat() {
             let amount = 100;
             if account.cycles_balance >= amount {
                 ic_cdk::api::cycles_burn(amount);
-                account.last_burned = now;
-                account.cycles_balance -= amount;
+                let new_last_burned = now;
+                let new_cycles_balance = account.cycles_balance - amount;
                 println!(
                     "Burned {} cycles for agreement {:?}, remaining: {}",
                     amount, subnet_id, account.cycles_balance
                 );
+                RentalAccount {
+                    covered_until: account.covered_until,
+                    cycles_balance: new_cycles_balance,
+                    last_burned: new_last_burned,
+                }
             } else {
                 println!("Failed to burn cycles for agreement {:?}", subnet_id);
+                account
             }
-        }
+        });
     });
 }
