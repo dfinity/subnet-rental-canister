@@ -81,7 +81,7 @@ impl Storable for Principal {
     }
 }
 
-fn get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
+fn _get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
     RENTAL_AGREEMENTS.with(|map| map.borrow().get(subnet_id))
 }
 
@@ -112,7 +112,7 @@ struct RentalAgreement {
 
 impl RentalAgreement {
     fn get_rental_conditions(&self) -> RentalConditions {
-        self.rental_conditions.clone()
+        self.rental_conditions
     }
 }
 
