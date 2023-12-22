@@ -110,12 +110,6 @@ struct RentalAgreement {
     creation_date: u64,
 }
 
-impl RentalAgreement {
-    fn get_rental_conditions(&self) -> RentalConditions {
-        self.rental_conditions
-    }
-}
-
 impl Storable for RentalAgreement {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Unbounded;
@@ -336,15 +330,16 @@ where
 fn canister_heartbeat() {
     RENTAL_ACCOUNTS.with(|map| {
         update_map(map, |subnet_id, account| {
-            // TODO: what if the rental agreement does not exist (anymore)?
-            let RentalConditions {
-                daily_cost_cycles, ..
-            } = RENTAL_AGREEMENTS
-                .with(|map| map.borrow().get(&subnet_id))
-                .unwrap()
-                .get_rental_conditions();
-
-            let cost_cycles_per_second = daily_cost_cycles / 86400;
+            let Some(rental_agreement) = RENTAL_AGREEMENTS.with(|map| map.borrow().get(&subnet_id))
+            else {
+                println!(
+                    "Fatal: Failed to find active rental agreement for active rental account {:?}",
+                    subnet_id
+                );
+                return account;
+            };
+            let cost_cycles_per_second =
+                rental_agreement.rental_conditions.daily_cost_cycles / 86400;
             let now = ic_cdk::api::time();
             let nanos_since_last_burn = now - account.last_burned;
             // cost_cycles_per_second: ~10^10 < 10^12
@@ -353,22 +348,30 @@ fn canister_heartbeat() {
             // divided by 1B                    10^-9
             // amount                         < 10^18
             let amount = cost_cycles_per_second * nanos_since_last_burn as u128 / 1_000_000_000;
-            if account.cycles_balance >= amount {
-                ic_cdk::api::cycles_burn(amount);
-                let cycles_balance = account.cycles_balance - amount;
-                let last_burned = now;
-                println!(
-                    "Burned {} cycles for agreement {:?}, remaining: {}",
-                    amount, subnet_id, cycles_balance
-                );
-                RentalAccount {
-                    covered_until: account.covered_until,
-                    cycles_balance,
-                    last_burned,
-                }
-            } else {
+            if account.cycles_balance < amount {
                 println!("Failed to burn cycles for agreement {:?}", subnet_id);
-                account
+                return account;
+            }
+            let canister_total_available_cycles = ic_cdk::api::canister_balance128();
+            if canister_total_available_cycles < amount {
+                println!(
+                    "Fatal: Canister has fewer cycles {} than subaccount {:?}: {}",
+                    canister_total_available_cycles, subnet_id, account.cycles_balance
+                );
+                return account;
+            }
+            // Burn must succeed now
+            ic_cdk::api::cycles_burn(amount);
+            let cycles_balance = account.cycles_balance - amount;
+            let last_burned = now;
+            // println!(
+            //     "Burned {} cycles for agreement {:?}, remaining: {}",
+            //     amount, subnet_id, cycles_balance
+            // );
+            RentalAccount {
+                covered_until: account.covered_until,
+                cycles_balance,
+                last_burned,
             }
         });
     });
