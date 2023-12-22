@@ -346,20 +346,25 @@ fn canister_heartbeat() {
 
             let cost_cycles_per_second = daily_cost_cycles / 86400;
             let now = ic_cdk::api::time();
-            let delta_t_nanos = now - account.last_burned;
-            let amount = cost_cycles_per_second * (delta_t_nanos / 1_000_000_000) as u128;
+            let nanos_since_last_burn = now - account.last_burned;
+            // cost_cycles_per_second: ~10^10 < 10^12
+            // nanos_since_last_burn:  ~10^9  < 10^15
+            // product                        < 10^27 << 10^38 (u128_max)
+            // divided by 1B                    10^-9
+            // amount                         < 10^18
+            let amount = cost_cycles_per_second * nanos_since_last_burn as u128 / 1_000_000_000;
             if account.cycles_balance >= amount {
                 ic_cdk::api::cycles_burn(amount);
-                let new_last_burned = now;
-                let new_cycles_balance = account.cycles_balance - amount;
+                let cycles_balance = account.cycles_balance - amount;
+                let last_burned = now;
                 println!(
                     "Burned {} cycles for agreement {:?}, remaining: {}",
-                    amount, subnet_id, new_cycles_balance
+                    amount, subnet_id, cycles_balance
                 );
                 RentalAccount {
                     covered_until: account.covered_until,
-                    cycles_balance: new_cycles_balance,
-                    last_burned: new_last_burned,
+                    cycles_balance,
+                    last_burned,
                 }
             } else {
                 println!("Failed to burn cycles for agreement {:?}", subnet_id);
