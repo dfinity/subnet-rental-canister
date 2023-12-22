@@ -1,5 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
-use ic_cdk::println;
+use ic_cdk::{heartbeat, println};
 use ic_cdk::{init, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::Memory;
@@ -332,7 +332,7 @@ where
     }
 }
 
-#[update]
+#[heartbeat]
 fn canister_heartbeat() {
     RENTAL_ACCOUNTS.with(|map| {
         update_map(map, |subnet_id, account| {
@@ -346,16 +346,15 @@ fn canister_heartbeat() {
 
             let cost_cycles_per_second = daily_cost_cycles / 86400;
             let now = ic_cdk::api::time();
-            let delta_t = now - account.last_burned;
-            // let amount = cost_cycles_per_second * (delta_t / 1_000_000_000) as u128;
-            let amount = 100;
+            let delta_t_nanos = now - account.last_burned;
+            let amount = cost_cycles_per_second * (delta_t_nanos / 1_000_000_000) as u128;
             if account.cycles_balance >= amount {
                 ic_cdk::api::cycles_burn(amount);
                 let new_last_burned = now;
                 let new_cycles_balance = account.cycles_balance - amount;
                 println!(
                     "Burned {} cycles for agreement {:?}, remaining: {}",
-                    amount, subnet_id, account.cycles_balance
+                    amount, subnet_id, new_cycles_balance
                 );
                 RentalAccount {
                     covered_until: account.covered_until,

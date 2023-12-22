@@ -7,6 +7,7 @@ use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 use std::{
     collections::{HashMap, HashSet},
     fs,
+    time::Duration,
 };
 use subnet_rental_canister::{
     external_types::{
@@ -193,42 +194,11 @@ fn test_proposal_accepted() {
         Err(ExecuteProposalError::SubnetAlreadyRented)
     ));
 
-    // TODO: what is going wrong here?
-    // let WasmResult::Reply(accounts) = pic
-    //     .query_call(
-    //         canister_id,
-    //         candid::Principal::anonymous(),
-    //         "get_rental_accounts",
-    //         encode_one(()).unwrap(),
-    //     )
-    //     .unwrap()
-    // else {
-    //     panic!("Expected a reply");
-    // };
-    // let accounts = decode_one::<Vec<Principal, RentalAccount>>(&accounts).unwrap();
-    // println!("accounts: {}", accounts);
-
-    pic.update_call(
-        canister_id,
-        candid::Principal::anonymous(),
-        "canister_heartbeat",
-        encode_one(()).unwrap(),
-    )
-    .unwrap();
-    pic.update_call(
-        canister_id,
-        candid::Principal::anonymous(),
-        "canister_heartbeat",
-        encode_one(()).unwrap(),
-    )
-    .unwrap();
-    pic.update_call(
-        canister_id,
-        candid::Principal::anonymous(),
-        "canister_heartbeat",
-        encode_one(()).unwrap(),
-    )
-    .unwrap();
+    pic.tick();
+    pic.advance_time(Duration::from_secs(2));
+    pic.tick();
+    pic.advance_time(Duration::from_secs(1));
+    pic.tick();
 }
 
 #[test]
