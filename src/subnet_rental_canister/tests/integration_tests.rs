@@ -1,9 +1,10 @@
-use candid::{decode_one, encode_args, encode_one, Principal};
+use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
 use ic_ledger_types::{
     AccountIdentifier, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
+use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -13,7 +14,7 @@ use subnet_rental_canister::{
     external_types::{
         CyclesCanisterInitPayload, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
-    ExecuteProposalError, RentalConditions, ValidatedSubnetRentalProposal,
+    ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -193,12 +194,61 @@ fn test_proposal_accepted() {
         res,
         Err(ExecuteProposalError::SubnetAlreadyRented)
     ));
+}
 
-    pic.tick();
+#[test]
+fn test_burning() {
+    let (pic, canister_id) = setup();
+    add_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let rental_accounts: Vec<(Principal, RentalAccount)> =
+        query(&pic, canister_id, "get_rental_accounts", ());
+    let initial_balance = rental_accounts[0].1.cycles_balance;
     pic.advance_time(Duration::from_secs(2));
     pic.tick();
-    pic.advance_time(Duration::from_secs(1));
-    pic.tick();
+    let rental_accounts: Vec<(Principal, RentalAccount)> =
+        query(&pic, canister_id, "get_rental_accounts", ());
+    let new_balance = rental_accounts[0].1.cycles_balance;
+    assert!(new_balance < initial_balance);
+}
+
+fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
+    pic: &PocketIc,
+    canister_id: Principal,
+    method: &str,
+    args: impl CandidType,
+) -> T {
+    let WasmResult::Reply(res) = pic
+        .query_call(
+            canister_id,
+            Principal::anonymous(),
+            method,
+            encode_one(args).unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected Reply");
+    };
+    decode_one::<T>(&res).unwrap()
+}
+
+fn update<T: CandidType + for<'a> Deserialize<'a>>(
+    pic: &PocketIc,
+    canister_id: Principal,
+    method: &str,
+    args: impl CandidType,
+) -> T {
+    let WasmResult::Reply(res) = pic
+        .update_call(
+            canister_id,
+            Principal::anonymous(),
+            method,
+            encode_one(args).unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected Reply");
+    };
+    decode_one::<T>(&res).unwrap()
 }
 
 #[test]

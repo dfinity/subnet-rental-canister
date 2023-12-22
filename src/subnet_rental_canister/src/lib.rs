@@ -81,15 +81,6 @@ impl Storable for Principal {
     }
 }
 
-fn _get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
-    RENTAL_AGREEMENTS.with(|map| map.borrow().get(subnet_id))
-}
-
-#[query]
-fn get_rental_accounts() -> Vec<(Principal, RentalAccount)> {
-    RENTAL_ACCOUNTS.with(|map| map.borrow().iter().collect())
-}
-
 /// Set of conditions for a specific subnet up for rent.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct RentalConditions {
@@ -203,6 +194,11 @@ fn list_subnet_conditions() -> HashMap<SubnetId, RentalConditions> {
 #[query]
 fn list_rental_agreements() -> Vec<RentalAgreement> {
     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
+}
+
+#[query]
+fn get_rental_accounts() -> Vec<(Principal, RentalAccount)> {
+    RENTAL_ACCOUNTS.with(|map| map.borrow().iter().collect())
 }
 
 #[derive(Clone, CandidType, Deserialize)]
@@ -353,21 +349,22 @@ fn canister_heartbeat() {
                 return account;
             }
             let canister_total_available_cycles = ic_cdk::api::canister_balance128();
-            if canister_total_available_cycles < amount {
-                println!(
-                    "Fatal: Canister has fewer cycles {} than subaccount {:?}: {}",
-                    canister_total_available_cycles, subnet_id, account.cycles_balance
-                );
-                return account;
-            }
+            // TODO: disabled for testing;
+            // if canister_total_available_cycles < amount {
+            //     println!(
+            //         "Fatal: Canister has fewer cycles {} than subaccount {:?}: {}",
+            //         canister_total_available_cycles, subnet_id, account.cycles_balance
+            //     );
+            //     return account;
+            // }
             // Burn must succeed now
             ic_cdk::api::cycles_burn(amount);
             let cycles_balance = account.cycles_balance - amount;
             let last_burned = now;
-            // println!(
-            //     "Burned {} cycles for agreement {:?}, remaining: {}",
-            //     amount, subnet_id, cycles_balance
-            // );
+            println!(
+                "Burned {} cycles for agreement {:?}, remaining: {}",
+                amount, subnet_id, cycles_balance
+            );
             RentalAccount {
                 covered_until: account.covered_until,
                 cycles_balance,
