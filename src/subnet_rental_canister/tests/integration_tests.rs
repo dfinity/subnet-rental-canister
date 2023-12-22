@@ -180,6 +180,7 @@ fn test_proposal_accepted() {
 
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
     assert!(res.is_ok());
+    println!("res {:?}", res);
 
     // using the same subnet again must fail
     let wasm_res = add_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);

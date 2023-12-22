@@ -434,12 +434,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "futures"
+version = "0.3.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da0290714b38af9b4a7b094b8a37086d1b4e61f2df9122c3cad2577669145335"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff4dd66668b557604244583e3e1e1eada8c5c2e96a6d0d6653ede395b78bbacb"
 dependencies = [
  "futures-core",
+ "futures-sink",
 ]
 
 [[package]]
@@ -447,6 +463,17 @@ name = "futures-core"
 version = "0.3.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb1d22c66e66d9d72e1758f0bd7d4fd0bee04cad842ee34587d68c07e45d088c"
+
+[[package]]
+name = "futures-executor"
+version = "0.3.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f4fb8693db0cf099eadcca0efe2a5a22e4550f98ed16aba6c48700da29597bc"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "futures-util",
+]
 
 [[package]]
 name = "futures-io"
@@ -483,6 +510,7 @@ version = "0.3.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a19526d624e703a3179b3d322efec918b6246ea0fa51d41124525f00f1cc8104"
 dependencies = [
+ "futures-channel",
  "futures-core",
  "futures-io",
  "futures-macro",
@@ -682,6 +710,20 @@ dependencies = [
  "serde",
  "serde_tokenstream",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "ic-cdk-timers"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96fa62243d3a412ceae88d6ad213614769e8b0bbcaeb98abb2e7985074257356"
+dependencies = [
+ "futures",
+ "ic-cdk 0.11.3",
+ "ic0 0.21.1",
+ "serde",
+ "serde_bytes",
+ "slotmap",
 ]
 
 [[package]]
@@ -1499,6 +1541,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "slotmap"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbff4acf519f630b3a3ddcfaea6c06b42174d9a44bc70c620e9ed1649d58b82a"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1563,6 +1614,7 @@ dependencies = [
  "candid",
  "hex",
  "ic-cdk 0.11.3",
+ "ic-cdk-timers",
  "ic-ledger-types",
  "ic-stable-structures",
  "pocket-ic",

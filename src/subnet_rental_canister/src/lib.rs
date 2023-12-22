@@ -1,5 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
-use ic_cdk::{init, query, update};
+use ic_cdk::{init, post_upgrade, println, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -7,7 +7,7 @@ use ic_stable_structures::{
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
 use serde::Serialize;
-use std::{borrow::Cow, cell::RefCell, collections::HashMap};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
 use crate::external_types::SetAuthorizedSubnetworkListArgs;
 
@@ -16,6 +16,8 @@ mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const TRILLION: u128 = 1_000_000_000_000;
+const E8S: u64 = 100_000_000;
+const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // daily
 
 type SubnetId = Principal;
 
@@ -126,7 +128,7 @@ struct RentalAccount {
 impl Storable for RentalAccount {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Bounded {
-        max_size: 43,
+        max_size: 51,
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
@@ -140,7 +142,13 @@ impl Storable for RentalAccount {
 
 #[init]
 fn init() {
+    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || billing());
     ic_cdk::println!("Subnet rental canister initialized");
+}
+
+#[post_upgrade]
+fn post_upgrade() {
+    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || billing());
 }
 
 #[update]
@@ -155,6 +163,7 @@ fn demo_add_rental_agreement() {
     let renter = candid::Principal::from_slice(b"user1").into();
     let user = candid::Principal::from_slice(b"user2").into();
     let creation_date = ic_cdk::api::time();
+    let initial_rental_period_days = 365;
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(
             subnet_id,
@@ -164,7 +173,7 @@ fn demo_add_rental_agreement() {
                 principals: vec![renter, user],
                 rental_conditions: RentalConditions {
                     daily_cost_cycles: 1_000 * TRILLION,
-                    initial_rental_period_days: 365,
+                    initial_rental_period_days,
                     billing_period_days: 30,
                     warning_threshold_days: 60,
                 },
@@ -172,12 +181,14 @@ fn demo_add_rental_agreement() {
             },
         )
     });
+    let test_exchange_rate_icp_cycles: u128 = 7_240_100_000_000; // 1 ICP = 7.24T cycles
+    let test_icp_balance: u64 = 50_500; // just over one year covered
     RENTAL_ACCOUNTS.with(|map| {
         map.borrow_mut().insert(
             subnet_id,
             RentalAccount {
-                covered_until: creation_date,
-                cycles_balance: 0,
+                covered_until: creation_date + days_to_nanos(initial_rental_period_days),
+                cycles_balance: test_icp_balance as u128 * test_exchange_rate_icp_cycles,
                 last_burned: 0,
             },
         )
@@ -231,14 +242,6 @@ async fn accept_rental_agreement(
     // Creation date in nanoseconds since epoch.
     let creation_date = ic_cdk::api::time();
 
-    let rental_agreement = RentalAgreement {
-        user: user.into(),
-        subnet_id: subnet_id.into(),
-        principals: principals.into_iter().map(|p| p.into()).collect(),
-        rental_conditions,
-        creation_date,
-    };
-
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
         ic_cdk::println!(
             "Subnet is already in an active rental agreement: {:?}",
@@ -247,23 +250,43 @@ async fn accept_rental_agreement(
         return Err(ExecuteProposalError::SubnetAlreadyRented);
     }
 
-    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
+    // Check if the user has enough cycles to cover the initial rental period.
+    let icp_balance: u64 = 51_000; // TODO: get from LEDGER
+    let exchange_rate: u128 = 7_240_100_000_000; // 1 ICP = 7.24T cycles TODO: get from CMC
+    let available_cycles = icp_balance as u128 * exchange_rate;
+    let needed_cycles =
+        rental_conditions.daily_cost_cycles * rental_conditions.initial_rental_period_days as u128;
+    if available_cycles < needed_cycles {
+        ic_cdk::println!("Insufficient ICP balance to cover cost for initial rental period");
+        return Err(ExecuteProposalError::InsufficientFunds);
+    }
+
+    // Convert ICP to cycles
+    // TODO: This might now be slightly less than the requested amount, due to price fluctuations since the check above.
+    let actual_cycles = needed_cycles; // TODO: call CMC and exchange ICP for cycles
+
     // Add the rental agreement to the rental agreement map.
+    let rental_agreement = RentalAgreement {
+        user: user.into(),
+        subnet_id: subnet_id.into(),
+        principals: principals.into_iter().map(|p| p.into()).collect(),
+        rental_conditions,
+        creation_date,
+    };
+    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut()
             .insert(subnet_id.into(), rental_agreement.clone());
     });
 
-    RENTAL_ACCOUNTS.with(|map| {
-        map.borrow_mut().insert(
-            subnet_id.into(),
-            RentalAccount {
-                covered_until: creation_date, // TODO
-                cycles_balance: 0, // TODO: what about remaining cycles? what if this rental account already exists?
-                last_burned: 0,
-            },
-        )
-    });
+    // Add the rental account to the rental account map.
+    let rental_account = RentalAccount {
+        covered_until: creation_date + days_to_nanos(rental_conditions.initial_rental_period_days),
+        cycles_balance: actual_cycles, // TODO: what about remaining cycles? what if this rental account already exists?
+        last_burned: 0,
+    };
+    ic_cdk::println!("Creating rental account: {:?}", &rental_account);
+    RENTAL_ACCOUNTS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_account));
 
     // Whitelist principals for subnet
     for user in &rental_agreement.principals {
@@ -284,36 +307,55 @@ async fn accept_rental_agreement(
     Ok(())
 }
 
-#[update]
 fn billing() {
-    // wip
     RENTAL_AGREEMENTS.with(|map| {
         for (subnet_id, rental_agreement) in map.borrow().iter() {
-            // Check if subnet is covered for next billing_period amount of days.
-            let mut covered_until =
-                RENTAL_ACCOUNTS.with(|map| map.borrow_mut().get(&subnet_id).unwrap().covered_until);
-            let now = ic_cdk::api::time();
-            let billing_period = rental_agreement.rental_conditions.billing_period_days
-                * 24
-                * 60
-                * 60
-                * 1_000_000_000;
+            let Some(RentalAccount { covered_until, .. }) =
+                RENTAL_ACCOUNTS.with(|map| map.borrow_mut().get(&subnet_id))
+            else {
+                ic_cdk::println!(
+                    "FATAL: No rental account found for active rental agreement {:?}",
+                    &subnet_id
+                );
+                continue;
+            };
 
-            if covered_until < now + billing_period {
-                // check if user has enough cycles in his locally bookkept account
-                // if so, burn a month's worth of cycles
-                // if not, try to withdraw ICP from the user's account, convert to cycles, and burn a month's worth of cycles
-                ic_cdk::println!("Let's mint some cycles! {}", covered_until);
-                // withdraw ICP from the user's account
-                // send to CMC
-                // add minted cycles into local bookkeeping thing, DONT burn here
-                covered_until += billing_period;
+            // Check if subnet is covered for next billing_period amount of days.
+            let now = ic_cdk::api::time();
+            let billing_period_nanos =
+                days_to_nanos(rental_agreement.rental_conditions.billing_period_days);
+
+            if covered_until < now + billing_period_nanos {
+                // Next billing period is not fully covered anymore.
+                // Try to withdraw ICP and convert to cycles.
+                let exchange_rate: u128 = 7_240_100_000_000; // 1 ICP = 7.24T cycles TODO: get from CMC
+                let icp_balance: u64 = 4_250; // TODO: get from LEDGER
+                let needed_cycles = rental_agreement.rental_conditions.daily_cost_cycles
+                    * rental_agreement.rental_conditions.billing_period_days as u128;
+                let available_cycles = icp_balance as u128 * exchange_rate;
+
+                if available_cycles < needed_cycles {
+                    ic_cdk::println!(
+                        "Insufficient ICP balance to cover cost for next billing period"
+                    );
+                    // TODO: issue WARNING event
+                    continue;
+                }
+
+                // TODO: do exchange with CMC and get actual amount of cycles
+                // TODO: This might now be slightly less than the requested amount, due to price fluctuations since the check above.
+                let actual_cycles = needed_cycles;
+
+                // Add cycles to rental account, update covered_until.
                 RENTAL_ACCOUNTS.with(|map| {
-                    map.borrow_mut().get(&subnet_id).unwrap().covered_until = covered_until
-                    // TODO: not properly persisted!
+                    let mut value = map.borrow().get(&subnet_id).unwrap();
+                    value.covered_until += billing_period_nanos;
+                    value.cycles_balance += actual_cycles;
+                    map.borrow_mut().insert(subnet_id, value);
                 });
                 ic_cdk::println!("Now covered until {}", covered_until);
             } else {
+                // Next billing period is still fully covered.
                 ic_cdk::println!("Subnet is covered until {} now is {}", covered_until, now);
             }
         }
@@ -332,6 +374,10 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
     Ok(())
+}
+
+fn days_to_nanos(days: u64) -> u64 {
+    days * 24 * 60 * 60 * 1_000_000_000
 }
 
 #[update]
