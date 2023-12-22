@@ -13,7 +13,7 @@ use subnet_rental_canister::{
     external_types::{
         CyclesCanisterInitPayload, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
-    ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
+    ExecuteProposalError, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
