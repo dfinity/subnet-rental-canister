@@ -351,10 +351,10 @@ fn billing() {
 
                 // Add cycles to rental account, update covered_until.
                 RENTAL_ACCOUNTS.with(|map| {
-                    let mut value = map.borrow().get(&subnet_id).unwrap();
-                    value.covered_until += billing_period_nanos;
-                    value.cycles_balance += actual_cycles;
-                    map.borrow_mut().insert(subnet_id, value);
+                    let mut rental_account = map.borrow().get(&subnet_id).unwrap();
+                    rental_account.covered_until += billing_period_nanos;
+                    rental_account.cycles_balance += actual_cycles;
+                    map.borrow_mut().insert(subnet_id, rental_account);
                 });
                 println!("Now covered until {}", covered_until);
             } else {
