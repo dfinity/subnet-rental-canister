@@ -348,8 +348,8 @@ fn canister_heartbeat() {
                 println!("Failed to burn cycles for agreement {:?}", subnet_id);
                 return account;
             }
-            let canister_total_available_cycles = ic_cdk::api::canister_balance128();
             // TODO: disabled for testing;
+            // let canister_total_available_cycles = ic_cdk::api::canister_balance128();
             // if canister_total_available_cycles < amount {
             //     println!(
             //         "Fatal: Canister has fewer cycles {} than subaccount {:?}: {}",
