@@ -231,6 +231,7 @@ fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     decode_one::<T>(&res).unwrap()
 }
 
+#[allow(dead_code)]
 fn update<T: CandidType + for<'a> Deserialize<'a>>(
     pic: &PocketIc,
     canister_id: Principal,
