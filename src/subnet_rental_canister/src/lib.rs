@@ -17,7 +17,7 @@ mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const TRILLION: u128 = 1_000_000_000_000;
-const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // daily
+const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // hourly
 
 type SubnetId = Principal;
 
