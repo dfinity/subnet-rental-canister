@@ -1,7 +1,7 @@
 # Subnet Rental Canister
 
 ## Running the Project
-If you want to test your project locally, you can use the following commands:
+If you want to test the project locally, install `dfx` version 0.15.2 and use the following commands:
 
 ```bash
 # Starts the replica, running in the background
