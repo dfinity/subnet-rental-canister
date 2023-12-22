@@ -1,6 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
-use ic_cdk::{heartbeat, println};
-use ic_cdk::{init, post_upgrade, println, query, update};
+use ic_cdk::{heartbeat, init, post_upgrade, println, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::Memory;
 use ic_stable_structures::{
@@ -18,7 +17,6 @@ mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const TRILLION: u128 = 1_000_000_000_000;
-const E8S: u64 = 100_000_000;
 const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // daily
 
 type SubnetId = Principal;
@@ -130,7 +128,7 @@ pub struct RentalAccount {
 impl Storable for RentalAccount {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Bounded {
-        max_size: 54,
+        max_size: 51, // TODO: figure out the actual size
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
