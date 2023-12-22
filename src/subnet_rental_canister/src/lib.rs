@@ -1,6 +1,8 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
+use ic_cdk::{heartbeat, println};
 use ic_cdk::{init, post_upgrade, println, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_stable_structures::Memory;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     storable::Bound,
@@ -114,21 +116,21 @@ impl Storable for RentalAgreement {
 }
 
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
-struct RentalAccount {
+pub struct RentalAccount {
     /// The date (in nanos since epoch) until which the rental agreement is paid for.
-    covered_until: u64,
+    pub covered_until: u64,
     /// This account's share of cycles among the SRC's cycles.
     /// Increased by the payment process (via timer).
     /// Decreased by the burning process (via heartbeat).
-    cycles_balance: u128,
+    pub cycles_balance: u128,
     /// The last point in time (nanos since epoch) when cycles were burned in a heartbeat.
-    last_burned: u64,
+    pub last_burned: u64,
 }
 
 impl Storable for RentalAccount {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Bounded {
-        max_size: 51,
+        max_size: 54,
         is_fixed_size: true,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
@@ -205,6 +207,11 @@ fn list_rental_agreements() -> Vec<RentalAgreement> {
     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
 }
 
+#[query]
+fn get_rental_accounts() -> Vec<(Principal, RentalAccount)> {
+    RENTAL_ACCOUNTS.with(|map| map.borrow().iter().collect())
+}
+
 #[derive(Clone, CandidType, Deserialize)]
 pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: candid::Principal,
@@ -243,7 +250,7 @@ async fn accept_rental_agreement(
     let creation_date = ic_cdk::api::time();
 
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
-        ic_cdk::println!(
+        println!(
             "Subnet is already in an active rental agreement: {:?}",
             &subnet_id
         );
@@ -283,7 +290,7 @@ async fn accept_rental_agreement(
     let rental_account = RentalAccount {
         covered_until: creation_date + days_to_nanos(rental_conditions.initial_rental_period_days),
         cycles_balance: actual_cycles, // TODO: what about remaining cycles? what if this rental account already exists?
-        last_burned: 0,
+        last_burned: ic_cdk::api::time(),
     };
     ic_cdk::println!("Creating rental account: {:?}", &rental_account);
     RENTAL_ACCOUNTS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_account));
@@ -370,7 +377,7 @@ pub struct RejectedSubnetRentalProposal {
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
-        ic_cdk::println!("Caller is not the governance canister");
+        println!("Caller is not the governance canister");
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
     Ok(())
@@ -380,8 +387,68 @@ fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
 }
 
-#[update]
+/// Pass one of the global StableBTreeMaps and a function that transforms a value.
+fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
+where
+    K: Storable + Ord + Clone,
+    V: Storable,
+    M: Memory,
+{
+    let keys: Vec<K> = map.borrow().iter().map(|(k, _v)| k).collect();
+    for key in keys {
+        let value = map.borrow().get(&key).unwrap();
+        map.borrow_mut().insert(key.clone(), f(key, value));
+    }
+}
+
+#[heartbeat]
 fn canister_heartbeat() {
-    // let amount = burn_rate * delta_t;
-    // ic_cdk::api::cycles_burn(amount);
+    RENTAL_ACCOUNTS.with(|map| {
+        update_map(map, |subnet_id, account| {
+            let Some(rental_agreement) = RENTAL_AGREEMENTS.with(|map| map.borrow().get(&subnet_id))
+            else {
+                println!(
+                    "Fatal: Failed to find active rental agreement for active rental account {:?}",
+                    subnet_id
+                );
+                return account;
+            };
+            let cost_cycles_per_second =
+                rental_agreement.rental_conditions.daily_cost_cycles / 86400;
+            let now = ic_cdk::api::time();
+            let nanos_since_last_burn = now - account.last_burned;
+            // cost_cycles_per_second: ~10^10 < 10^12
+            // nanos_since_last_burn:  ~10^9  < 10^15
+            // product                        < 10^27 << 10^38 (u128_max)
+            // divided by 1B                    10^-9
+            // amount                         < 10^18
+            let amount = cost_cycles_per_second * nanos_since_last_burn as u128 / 1_000_000_000;
+            if account.cycles_balance < amount {
+                println!("Failed to burn cycles for agreement {:?}", subnet_id);
+                return account;
+            }
+            // TODO: disabled for testing;
+            // let canister_total_available_cycles = ic_cdk::api::canister_balance128();
+            // if canister_total_available_cycles < amount {
+            //     println!(
+            //         "Fatal: Canister has fewer cycles {} than subaccount {:?}: {}",
+            //         canister_total_available_cycles, subnet_id, account.cycles_balance
+            //     );
+            //     return account;
+            // }
+            // Burn must succeed now
+            ic_cdk::api::cycles_burn(amount);
+            let cycles_balance = account.cycles_balance - amount;
+            let last_burned = now;
+            println!(
+                "Burned {} cycles for agreement {:?}, remaining: {}",
+                amount, subnet_id, cycles_balance
+            );
+            RentalAccount {
+                covered_until: account.covered_until,
+                cycles_balance,
+                last_burned,
+            }
+        });
+    });
 }
