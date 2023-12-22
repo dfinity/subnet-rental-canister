@@ -143,7 +143,7 @@ impl Storable for RentalAccount {
 #[init]
 fn init() {
     ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, billing);
-    ic_cdk::println!("Subnet rental canister initialized");
+    println!("Subnet rental canister initialized");
 }
 
 #[post_upgrade]
@@ -189,7 +189,7 @@ fn demo_add_rental_agreement() {
             RentalAccount {
                 covered_until: creation_date + days_to_nanos(initial_rental_period_days),
                 cycles_balance: test_icp_balance as u128 * test_exchange_rate_icp_cycles,
-                last_burned: 0,
+                last_burned: creation_date,
             },
         )
     });
@@ -262,7 +262,7 @@ async fn accept_rental_agreement(
     let needed_cycles =
         rental_conditions.daily_cost_cycles * rental_conditions.initial_rental_period_days as u128;
     if available_cycles < needed_cycles {
-        ic_cdk::println!("Insufficient ICP balance to cover cost for initial rental period");
+        println!("Insufficient ICP balance to cover cost for initial rental period");
         return Err(ExecuteProposalError::InsufficientFunds);
     }
 
@@ -278,7 +278,7 @@ async fn accept_rental_agreement(
         rental_conditions,
         creation_date,
     };
-    ic_cdk::println!("Creating rental agreement: {:?}", &rental_agreement);
+    println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut()
             .insert(subnet_id.into(), rental_agreement.clone());
@@ -288,9 +288,9 @@ async fn accept_rental_agreement(
     let rental_account = RentalAccount {
         covered_until: creation_date + days_to_nanos(rental_conditions.initial_rental_period_days),
         cycles_balance: actual_cycles, // TODO: what about remaining cycles? what if this rental account already exists?
-        last_burned: ic_cdk::api::time(),
+        last_burned: creation_date,
     };
-    ic_cdk::println!("Creating rental account: {:?}", &rental_account);
+    println!("Creating rental account: {:?}", &rental_account);
     RENTAL_ACCOUNTS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_account));
 
     // Whitelist principals for subnet
@@ -318,7 +318,7 @@ fn billing() {
             let Some(RentalAccount { covered_until, .. }) =
                 RENTAL_ACCOUNTS.with(|map| map.borrow_mut().get(&subnet_id))
             else {
-                ic_cdk::println!(
+                println!(
                     "FATAL: No rental account found for active rental agreement {:?}",
                     &subnet_id
                 );
@@ -337,12 +337,10 @@ fn billing() {
                 let icp_balance: u64 = 4_250; // TODO: get from LEDGER
                 let needed_cycles = rental_agreement.rental_conditions.daily_cost_cycles
                     * rental_agreement.rental_conditions.billing_period_days as u128;
-                let available_cycles = icp_balance as u128 * exchange_rate;
+                let cycles_available_to_mint = icp_balance as u128 * exchange_rate;
 
-                if available_cycles < needed_cycles {
-                    ic_cdk::println!(
-                        "Insufficient ICP balance to cover cost for next billing period"
-                    );
+                if cycles_available_to_mint < needed_cycles {
+                    println!("Insufficient ICP balance to cover cost for next billing period");
                     // TODO: issue WARNING event
                     continue;
                 }
@@ -358,10 +356,10 @@ fn billing() {
                     value.cycles_balance += actual_cycles;
                     map.borrow_mut().insert(subnet_id, value);
                 });
-                ic_cdk::println!("Now covered until {}", covered_until);
+                println!("Now covered until {}", covered_until);
             } else {
                 // Next billing period is still fully covered.
-                ic_cdk::println!("Subnet is covered until {} now is {}", covered_until, now);
+                println!("Subnet is covered until {} now is {}", covered_until, now);
             }
         }
     });
