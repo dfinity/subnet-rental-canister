@@ -128,8 +128,8 @@ pub struct RentalAccount {
 impl Storable for RentalAccount {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Bounded {
-        max_size: 51, // TODO: figure out the actual size
-        is_fixed_size: true,
+        max_size: 54, // TODO: figure out the actual size
+        is_fixed_size: false,
     };
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(self).unwrap())
