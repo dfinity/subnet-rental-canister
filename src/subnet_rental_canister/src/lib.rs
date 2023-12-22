@@ -142,13 +142,13 @@ impl Storable for RentalAccount {
 
 #[init]
 fn init() {
-    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || billing());
+    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, billing);
     ic_cdk::println!("Subnet rental canister initialized");
 }
 
 #[post_upgrade]
 fn post_upgrade() {
-    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || billing());
+    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, billing);
 }
 
 #[update]
