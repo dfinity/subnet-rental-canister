@@ -1,4 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
+use history::{Event, History};
 use ic_cdk::{heartbeat, init, post_upgrade, println, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::Memory;
@@ -35,7 +36,7 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 
     // Memory region 2
-    static HISTORY: RefCell<StableBTreeMap<Principal, Vec<Event>, VirtualMemory<DefaultMemoryImpl>>> =
+    static HISTORY: RefCell<StableBTreeMap<Principal, History, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
 
