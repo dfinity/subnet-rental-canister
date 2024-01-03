@@ -13,6 +13,7 @@ use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 use crate::external_types::SetAuthorizedSubnetworkListArgs;
 
 pub mod external_types;
+pub mod history;
 mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
@@ -32,6 +33,11 @@ thread_local! {
     // Memory region 1
     static RENTAL_ACCOUNTS: RefCell<StableBTreeMap<Principal, RentalAccount, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
+
+    // Memory region 2
+    static HISTORY: RefCell<StableBTreeMap<Principal, Vec<Event>, VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
+
 
     /// Hardcoded subnets and their rental conditions. TODO: make this editable via proposal (method), not canister upgrade.
     static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
