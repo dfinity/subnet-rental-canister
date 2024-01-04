@@ -99,7 +99,7 @@ pub struct RentalConditions {
 
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug, Clone, CandidType, Deserialize)]
-struct RentalAgreement {
+pub(crate) struct RentalAgreement {
     user: Principal,
     subnet_id: SubnetId,
     principals: Vec<Principal>,
@@ -402,6 +402,14 @@ where
         let value = map.borrow().get(&key).unwrap();
         map.borrow_mut().insert(key.clone(), f(key, value));
     }
+}
+
+fn persist_event(event: Event, subnet: Principal) {
+    HISTORY.with(|map| {
+        let mut history = map.borrow().get(&subnet).unwrap();
+        history.events.push(event);
+        map.borrow_mut().insert(subnet, history);
+    })
 }
 
 #[heartbeat]
