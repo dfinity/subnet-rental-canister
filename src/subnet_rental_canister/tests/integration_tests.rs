@@ -14,6 +14,7 @@ use subnet_rental_canister::{
     external_types::{
         CyclesCanisterInitPayload, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
+    history::Event,
     ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
@@ -194,6 +195,16 @@ fn test_proposal_accepted() {
         res,
         Err(ExecuteProposalError::SubnetAlreadyRented)
     ));
+}
+
+#[test]
+fn test_history() {
+    let (pic, canister_id) = setup();
+    let _wasm_res = add_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let subnet = Principal::from_text(SUBNET_FOR_RENT).unwrap();
+
+    let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
+    println!("Events: {:?}", events);
 }
 
 #[test]

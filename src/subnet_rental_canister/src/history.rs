@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::{Principal, RentalAgreement};
 
-/// The 
+/// The
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct History {
     pub events: Vec<Event>,
@@ -24,7 +24,7 @@ impl Storable for History {
 }
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
-pub(crate) struct Event {
+pub struct Event {
     event: EventType,
     date: u64,
 }
@@ -45,12 +45,12 @@ impl From<EventType> for Event {
 }
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
-pub(crate) enum EventType {
+pub enum EventType {
     Created { rental_agreement: RentalAgreement },
     Rejected { user: Principal, subnet: Principal },
     PaymentSuccess { amount: u64 },
     PaymentFailure { reason: String },
     Degraded,
     Undegraded,
-    Other(String),
+    Other { message: String },
 }

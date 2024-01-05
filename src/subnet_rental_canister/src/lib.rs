@@ -412,6 +412,15 @@ fn persist_event(event: Event, subnet: Principal) {
     })
 }
 
+#[query]
+fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
+    HISTORY.with(|map| {
+        map.borrow()
+            .get(&subnet.into())
+            .map(|history| history.events)
+    })
+}
+
 #[heartbeat]
 fn canister_heartbeat() {
     RENTAL_ACCOUNTS.with(|map| {
