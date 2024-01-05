@@ -49,12 +49,12 @@ pub enum EventType {
     Created {
         rental_agreement: RentalAgreement,
     },
+    Rejected {
+        user: Principal,
+    },
     Failed {
         user: Principal,
         reason: ExecuteProposalError,
-    },
-    Rejected {
-        user: Principal,
     },
     PaymentSuccess {
         amount: u64,

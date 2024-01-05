@@ -225,7 +225,7 @@ pub struct ValidatedSubnetRentalProposal {
     pub principals: Vec<candid::Principal>,
 }
 
-#[derive(CandidType, Debug, Clone, Deserialize)]
+#[derive(CandidType, Debug, Copy, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     SubnetAlreadyRented,
     UnauthorizedCaller,
@@ -259,11 +259,16 @@ async fn accept_rental_agreement(
             "Subnet is already in an active rental agreement: {:?}",
             &subnet_id
         );
+        let err = ExecuteProposalError::SubnetAlreadyRented;
         persist_event(
-            EventType::Rejected { user: user.into() }.into(),
+            EventType::Failed {
+                user: user.into(),
+                reason: err,
+            }
+            .into(),
             subnet_id.into(),
         );
-        return Err(ExecuteProposalError::SubnetAlreadyRented);
+        return Err(err);
     }
 
     // Check if the user has enough cycles to cover the initial rental period.
