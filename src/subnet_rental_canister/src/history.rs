@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::{Principal, RentalAgreement};
 
 /// The
-#[derive(Debug, Clone, CandidType, Deserialize)]
+#[derive(Debug, Default, Clone, CandidType, Deserialize)]
 pub struct History {
     pub events: Vec<Event>,
 }

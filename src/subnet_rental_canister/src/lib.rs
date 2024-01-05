@@ -12,6 +12,7 @@ use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
 use crate::external_types::SetAuthorizedSubnetworkListArgs;
+use crate::history::EventType;
 
 pub mod external_types;
 pub mod history;
@@ -316,6 +317,11 @@ async fn accept_rental_agreement(
         .expect("Failed to call CMC");
     }
 
+    persist_event(
+        EventType::Created { rental_agreement }.into(),
+        subnet_id.into(),
+    );
+
     Ok(())
 }
 
@@ -406,7 +412,7 @@ where
 
 fn persist_event(event: Event, subnet: Principal) {
     HISTORY.with(|map| {
-        let mut history = map.borrow().get(&subnet).unwrap();
+        let mut history = map.borrow().get(&subnet).unwrap_or_default();
         history.events.push(event);
         map.borrow_mut().insert(subnet, history);
     })
