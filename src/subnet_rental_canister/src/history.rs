@@ -4,7 +4,7 @@ use candid::{CandidType, Decode, Encode};
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{Principal, RentalAgreement};
+use crate::{ExecuteProposalError, Principal, RentalAgreement};
 
 /// The
 #[derive(Debug, Default, Clone, CandidType, Deserialize)]
@@ -46,11 +46,25 @@ impl From<EventType> for Event {
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub enum EventType {
-    Created { rental_agreement: RentalAgreement },
-    Rejected { user: Principal, subnet: Principal },
-    PaymentSuccess { amount: u64 },
-    PaymentFailure { reason: String },
+    Created {
+        rental_agreement: RentalAgreement,
+    },
+    Failed {
+        user: Principal,
+        reason: ExecuteProposalError,
+    },
+    Rejected {
+        user: Principal,
+    },
+    PaymentSuccess {
+        amount: u64,
+    },
+    PaymentFailure {
+        reason: String,
+    },
     Degraded,
     Undegraded,
-    Other { message: String },
+    Other {
+        message: String,
+    },
 }

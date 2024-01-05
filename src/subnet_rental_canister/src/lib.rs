@@ -100,7 +100,7 @@ pub struct RentalConditions {
 
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug, Clone, CandidType, Deserialize)]
-pub(crate) struct RentalAgreement {
+pub struct RentalAgreement {
     user: Principal,
     subnet_id: SubnetId,
     principals: Vec<Principal>,
@@ -227,7 +227,6 @@ pub struct ValidatedSubnetRentalProposal {
 
 #[derive(CandidType, Debug, Clone, Deserialize)]
 pub enum ExecuteProposalError {
-    Failure(String),
     SubnetAlreadyRented,
     UnauthorizedCaller,
     InsufficientFunds,
@@ -259,6 +258,10 @@ async fn accept_rental_agreement(
         println!(
             "Subnet is already in an active rental agreement: {:?}",
             &subnet_id
+        );
+        persist_event(
+            EventType::Rejected { user: user.into() }.into(),
+            subnet_id.into(),
         );
         return Err(ExecuteProposalError::SubnetAlreadyRented);
     }
