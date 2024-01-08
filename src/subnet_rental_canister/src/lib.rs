@@ -385,7 +385,7 @@ fn billing() {
                         covered_until,
                     }
                     .into(),
-                    subnet_id.into(),
+                    subnet_id,
                 );
             } else {
                 // Next billing period is still fully covered.
