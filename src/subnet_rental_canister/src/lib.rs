@@ -148,7 +148,7 @@ fn init() {
 }
 
 #[post_upgrade]
-async fn post_upgrade() {
+fn post_upgrade() {
     ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 }
 
@@ -258,8 +258,8 @@ async fn accept_rental_agreement(
 
     // Check if the user has enough cycles to cover the initial rental period.
     let icp_balance: u64 = 51_000; // TODO: get from LEDGER
-
-    let available_cycles = icp_balance as u128 * get_exchange_rate().await;
+    let xdr_per_icp_conversion_rate = get_exchange_rate().await;
+    let available_cycles = icp_balance as u128 * xdr_per_icp_conversion_rate;
     let needed_cycles =
         rental_conditions.daily_cost_cycles * rental_conditions.initial_rental_period_days as u128;
     if available_cycles < needed_cycles {
