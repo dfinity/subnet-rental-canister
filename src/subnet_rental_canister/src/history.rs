@@ -6,7 +6,12 @@ use serde::Deserialize;
 
 use crate::{ExecuteProposalError, Principal, RentalAgreement};
 
-/// The
+/// Important events are persisted for auditing by the community.
+/// History struct instances are values in a Map<SubnetId, History>, so the
+/// corresponding subnet_id is always implied. The first event in a History
+/// should be a RentalConditionsChanged variant, created in canister_init.
+/// Events belonging to a valid rental agreement are then bracketed by the variants
+/// Created and Terminated.
 #[derive(Debug, Default, Clone, CandidType, Deserialize)]
 pub struct History {
     pub events: Vec<Event>,
@@ -23,16 +28,12 @@ impl Storable for History {
     const BOUND: Bound = Bound::Unbounded;
 }
 
+/// A rental agreement state change.
+/// Prefer creating events via EventType::SomeVariant.into().
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct Event {
     event: EventType,
     date: u64,
-}
-
-impl Event {
-    pub fn new(event: EventType) -> Self {
-        event.into()
-    }
 }
 
 impl From<EventType> for Event {
@@ -46,6 +47,7 @@ impl From<EventType> for Event {
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub enum EventType {
+    RentalConditionsChanged, // TODO: Create this in canister init
     Created {
         // proposal_id: u64,
         rental_agreement: RentalAgreement,
@@ -69,7 +71,6 @@ pub enum EventType {
     },
     Degraded,
     Undegraded,
-    RentalConditionsChanged, // TODO: Create this in canister init
     Other {
         message: String,
     },

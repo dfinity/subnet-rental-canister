@@ -205,6 +205,11 @@ fn test_history() {
 
     let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
     println!("Events: {:?}", events);
+    if let Some(events) = events {
+        assert!(events.len() == 1);
+    } else {
+        panic!("Expected an event");
+    }
 }
 
 #[test]
