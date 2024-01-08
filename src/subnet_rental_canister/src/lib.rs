@@ -1,5 +1,4 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
-use external_types::IcpXdrConversionRate;
 use ic_cdk::{heartbeat, init, post_upgrade, println, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::Memory;
@@ -11,7 +10,9 @@ use ic_stable_structures::{
 use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
-use crate::external_types::{IcpXdrConversionRateResponse, SetAuthorizedSubnetworkListArgs};
+use crate::external_types::{
+    IcpXdrConversionRate, IcpXdrConversionRateResponse, SetAuthorizedSubnetworkListArgs,
+};
 
 pub mod external_types;
 mod http_request;
@@ -258,8 +259,8 @@ async fn accept_rental_agreement(
 
     // Check if the user has enough cycles to cover the initial rental period.
     let icp_balance: u64 = 51_000; // TODO: get from LEDGER
-    let xdr_per_icp_conversion_rate = get_exchange_rate().await;
-    let available_cycles = icp_balance as u128 * xdr_per_icp_conversion_rate;
+    let exchange_rate = get_exchange_rate().await;
+    let available_cycles = icp_balance as u128 * exchange_rate;
     let needed_cycles =
         rental_conditions.daily_cost_cycles * rental_conditions.initial_rental_period_days as u128;
     if available_cycles < needed_cycles {
