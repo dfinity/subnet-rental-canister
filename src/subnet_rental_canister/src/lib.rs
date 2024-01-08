@@ -378,6 +378,15 @@ fn billing() {
                     map.borrow_mut().insert(subnet_id, rental_account);
                 });
                 println!("Now covered until {}", covered_until);
+
+                persist_event(
+                    EventType::PaymentSuccess {
+                        amount: 0,
+                        covered_until,
+                    }
+                    .into(),
+                    subnet_id.into(),
+                );
             } else {
                 // Next billing period is still fully covered.
                 println!("Subnet is covered until {} now is {}", covered_until, now);

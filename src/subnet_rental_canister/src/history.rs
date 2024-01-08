@@ -47,23 +47,29 @@ impl From<EventType> for Event {
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub enum EventType {
     Created {
+        // proposal_id: u64,
         rental_agreement: RentalAgreement,
     },
     Rejected {
+        // proposal_id: u64,
         user: Principal,
     },
     Failed {
+        // proposal_id: u64,
         user: Principal,
         reason: ExecuteProposalError,
     },
+    Terminated,
     PaymentSuccess {
         amount: u64,
+        covered_until: u64,
     },
     PaymentFailure {
         reason: String,
     },
     Degraded,
     Undegraded,
+    RentalConditionsChanged, // TODO: Create this in canister init
     Other {
         message: String,
     },
