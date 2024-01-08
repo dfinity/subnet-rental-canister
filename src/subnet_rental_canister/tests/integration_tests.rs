@@ -14,6 +14,7 @@ use subnet_rental_canister::{
     external_types::{
         CyclesCanisterInitPayload, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
+    history::Event,
     ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
 };
 
@@ -148,7 +149,7 @@ fn test_list_rental_conditions() {
     assert!(!conditions.is_empty());
 }
 
-fn add_test_rental_agreement(
+fn accept_test_rental_agreement(
     pic: &PocketIc,
     canister_id: &Principal,
     subnet_id_str: &str,
@@ -174,7 +175,7 @@ fn test_proposal_accepted() {
     let (pic, canister_id) = setup();
 
     // the first time must succeed
-    let wasm_res = add_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
 
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
@@ -184,7 +185,7 @@ fn test_proposal_accepted() {
     assert!(res.is_ok());
 
     // using the same subnet again must fail
-    let wasm_res = add_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
     };
@@ -197,9 +198,20 @@ fn test_proposal_accepted() {
 }
 
 #[test]
+fn test_history() {
+    let (pic, canister_id) = setup();
+    let _wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let subnet = Principal::from_text(SUBNET_FOR_RENT).unwrap();
+
+    let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
+    assert!(events.is_some());
+    assert_eq!(events.unwrap().len(), 1);
+}
+
+#[test]
 fn test_burning() {
     let (pic, canister_id) = setup();
-    add_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
     let rental_accounts: Vec<(Principal, RentalAccount)> =
         query(&pic, canister_id, "get_rental_accounts", ());
     let initial_balance = rental_accounts[0].1.cycles_balance;

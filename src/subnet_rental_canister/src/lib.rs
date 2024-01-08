@@ -1,4 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
+use history::{Event, History};
 use ic_cdk::{heartbeat, init, post_upgrade, println, query, update};
 use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::Memory;
@@ -13,8 +14,10 @@ use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, SetAuthorizedSubnetworkListArgs,
 };
+use crate::history::EventType;
 
 pub mod external_types;
+pub mod history;
 mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
@@ -34,6 +37,11 @@ thread_local! {
     // Memory region 1
     static RENTAL_ACCOUNTS: RefCell<StableBTreeMap<Principal, RentalAccount, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
+
+    // Memory region 2
+    static HISTORY: RefCell<StableBTreeMap<Principal, History, VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
+
 
     /// Hardcoded subnets and their rental conditions. TODO: make this editable via proposal (method), not canister upgrade.
     static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
@@ -94,7 +102,7 @@ pub struct RentalConditions {
 
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug, Clone, CandidType, Deserialize)]
-struct RentalAgreement {
+pub struct RentalAgreement {
     user: Principal,
     subnet_id: SubnetId,
     principals: Vec<Principal>,
@@ -219,9 +227,8 @@ pub struct ValidatedSubnetRentalProposal {
     pub principals: Vec<candid::Principal>,
 }
 
-#[derive(CandidType, Debug, Clone, Deserialize)]
+#[derive(CandidType, Debug, Copy, Clone, Deserialize)]
 pub enum ExecuteProposalError {
-    Failure(String),
     SubnetAlreadyRented,
     UnauthorizedCaller,
     InsufficientFunds,
@@ -254,7 +261,16 @@ async fn accept_rental_agreement(
             "Subnet is already in an active rental agreement: {:?}",
             &subnet_id
         );
-        return Err(ExecuteProposalError::SubnetAlreadyRented);
+        let err = ExecuteProposalError::SubnetAlreadyRented;
+        persist_event(
+            EventType::Failed {
+                user: user.into(),
+                reason: err,
+            }
+            .into(),
+            subnet_id.into(),
+        );
+        return Err(err);
     }
 
     // Check if the user has enough cycles to cover the initial rental period.
@@ -311,6 +327,11 @@ async fn accept_rental_agreement(
         .expect("Failed to call CMC");
     }
 
+    persist_event(
+        EventType::Created { rental_agreement }.into(),
+        subnet_id.into(),
+    );
+
     Ok(())
 }
 
@@ -359,6 +380,15 @@ async fn billing() {
                     map.borrow_mut().insert(subnet_id, rental_account);
                 });
                 println!("Now covered until {}", covered_until);
+
+                persist_event(
+                    EventType::PaymentSuccess {
+                        amount: 0,
+                        covered_until,
+                    }
+                    .into(),
+                    subnet_id,
+                );
             } else {
                 // Next billing period is still fully covered.
                 println!("Subnet is covered until {} now is {}", covered_until, now);
@@ -411,6 +441,23 @@ where
         let value = map.borrow().get(&key).unwrap();
         map.borrow_mut().insert(key.clone(), f(key, value));
     }
+}
+
+fn persist_event(event: Event, subnet: Principal) {
+    HISTORY.with(|map| {
+        let mut history = map.borrow().get(&subnet).unwrap_or_default();
+        history.events.push(event);
+        map.borrow_mut().insert(subnet, history);
+    })
+}
+
+#[query]
+fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
+    HISTORY.with(|map| {
+        map.borrow()
+            .get(&subnet.into())
+            .map(|history| history.events)
+    })
 }
 
 #[heartbeat]
