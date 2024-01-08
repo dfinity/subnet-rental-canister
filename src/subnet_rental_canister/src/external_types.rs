@@ -3,6 +3,19 @@ use ic_ledger_types::{AccountIdentifier, Tokens};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 
+#[derive(CandidType, Deserialize, Debug)]
+pub struct IcpXdrConversionRate {
+    pub xdr_permyriad_per_icp: u64,
+    pub timestamp_seconds: u64,
+}
+
+#[derive(CandidType, Deserialize, Debug)]
+pub struct IcpXdrConversionRateResponse {
+    pub certificate: serde_bytes::ByteBuf,
+    pub data: IcpXdrConversionRate,
+    pub hash_tree: serde_bytes::ByteBuf,
+}
+
 #[derive(CandidType)]
 pub struct SetAuthorizedSubnetworkListArgs {
     pub who: Option<Principal>,
