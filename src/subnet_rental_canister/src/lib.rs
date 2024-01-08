@@ -1,6 +1,9 @@
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_cdk::{heartbeat, init, post_upgrade, println, query, update};
-use ic_ledger_types::{MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_ledger_types::{
+    account_balance, AccountBalanceArgs, AccountIdentifier, DEFAULT_SUBACCOUNT,
+    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+};
 use ic_stable_structures::Memory;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -19,6 +22,7 @@ mod http_request;
 
 // During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const TRILLION: u128 = 1_000_000_000_000;
+const E8S: u64 = 100_000_000;
 const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // hourly
 
 type SubnetId = Principal;
@@ -183,14 +187,14 @@ fn demo_add_rental_agreement() {
             },
         )
     });
-    let test_exchange_rate_icp_cycles: u128 = 7_240_100_000_000; // 1 ICP = 7.24T cycles
-    let test_icp_balance: u64 = 50_500; // just over one year covered
+    let test_exchange_rate_e8s_cycles: u128 = 72_401; // 1 ICP = 7.2401T cycles
+    let test_icp_balance_e8s: u64 = 50_500 * E8S; // just over one year covered
     RENTAL_ACCOUNTS.with(|map| {
         map.borrow_mut().insert(
             subnet_id,
             RentalAccount {
                 covered_until: creation_date + days_to_nanos(initial_rental_period_days),
-                cycles_balance: test_icp_balance as u128 * test_exchange_rate_icp_cycles,
+                cycles_balance: test_icp_balance_e8s as u128 * test_exchange_rate_e8s_cycles,
                 last_burned: creation_date,
             },
         )
@@ -258,11 +262,23 @@ async fn accept_rental_agreement(
     }
 
     // Check if the user has enough cycles to cover the initial rental period.
-    let icp_balance: u64 = 51_000; // TODO: get from LEDGER
-    let exchange_rate = get_exchange_rate().await;
-    let available_cycles = icp_balance as u128 * exchange_rate;
-    let needed_cycles =
-        rental_conditions.daily_cost_cycles * rental_conditions.initial_rental_period_days as u128;
+    let icp_balance_e8s = account_balance(
+        MAINNET_LEDGER_CANISTER_ID,
+        AccountBalanceArgs {
+            account: AccountIdentifier::new(&user, &DEFAULT_SUBACCOUNT), // TODO: subaccounts?
+        },
+    )
+    .await
+    .expect("Failed to call ledger canister")
+    .e8s();
+
+    let exchange_rate = get_exchange_rate_cycles_per_e8s().await;
+    println!("Exchange rate: {}", exchange_rate);
+    let available_cycles = (icp_balance_e8s as u128) * (exchange_rate as u128);
+    println!("Available cycles: {}", available_cycles);
+    let needed_cycles = rental_conditions.daily_cost_cycles
+        * (rental_conditions.initial_rental_period_days as u128);
+    println!("Needed cycles: {}", needed_cycles);
     if available_cycles < needed_cycles {
         println!("Insufficient ICP balance to cover cost for initial rental period");
         return Err(ExecuteProposalError::InsufficientFunds);
@@ -315,9 +331,12 @@ async fn accept_rental_agreement(
 }
 
 async fn billing() {
-    let exchange_rate = get_exchange_rate().await;
-    RENTAL_AGREEMENTS.with(|map| {
-        for (subnet_id, rental_agreement) in map.borrow().iter() {
+    let exchange_rate_cycles_per_e8s = get_exchange_rate_cycles_per_e8s().await;
+
+    for (subnet_id, rental_agreement) in
+        RENTAL_AGREEMENTS.with(|map| map.borrow().iter().collect::<Vec<_>>())
+    {
+        {
             let Some(RentalAccount { covered_until, .. }) =
                 RENTAL_ACCOUNTS.with(|map| map.borrow_mut().get(&subnet_id))
             else {
@@ -336,10 +355,23 @@ async fn billing() {
             if covered_until < now + billing_period_nanos {
                 // Next billing period is not fully covered anymore.
                 // Try to withdraw ICP and convert to cycles.
-                let icp_balance: u64 = 4_250; // TODO: get from LEDGER
+                let icp_balance_e8s = account_balance(
+                    MAINNET_LEDGER_CANISTER_ID,
+                    AccountBalanceArgs {
+                        account: AccountIdentifier::new(
+                            &rental_agreement.user.0,
+                            &DEFAULT_SUBACCOUNT, // TODO: subaccounts?
+                        ),
+                    },
+                )
+                .await
+                .expect("Failed to call ledger canister")
+                .e8s();
+
                 let needed_cycles = rental_agreement.rental_conditions.daily_cost_cycles
                     * rental_agreement.rental_conditions.billing_period_days as u128;
-                let cycles_available_to_mint = icp_balance as u128 * exchange_rate;
+                let cycles_available_to_mint =
+                    (icp_balance_e8s as u128) * (exchange_rate_cycles_per_e8s as u128);
 
                 if cycles_available_to_mint < needed_cycles {
                     println!("Insufficient ICP balance to cover cost for next billing period");
@@ -364,7 +396,7 @@ async fn billing() {
                 println!("Subnet is covered until {} now is {}", covered_until, now);
             }
         }
-    });
+    }
 }
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
@@ -379,7 +411,7 @@ fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
 }
 
-async fn get_exchange_rate() -> u128 {
+async fn get_exchange_rate_cycles_per_e8s() -> u64 {
     let IcpXdrConversionRateResponse {
         data: IcpXdrConversionRate {
             xdr_permyriad_per_icp,
@@ -395,8 +427,7 @@ async fn get_exchange_rate() -> u128 {
     .expect("Failed to call CMC")
     .0;
 
-    // convert to cycles per ICP
-    xdr_permyriad_per_icp as u128 * 100_000_000
+    xdr_permyriad_per_icp
 }
 
 /// Pass one of the global StableBTreeMaps and a function that transforms a value.

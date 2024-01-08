@@ -24,7 +24,7 @@ const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 const SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const E8S: u64 = 100_000_000;
 const USER_1: Principal = Principal::from_slice(b"user1");
-const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000 * E8S);
+const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(3_700 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
 
@@ -181,6 +181,7 @@ fn test_proposal_accepted() {
     };
 
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    println!("res {:?}", res);
     assert!(res.is_ok());
 
     // using the same subnet again must fail
