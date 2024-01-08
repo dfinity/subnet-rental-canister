@@ -11,7 +11,9 @@ use ic_stable_structures::{
 use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
-use crate::external_types::SetAuthorizedSubnetworkListArgs;
+use crate::external_types::{
+    IcpXdrConversionRate, IcpXdrConversionRateResponse, SetAuthorizedSubnetworkListArgs,
+};
 use crate::history::EventType;
 
 pub mod external_types;
@@ -150,13 +152,13 @@ impl Storable for RentalAccount {
 
 #[init]
 fn init() {
-    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, billing);
+    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
     println!("Subnet rental canister initialized");
 }
 
 #[post_upgrade]
 fn post_upgrade() {
-    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, billing);
+    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 }
 
 #[update]
@@ -273,7 +275,7 @@ async fn accept_rental_agreement(
 
     // Check if the user has enough cycles to cover the initial rental period.
     let icp_balance: u64 = 51_000; // TODO: get from LEDGER
-    let exchange_rate: u128 = 7_240_100_000_000; // 1 ICP = 7.24T cycles TODO: get from CMC
+    let exchange_rate = get_exchange_rate().await;
     let available_cycles = icp_balance as u128 * exchange_rate;
     let needed_cycles =
         rental_conditions.daily_cost_cycles * rental_conditions.initial_rental_period_days as u128;
@@ -333,7 +335,8 @@ async fn accept_rental_agreement(
     Ok(())
 }
 
-fn billing() {
+async fn billing() {
+    let exchange_rate = get_exchange_rate().await;
     RENTAL_AGREEMENTS.with(|map| {
         for (subnet_id, rental_agreement) in map.borrow().iter() {
             let Some(RentalAccount { covered_until, .. }) =
@@ -354,7 +357,6 @@ fn billing() {
             if covered_until < now + billing_period_nanos {
                 // Next billing period is not fully covered anymore.
                 // Try to withdraw ICP and convert to cycles.
-                let exchange_rate: u128 = 7_240_100_000_000; // 1 ICP = 7.24T cycles TODO: get from CMC
                 let icp_balance: u64 = 4_250; // TODO: get from LEDGER
                 let needed_cycles = rental_agreement.rental_conditions.daily_cost_cycles
                     * rental_agreement.rental_conditions.billing_period_days as u128;
@@ -395,12 +397,6 @@ fn billing() {
     });
 }
 
-#[derive(Clone, CandidType, Deserialize, Debug)]
-pub struct RejectedSubnetRentalProposal {
-    pub nns_proposal_id: u64,
-    pub refund_address: [u8; 32],
-}
-
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         println!("Caller is not the governance canister");
@@ -411,6 +407,26 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 
 fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
+}
+
+async fn get_exchange_rate() -> u128 {
+    let IcpXdrConversionRateResponse {
+        data: IcpXdrConversionRate {
+            xdr_permyriad_per_icp,
+            ..
+        },
+        ..
+    } = ic_cdk::call::<_, (IcpXdrConversionRateResponse,)>(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        "get_icp_xdr_conversion_rate",
+        (),
+    )
+    .await
+    .expect("Failed to call CMC")
+    .0;
+
+    // convert to cycles per ICP
+    xdr_permyriad_per_icp as u128 * 100_000_000
 }
 
 /// Pass one of the global StableBTreeMaps and a function that transforms a value.
