@@ -367,12 +367,6 @@ async fn billing() {
     });
 }
 
-#[derive(Clone, CandidType, Deserialize, Debug)]
-pub struct RejectedSubnetRentalProposal {
-    pub nns_proposal_id: u64,
-    pub refund_address: [u8; 32],
-}
-
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         println!("Caller is not the governance canister");
