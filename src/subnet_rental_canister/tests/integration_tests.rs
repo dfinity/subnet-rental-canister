@@ -1,8 +1,7 @@
 use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
 use ic_ledger_types::{
-    account_balance, AccountBalanceArgs, AccountIdentifier, Tokens, DEFAULT_FEE,
-    DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
+    AccountIdentifier, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
+    MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 use serde::Deserialize;
