@@ -13,7 +13,7 @@ use std::{
 use subnet_rental_canister::{
     external_types::{
         Account, ApproveArgs, ApproveError, CyclesCanisterInitPayload, FeatureFlags,
-        NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
+        NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload, TransferFromError,
     },
     history::Event,
     ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
@@ -154,14 +154,15 @@ fn test_list_rental_conditions() {
 
 fn accept_test_rental_agreement(
     pic: &PocketIc,
+    user: &Principal,
     canister_id: &Principal,
     subnet_id_str: &str,
 ) -> WasmResult {
     let subnet_id = Principal::from_text(subnet_id_str).unwrap();
     let arg = ValidatedSubnetRentalProposal {
         subnet_id,
-        user: USER_1,
-        principals: vec![USER_1],
+        user: *user,
+        principals: vec![*user],
     };
 
     pic.update_call(
@@ -174,49 +175,21 @@ fn accept_test_rental_agreement(
 }
 
 #[test]
-fn test_proposal_accepted() {
+fn test_proposal_rejected_if_already_rented() {
     let (pic, canister_id) = setup();
 
-    let WasmResult::Reply(res) = pic
-        .update_call(
-            MAINNET_LEDGER_CANISTER_ID,
-            USER_1,
-            "icrc2_approve",
-            encode_one(ApproveArgs {
-                fee: Some(DEFAULT_FEE.e8s() as u128),
-                memo: Some(MEMO_TOP_UP_CANISTER),
-                from_subaccount: None,
-                created_at_time: None,
-                amount: 5_000 * E8S as u128, // TODO: how much?
-                expected_allowance: None,
-                expires_at: None,
-                spender: Account {
-                    owner: canister_id.clone(),
-                    subaccount: None,
-                },
-            })
-            .unwrap(),
-        )
-        .unwrap()
-    else {
-        panic!("Expected a reply");
-    };
-
-    let res = decode_one::<Result<u128, ApproveError>>(&res).unwrap();
-    assert!(res.is_ok());
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000);
 
     // The first time must succeed.
-    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
     };
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
     assert!(res.is_ok());
 
-    // TODO: check balances
-
     // Using the same subnet again must fail.
-    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
     };
@@ -229,9 +202,44 @@ fn test_proposal_accepted() {
 }
 
 #[test]
+fn test_proposal_rejected_if_too_low_funds() {
+    let (pic, canister_id) = setup();
+
+    let _block_index_approve = icrc2_approve(&pic, USER_2, 5_000);
+
+    // User 2 has too low funds.
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_2, &canister_id, SUBNET_FOR_RENT);
+    let WasmResult::Reply(res) = wasm_res else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(res, Err(ExecuteProposalError::InsufficientFunds)));
+}
+
+#[test]
+fn test_proposal_rejected_if_icrc2_approval_too_low() {
+    let (pic, canister_id) = setup();
+
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 1);
+
+    // User 1 has approved too little funds.
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
+    let WasmResult::Reply(res) = wasm_res else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(
+        res,
+        Err(ExecuteProposalError::TransferUserToSrcError(
+            TransferFromError::InsufficientAllowance { .. }
+        ))
+    ));
+}
+
+#[test]
 fn test_history() {
     let (pic, canister_id) = setup();
-    let _wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let _wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
     let subnet = Principal::from_text(SUBNET_FOR_RENT).unwrap();
 
     let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
@@ -242,7 +250,9 @@ fn test_history() {
 #[test]
 fn test_burning() {
     let (pic, canister_id) = setup();
-    accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000);
+    accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
+
     let rental_accounts: Vec<(Principal, RentalAccount)> =
         query(&pic, canister_id, "get_rental_accounts", ());
     let initial_balance = rental_accounts[0].1.cycles_balance;
@@ -293,6 +303,36 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
         panic!("Expected Reply");
     };
     decode_one::<T>(&res).unwrap()
+}
+
+fn icrc2_approve(pic: &PocketIc, user: Principal, icp_amount: u128) -> u128 {
+    let WasmResult::Reply(res) = pic
+        .update_call(
+            MAINNET_LEDGER_CANISTER_ID,
+            user,
+            "icrc2_approve",
+            encode_one(ApproveArgs {
+                fee: Some(DEFAULT_FEE.e8s() as u128),
+                memo: Some(MEMO_TOP_UP_CANISTER),
+                from_subaccount: None,
+                created_at_time: None,
+                amount: icp_amount * E8S as u128,
+                expected_allowance: None,
+                expires_at: None,
+                spender: Account {
+                    owner: SRC_ID,
+                    subaccount: None,
+                },
+            })
+            .unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected a reply");
+    };
+
+    let res = decode_one::<Result<u128, ApproveError>>(&res).unwrap();
+    res.unwrap()
 }
 
 #[test]
