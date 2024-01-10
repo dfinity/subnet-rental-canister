@@ -1,7 +1,8 @@
 use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
 use ic_ledger_types::{
-    AccountIdentifier, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
-    MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    account_balance, AccountBalanceArgs, AccountIdentifier, Tokens, DEFAULT_FEE,
+    DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
 };
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 use serde::Deserialize;
@@ -12,15 +13,19 @@ use std::{
 };
 use subnet_rental_canister::{
     external_types::{
-        CyclesCanisterInitPayload, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
+        Account, ApproveArgs, ApproveError, CyclesCanisterInitPayload, FeatureFlags,
+        NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     history::Event,
     ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
+    MEMO_TOP_UP_CANISTER,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
+const SRC_ID: Principal =
+    Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
 
 const SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const E8S: u64 = 100_000_000;
@@ -33,19 +38,17 @@ fn install_cmc(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, MAINNET_CYCLES_MINTING_CANISTER_ID)
         .unwrap();
     let cmc_wasm = fs::read(CMC_WASM).expect("Could not find the patched CMC wasm");
-
-    let init_arg: Option<CyclesCanisterInitPayload> = Some(CyclesCanisterInitPayload {
-        exchange_rate_canister: None,
-        last_purged_notification: None,
+    let minter = AccountIdentifier::new(&MAINNET_CYCLES_MINTING_CANISTER_ID, &DEFAULT_SUBACCOUNT);
+    let init_arg = CyclesCanisterInitPayload {
         governance_canister_id: Some(MAINNET_GOVERNANCE_CANISTER_ID),
-        minting_account_id: None,
+        minting_account_id: minter.to_string(),
         ledger_canister_id: Some(MAINNET_LEDGER_CANISTER_ID),
-    });
+    };
 
     pic.install_canister(
         MAINNET_CYCLES_MINTING_CANISTER_ID,
         cmc_wasm,
-        encode_args((init_arg,)).unwrap(),
+        encode_args((Some(init_arg),)).unwrap(),
         None,
     );
 }
@@ -71,6 +74,7 @@ fn install_ledger(pic: &PocketIc) {
         transfer_fee: Some(DEFAULT_FEE),
         token_symbol: Some("ICP".to_string()),
         token_name: Some("Internet Computer".to_string()),
+        feature_flags: Some(FeatureFlags { icrc2: true }),
     });
     pic.install_canister(
         MAINNET_LEDGER_CANISTER_ID,
@@ -87,7 +91,7 @@ fn setup() -> (PocketIc, Principal) {
     install_cmc(&pic);
 
     // Install subnet rental canister.
-    let subnet_rental_canister = pic.create_canister();
+    let subnet_rental_canister = pic.create_canister_with_id(None, None, SRC_ID).unwrap();
     let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
 
@@ -154,18 +158,18 @@ fn accept_test_rental_agreement(
     canister_id: &Principal,
     subnet_id_str: &str,
 ) -> WasmResult {
-    let user = Principal::from_text(subnet_id_str).unwrap();
+    let subnet_id = Principal::from_text(subnet_id_str).unwrap();
     let arg = ValidatedSubnetRentalProposal {
-        subnet_id: user,
+        subnet_id,
         user: USER_1,
-        principals: vec![user],
+        principals: vec![USER_1],
     };
 
     pic.update_call(
         *canister_id,
         MAINNET_GOVERNANCE_CANISTER_ID,
         "accept_rental_agreement",
-        encode_one(arg.clone()).unwrap(),
+        encode_one(arg).unwrap(),
     )
     .unwrap()
 }
@@ -174,18 +178,45 @@ fn accept_test_rental_agreement(
 fn test_proposal_accepted() {
     let (pic, canister_id) = setup();
 
-    // the first time must succeed
-    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
-
-    let WasmResult::Reply(res) = wasm_res else {
+    let WasmResult::Reply(res) = pic
+        .update_call(
+            MAINNET_LEDGER_CANISTER_ID,
+            USER_1,
+            "icrc2_approve",
+            encode_one(ApproveArgs {
+                fee: Some(DEFAULT_FEE.e8s() as u128),
+                memo: Some(MEMO_TOP_UP_CANISTER),
+                from_subaccount: None,
+                created_at_time: None,
+                amount: 5_000 * E8S as u128, // TODO: how much?
+                expected_allowance: None,
+                expires_at: None,
+                spender: Account {
+                    owner: canister_id.clone(),
+                    subaccount: None,
+                },
+            })
+            .unwrap(),
+        )
+        .unwrap()
+    else {
         panic!("Expected a reply");
     };
 
-    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-    println!("res {:?}", res);
+    let res = decode_one::<Result<u128, ApproveError>>(&res).unwrap();
     assert!(res.is_ok());
 
-    // using the same subnet again must fail
+    // The first time must succeed.
+    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let WasmResult::Reply(res) = wasm_res else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(res.is_ok());
+
+    // TODO: check balances
+
+    // Using the same subnet again must fail.
     let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
@@ -287,6 +318,5 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         panic!("Expected a reply");
     };
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-    println!("res {:?}", res);
     assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
 }
