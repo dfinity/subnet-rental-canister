@@ -245,7 +245,7 @@ pub enum ExecuteProposalError {
     NotifyTopUpError(NotifyError),
 }
 
-/// TODO: Argument should be something like ValidatedSRProposal, created by government canister via
+/// TODO: Argument should be something like ValidatedSRProposal, created by governance canister via
 /// SRProposal::validate().
 #[update]
 async fn accept_rental_agreement(
@@ -281,15 +281,14 @@ async fn accept_rental_agreement(
     }
 
     // Check if the user has enough ICP to cover the initial rental period and 2 transaction fees.
-    let icp_balance_e8s = check_e8s_balance(&user).await;
-    let exchange_rate = get_exchange_rate_cycles_per_e8s().await;
-
     let needed_cycles = rental_conditions.daily_cost_cycles
         * (rental_conditions.initial_rental_period_days as u128);
 
+    let exchange_rate = get_exchange_rate_cycles_per_e8s().await;
     let needed_e8s_for_cycles = needed_cycles / (exchange_rate as u128);
     let needed_e8s_for_fees = (DEFAULT_FEE.e8s() as u128) * 2; // once for user to SRC, once for SRC to CMC (direct does not seem possible)
 
+    let icp_balance_e8s = check_e8s_balance(&user).await;
     if (icp_balance_e8s as u128) < needed_e8s_for_cycles + needed_e8s_for_fees {
         println!("Insufficient ICP balance to cover cost for initial rental period and fees");
         return Err(ExecuteProposalError::InsufficientFunds);
