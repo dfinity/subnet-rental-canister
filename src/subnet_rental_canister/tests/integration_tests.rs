@@ -213,7 +213,12 @@ fn test_proposal_rejected_if_too_low_funds() {
         panic!("Expected a reply");
     };
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-    assert!(matches!(res, Err(ExecuteProposalError::InsufficientFunds)));
+    assert!(matches!(
+        res,
+        Err(ExecuteProposalError::TransferUserToSrcError(
+            TransferFromError::InsufficientFunds { .. }
+        ))
+    ));
 }
 
 #[test]
@@ -260,8 +265,16 @@ fn test_burning() {
     pic.tick();
     let rental_accounts: Vec<(Principal, RentalAccount)> =
         query(&pic, canister_id, "get_rental_accounts", ());
-    let new_balance = rental_accounts[0].1.cycles_balance;
-    assert!(new_balance < initial_balance);
+    let balance_1 = rental_accounts[0].1.cycles_balance;
+    assert!(balance_1 < initial_balance);
+
+    pic.advance_time(Duration::from_secs(4));
+    pic.tick();
+    let rental_accounts: Vec<(Principal, RentalAccount)> =
+        query(&pic, canister_id, "get_rental_accounts", ());
+    let balance_2 = rental_accounts[0].1.cycles_balance;
+    assert!(balance_2 < initial_balance);
+    assert!(balance_2 < balance_1);
 }
 
 #[test]
@@ -272,7 +285,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
         user: USER_1,
         principals: vec![USER_1],
-        historical_exchange_rate_timestamp: 0,
+        proposal_creation_timestamp: 0,
     };
 
     let WasmResult::Reply(res) = pic
@@ -301,7 +314,7 @@ fn accept_test_rental_agreement(
         subnet_id,
         user: *user,
         principals: vec![*user],
-        historical_exchange_rate_timestamp: 0,
+        proposal_creation_timestamp: 0,
     };
 
     pic.update_call(

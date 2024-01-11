@@ -3,9 +3,9 @@ use external_types::NotifyError;
 use history::{Event, History};
 use ic_cdk::{heartbeat, init, post_upgrade, println, query, update};
 use ic_ledger_types::{
-    account_balance, transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens,
-    TransferArgs, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
+    DEFAULT_FEE, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
 };
 use ic_stable_structures::Memory;
 use ic_stable_structures::{
@@ -13,6 +13,7 @@ use ic_stable_structures::{
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
+use itertools::Itertools;
 use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
@@ -233,7 +234,7 @@ pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: candid::Principal,
     pub user: candid::Principal,
     pub principals: Vec<candid::Principal>,
-    pub historical_exchange_rate_timestamp: u64,
+    pub proposal_creation_timestamp: u64,
 }
 
 #[derive(CandidType, Debug, Clone, Deserialize)]
@@ -246,15 +247,6 @@ pub enum ExecuteProposalError {
     NotifyTopUpError(NotifyError),
 }
 
-async fn get_historical_exchange_rate_cycles_per_e8s(timestamp: u64) -> u64 {
-    // TODO: implement
-    println!(
-        "Getting historical exchange rate for timestamp {}",
-        timestamp
-    );
-    get_exchange_rate_cycles_per_e8s().await
-}
-
 /// TODO: Argument should be something like ValidatedSRProposal, created by governance canister via
 /// SRProposal::validate().
 #[update]
@@ -263,16 +255,21 @@ async fn accept_rental_agreement(
         subnet_id,
         user,
         principals,
-        historical_exchange_rate_timestamp,
+        proposal_creation_timestamp,
     }: ValidatedSubnetRentalProposal,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
 
+    let principals_to_whitelist = principals
+        .into_iter()
+        .chain(std::iter::once(user))
+        .unique()
+        .map(|p| p.into())
+        .collect();
+
     // Get rental conditions.
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
     let rental_conditions = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id.into()).unwrap());
-    // Creation date in nanoseconds since epoch.
-    let creation_date = ic_cdk::api::time();
 
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
         println!(
@@ -292,46 +289,16 @@ async fn accept_rental_agreement(
     }
 
     // Check if the user has enough ICP to cover the initial rental period.
-    let needed_cycles = rental_conditions.daily_cost_cycles
-        * (rental_conditions.initial_rental_period_days as u128);
+    let needed_cycles = rental_conditions
+        .daily_cost_cycles
+        .saturating_mul(rental_conditions.initial_rental_period_days as u128);
 
     let exchange_rate =
-        get_historical_exchange_rate_cycles_per_e8s(historical_exchange_rate_timestamp).await;
-    let needed_icp = Tokens::from_e8s((needed_cycles / (exchange_rate as u128)) as u64);
+        get_historical_avg_exchange_rate_cycles_per_e8s(proposal_creation_timestamp).await; // TODO: might need rounding
+    let needed_icp = Tokens::from_e8s((needed_cycles.saturating_div(exchange_rate as u128)) as u64);
 
-    let icp_balance = check_balance(&user).await;
-    if icp_balance < needed_icp {
-        println!("Insufficient ICP balance to cover cost for initial rental period");
-        return Err(ExecuteProposalError::InsufficientFunds);
-    }
-
-    // Use ICRC2 to transfer ICP from user to SRC.
-    let transfer_to_src_result = ic_cdk::call::<_, (Result<u128, TransferFromError>,)>(
-        MAINNET_LEDGER_CANISTER_ID,
-        "icrc2_transfer_from",
-        (TransferFromArgs {
-            to: Account {
-                // owner: MAINNET_CYCLES_MINTING_CANISTER_ID,
-                // subaccount: Some(Subaccount::from(ic_cdk::id())),
-                owner: ic_cdk::id(),
-                subaccount: None,
-            },
-            fee: Some(DEFAULT_FEE.e8s() as u128),
-            spender_subaccount: None,
-            from: Account {
-                owner: user,
-                subaccount: None,
-            },
-            memo: Some(MEMO_TOP_UP_CANISTER), // For some reason, the CMC does not see this memo if we send it directly to the CMC with the icrc2_transfer_from; it arrives with memo 0.
-            // Therefore, we send it to the SRC first (this canister), and then send it to the CMC with a normal transfer (non-icrc2).
-            created_at_time: None,
-            amount: (needed_icp - DEFAULT_FEE).e8s() as u128,
-        },),
-    )
-    .await
-    .expect("Failed to call ledger canister")
-    .0;
-
+    // Use ICRC2 to transfer ICP from the user to the SRC.
+    let transfer_to_src_result = icrc2_transfer_to_src(user, needed_icp - DEFAULT_FEE).await;
     if let Err(err) = transfer_to_src_result {
         println!("Transfer from user to SRC failed: {:?}", err);
         persist_event(
@@ -345,49 +312,11 @@ async fn accept_rental_agreement(
         return Err(ExecuteProposalError::TransferUserToSrcError(err));
     }
 
-    // Create preliminary rental agreement.
-    let rental_agreement = RentalAgreement {
-        user: user.into(),
-        subnet_id: subnet_id.into(),
-        principals: principals.into_iter().map(|p| p.into()).collect(),
-        rental_conditions,
-        creation_date,
-    };
+    // Whitelist principals for subnet.
+    whitelist_principals(subnet_id, &principals_to_whitelist).await;
 
-    // Whitelist principals for subnet
-    for user in &rental_agreement.principals {
-        // TODO: what about duplicates in rental_agreement.principals?
-        // TODO: what about duplicates in rental_agreement.principals and existing principals in the list?
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(user.0),
-                subnets: vec![subnet_id],
-            },),
-        )
-        .await
-        .expect("Failed to call CMC");
-    }
-
-    // Use normal transfer to send the ICP from SRC to the CMC.
-    let transfer_to_cmc_result = transfer(
-        MAINNET_LEDGER_CANISTER_ID,
-        TransferArgs {
-            to: AccountIdentifier::new(
-                &MAINNET_CYCLES_MINTING_CANISTER_ID,
-                &Subaccount::from(ic_cdk::id()),
-            ),
-            fee: DEFAULT_FEE,
-            from_subaccount: None,
-            amount: needed_icp - DEFAULT_FEE - DEFAULT_FEE,
-            memo: MEMO_TOP_UP_CANISTER,
-            created_at_time: None,
-        },
-    )
-    .await
-    .expect("Failed to call ledger canister");
-
+    // Transfer the ICP from the SRC to the CMC.
+    let transfer_to_cmc_result = transfer_to_cmc(needed_icp - DEFAULT_FEE - DEFAULT_FEE).await;
     let Ok(block_index) = transfer_to_cmc_result else {
         let err = transfer_to_cmc_result.unwrap_err();
         println!("Transfer from SRC to CMC failed: {:?}", err);
@@ -403,19 +332,8 @@ async fn accept_rental_agreement(
     };
 
     // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
-    let notify_top_up_result = ic_cdk::call::<_, (Result<u128, NotifyError>,)>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "notify_top_up",
-        (NotifyTopUpArg {
-            block_index,
-            canister_id: ic_cdk::id(),
-        },),
-    )
-    .await
-    .expect("Failed to call CMC")
-    .0;
+    let notify_top_up_result = notify_top_up(block_index).await;
 
-    // TODO: This might now be slightly less than the requested amount, due to price fluctuations since the check above.
     let Ok(actual_cycles) = notify_top_up_result else {
         let err = notify_top_up_result.unwrap_err();
         println!("Notify top-up failed: {:?}", err);
@@ -431,6 +349,15 @@ async fn accept_rental_agreement(
     };
 
     // Add the rental agreement to the rental agreement map.
+    // Create rental agreement.
+    let creation_date = ic_cdk::api::time();
+    let rental_agreement = RentalAgreement {
+        user: user.into(),
+        subnet_id: subnet_id.into(),
+        principals: principals_to_whitelist,
+        rental_conditions,
+        creation_date,
+    };
     println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut()
@@ -455,7 +382,7 @@ async fn accept_rental_agreement(
 }
 
 async fn billing() {
-    let exchange_rate_cycles_per_e8s = get_exchange_rate_cycles_per_e8s().await;
+    let exchange_rate_cycles_per_e8s = get_current_avg_exchange_rate_cycles_per_e8s().await;
 
     for (subnet_id, rental_agreement) in
         RENTAL_AGREEMENTS.with(|map| map.borrow().iter().collect::<Vec<_>>())
@@ -476,39 +403,68 @@ async fn billing() {
             let billing_period_nanos =
                 days_to_nanos(rental_agreement.rental_conditions.billing_period_days);
 
-            if covered_until < now + billing_period_nanos {
+            if covered_until < now {
+                println!("Subnet is not covered anymore");
+                // TODO: issue WARNING event
+                // Degrade service
+                continue;
+            } else if covered_until < now + billing_period_nanos {
                 // Next billing period is not fully covered anymore.
                 // Try to withdraw ICP and convert to cycles.
-                let icp_balance = check_balance(&rental_agreement.user.0).await;
+                let needed_cycles = rental_agreement
+                    .rental_conditions
+                    .daily_cost_cycles
+                    .saturating_mul(rental_agreement.rental_conditions.billing_period_days as u128); // TODO: get up to date rental conditions
 
-                let needed_cycles = rental_agreement.rental_conditions.daily_cost_cycles
-                    * rental_agreement.rental_conditions.billing_period_days as u128;
-                let cycles_available_to_mint =
-                    (icp_balance.e8s() as u128) * (exchange_rate_cycles_per_e8s as u128);
+                let icp_amount = Tokens::from_e8s(
+                    needed_cycles.saturating_div(exchange_rate_cycles_per_e8s as u128) as u64,
+                );
 
-                if cycles_available_to_mint < needed_cycles {
-                    println!("Insufficient ICP balance to cover cost for next billing period");
+                // Transfer ICP to SRC.
+                let transfer_to_src_result =
+                    icrc2_transfer_to_src(rental_agreement.user.0, icp_amount - DEFAULT_FEE).await;
+
+                if let Err(err) = transfer_to_src_result {
                     // TODO: issue WARNING event
+                    println!(
+                        "Transfer from user {} to SRC failed: {:?}",
+                        rental_agreement.user.0, err
+                    );
                     continue;
                 }
 
-                // TODO: do exchange with CMC and get actual amount of cycles
-                // TODO: This might now be slightly less than the requested amount, due to price fluctuations since the check above.
-                let actual_cycles = needed_cycles;
+                // Transfer ICP to CMC.
+                let transfer_to_cmc_result =
+                    transfer_to_cmc(icp_amount - DEFAULT_FEE - DEFAULT_FEE).await;
+                let Ok(block_index) = transfer_to_cmc_result else {
+                    // TODO: This should not happen.
+                    let err = transfer_to_cmc_result.unwrap_err();
+                    println!("Transfer from SRC to CMC failed: {:?}", err);
+                    continue;
+                };
+
+                // Call notify_top_up to exchange ICP for cycles.
+                let notify_top_up_result = notify_top_up(block_index).await;
+                let Ok(actual_cycles) = notify_top_up_result else {
+                    let err = notify_top_up_result.unwrap_err();
+                    println!("Notify top-up failed: {:?}", err);
+                    continue;
+                };
 
                 // Add cycles to rental account, update covered_until.
+                let new_covered_until = covered_until + billing_period_nanos;
                 RENTAL_ACCOUNTS.with(|map| {
                     let mut rental_account = map.borrow().get(&subnet_id).unwrap();
-                    rental_account.covered_until += billing_period_nanos;
+                    rental_account.covered_until = new_covered_until;
                     rental_account.cycles_balance += actual_cycles;
                     map.borrow_mut().insert(subnet_id, rental_account);
                 });
-                println!("Now covered until {}", covered_until);
 
+                println!("Now covered until {}", new_covered_until);
                 persist_event(
                     EventType::PaymentSuccess {
-                        amount: 0,
-                        covered_until,
+                        amount: icp_amount,
+                        covered_until: new_covered_until,
                     }
                     .into(),
                     subnet_id,
@@ -521,6 +477,84 @@ async fn billing() {
     }
 }
 
+async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
+    for user in principals {
+        // TODO: what about duplicates in rental_agreement.principals?
+        // TODO: what about duplicates in rental_agreement.principals and existing principals in the list?
+        ic_cdk::call::<_, ()>(
+            MAINNET_CYCLES_MINTING_CANISTER_ID,
+            "set_authorized_subnetwork_list",
+            (SetAuthorizedSubnetworkListArgs {
+                who: Some(user.0),
+                subnets: vec![subnet_id],
+            },),
+        )
+        .await
+        .expect("Failed to call CMC");
+    }
+}
+
+async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
+    ic_cdk::call::<_, (Result<u128, NotifyError>,)>(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        "notify_top_up",
+        (NotifyTopUpArg {
+            block_index,
+            canister_id: ic_cdk::id(),
+        },),
+    )
+    .await
+    .expect("Failed to call CMC")
+    .0
+}
+
+async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
+    transfer(
+        MAINNET_LEDGER_CANISTER_ID,
+        TransferArgs {
+            to: AccountIdentifier::new(
+                &MAINNET_CYCLES_MINTING_CANISTER_ID,
+                &Subaccount::from(ic_cdk::id()),
+            ),
+            fee: DEFAULT_FEE,
+            from_subaccount: None,
+            amount,
+            memo: MEMO_TOP_UP_CANISTER,
+            created_at_time: None,
+        },
+    )
+    .await
+    .expect("Failed to call ledger canister")
+}
+
+async fn icrc2_transfer_to_src(
+    user: candid::Principal,
+    amount: Tokens,
+) -> Result<u128, TransferFromError> {
+    ic_cdk::call::<_, (Result<u128, TransferFromError>,)>(
+        MAINNET_LEDGER_CANISTER_ID,
+        "icrc2_transfer_from",
+        (TransferFromArgs {
+            to: Account {
+                owner: ic_cdk::id(),
+                subaccount: None,
+            },
+            fee: Some(DEFAULT_FEE.e8s() as u128),
+            spender_subaccount: None,
+            from: Account {
+                owner: user,
+                subaccount: None,
+            },
+            memo: None,
+            created_at_time: None,
+            amount: amount.e8s() as u128,
+        },),
+    )
+    .await
+    .expect("Failed to call ledger canister")
+    .0
+}
+
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         println!("Caller is not the governance canister");
@@ -531,6 +565,20 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 
 fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
+}
+
+async fn get_historical_avg_exchange_rate_cycles_per_e8s(timestamp: u64) -> u64 {
+    // TODO: implement
+    println!(
+        "Getting historical average exchange rate for timestamp {}",
+        timestamp
+    );
+    get_exchange_rate_cycles_per_e8s().await
+}
+
+async fn get_current_avg_exchange_rate_cycles_per_e8s() -> u64 {
+    // TODO: implement
+    get_exchange_rate_cycles_per_e8s().await
 }
 
 async fn get_exchange_rate_cycles_per_e8s() -> u64 {
@@ -550,20 +598,6 @@ async fn get_exchange_rate_cycles_per_e8s() -> u64 {
     .0;
 
     xdr_permyriad_per_icp
-}
-
-async fn check_balance(owner: &candid::Principal) -> Tokens {
-    account_balance(
-        MAINNET_LEDGER_CANISTER_ID,
-        AccountBalanceArgs {
-            account: AccountIdentifier::new(
-                owner,
-                &DEFAULT_SUBACCOUNT, // TODO: subaccounts of users?
-            ),
-        },
-    )
-    .await
-    .expect("Failed to call ledger canister")
 }
 
 /// Pass one of the global StableBTreeMaps and a function that transforms a value.
