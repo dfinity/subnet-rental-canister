@@ -27,11 +27,11 @@ pub mod external_types;
 pub mod history;
 mod http_request;
 
-// During billing, the cost in cycles is fixed, but the cost in ICP depends on the exchange rate
 const TRILLION: u128 = 1_000_000_000_000;
 const E8S: u64 = 100_000_000;
+const MAX_PRINCIPAL_SIZE: u32 = 29;
 const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // hourly
-pub const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
+const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 
 type SubnetId = Principal;
 
@@ -50,7 +50,6 @@ thread_local! {
     // Memory region 2
     static HISTORY: RefCell<StableBTreeMap<Principal, History, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
-
 
     /// Hardcoded subnets and their rental conditions. TODO: make this editable via proposal (method), not canister upgrade.
     static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
@@ -72,8 +71,6 @@ thread_local! {
         ),
     ]).into();
 }
-
-const MAX_PRINCIPAL_SIZE: u32 = 29;
 
 #[derive(
     Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize, CandidType, Hash,
@@ -162,7 +159,7 @@ pub struct RentalAccount {
 }
 
 impl Storable for RentalAccount {
-    // should be bounded once we replace string with real type
+    // Should be bounded once we replace string with real type.
     const BOUND: Bound = Bound::Bounded {
         max_size: 54, // TODO: figure out the actual size
         is_fixed_size: false,
@@ -270,9 +267,9 @@ fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
 ////////// UPDATE METHODS //////////
 
 #[update]
+// TODO: remove this endpoint before release
 fn demo_add_rental_agreement() {
-    // TODO: remove this endpoint before release
-    // Hardcoded rental agreement for testing
+    // Hardcoded rental agreement for testing.
     let subnet_id = candid::Principal::from_text(
         "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
     )
@@ -313,8 +310,7 @@ fn demo_add_rental_agreement() {
     });
 }
 
-/// TODO: Argument should be something like ValidatedSRProposal, created by governance canister via
-/// SRProposal::validate().
+// TODO: Argument will be provided by governance canister after validation
 #[update]
 async fn accept_rental_agreement(
     ValidatedSubnetRentalProposal {
@@ -544,7 +540,7 @@ async fn billing() {
                 );
             } else {
                 // Next billing period is still fully covered.
-                println!("Subnet is covered until {} now is {}", covered_until, now);
+                println!("Subnet is covered until {}, now is {}", covered_until, now);
             }
         }
     }
