@@ -297,10 +297,10 @@ async fn accept_rental_agreement(
 
     let exchange_rate =
         get_historical_exchange_rate_cycles_per_e8s(historical_exchange_rate_timestamp).await;
-    let needed_e8s = needed_cycles / (exchange_rate as u128);
+    let needed_icp = Tokens::from_e8s((needed_cycles / (exchange_rate as u128)) as u64);
 
-    let icp_balance_e8s = check_e8s_balance(&user).await;
-    if (icp_balance_e8s as u128) < needed_e8s {
+    let icp_balance = check_balance(&user).await;
+    if icp_balance < needed_icp {
         println!("Insufficient ICP balance to cover cost for initial rental period");
         return Err(ExecuteProposalError::InsufficientFunds);
     }
@@ -325,7 +325,7 @@ async fn accept_rental_agreement(
             memo: Some(MEMO_TOP_UP_CANISTER), // For some reason, the CMC does not see this memo if we send it directly to the CMC with the icrc2_transfer_from; it arrives with memo 0.
             // Therefore, we send it to the SRC first (this canister), and then send it to the CMC with a normal transfer (non-icrc2).
             created_at_time: None,
-            amount: needed_e8s - (DEFAULT_FEE.e8s() as u128),
+            amount: (needed_icp - DEFAULT_FEE).e8s() as u128,
         },),
     )
     .await
@@ -380,7 +380,7 @@ async fn accept_rental_agreement(
             ),
             fee: DEFAULT_FEE,
             from_subaccount: None,
-            amount: Tokens::from_e8s(needed_e8s as u64) - DEFAULT_FEE - DEFAULT_FEE,
+            amount: needed_icp - DEFAULT_FEE - DEFAULT_FEE,
             memo: MEMO_TOP_UP_CANISTER,
             created_at_time: None,
         },
@@ -479,12 +479,12 @@ async fn billing() {
             if covered_until < now + billing_period_nanos {
                 // Next billing period is not fully covered anymore.
                 // Try to withdraw ICP and convert to cycles.
-                let icp_balance_e8s = check_e8s_balance(&rental_agreement.user.0).await;
+                let icp_balance = check_balance(&rental_agreement.user.0).await;
 
                 let needed_cycles = rental_agreement.rental_conditions.daily_cost_cycles
                     * rental_agreement.rental_conditions.billing_period_days as u128;
                 let cycles_available_to_mint =
-                    (icp_balance_e8s as u128) * (exchange_rate_cycles_per_e8s as u128);
+                    (icp_balance.e8s() as u128) * (exchange_rate_cycles_per_e8s as u128);
 
                 if cycles_available_to_mint < needed_cycles {
                     println!("Insufficient ICP balance to cover cost for next billing period");
@@ -552,7 +552,7 @@ async fn get_exchange_rate_cycles_per_e8s() -> u64 {
     xdr_permyriad_per_icp
 }
 
-async fn check_e8s_balance(owner: &candid::Principal) -> u64 {
+async fn check_balance(owner: &candid::Principal) -> Tokens {
     account_balance(
         MAINNET_LEDGER_CANISTER_ID,
         AccountBalanceArgs {
@@ -564,7 +564,6 @@ async fn check_e8s_balance(owner: &candid::Principal) -> u64 {
     )
     .await
     .expect("Failed to call ledger canister")
-    .e8s()
 }
 
 /// Pass one of the global StableBTreeMaps and a function that transforms a value.
