@@ -192,7 +192,8 @@ fn test_proposal_accept() {
     assert_eq!(rental_accounts[0].0.to_string(), SUBNET_FOR_RENT);
     assert_eq!(
         rental_accounts[0].1.cycles_balance,
-        2_000 * TRILLION * 183 - 20_000_000_000 // two transaction fees
+        2_000 * TRILLION * 183
+            - (2 * DEFAULT_FEE.e8s() as u128 * historical_exchange_rate_cycles_per_e8s as u128) // two transaction fees
     );
     assert_eq!(
         rental_accounts[0].1.covered_until,

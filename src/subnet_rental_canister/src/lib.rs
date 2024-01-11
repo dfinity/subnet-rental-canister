@@ -575,6 +575,10 @@ async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
     .await
     .expect("Failed to call CMC") // TODO: handle error
     .0
+    // TODO: In the canister logs, the CMC claims that the burning of ICPs failed, but the cycles are minted anyway.
+    // It states that the "transfer fee should be 0.00010000 Token", but that fee is hardcoded to
+    // (ZERO)[https://sourcegraph.com/github.com/dfinity/ic@8126ad2fab0196908d9456a65914a3e05179ac4b/-/blob/rs/nns/cmc/src/main.rs?L1835]
+    // in the CMC, and cannot be changed from outside. What's going on here?
 }
 
 async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
