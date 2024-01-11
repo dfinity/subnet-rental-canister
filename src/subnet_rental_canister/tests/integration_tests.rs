@@ -3,12 +3,13 @@ use ic_ledger_types::{
     AccountBalanceArgs, AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
     MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
+use itertools::Itertools;
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    time::Duration,
+    time::{Duration, UNIX_EPOCH},
 };
 use subnet_rental_canister::{
     external_types::{
@@ -16,7 +17,8 @@ use subnet_rental_canister::{
         NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload, TransferFromError,
     },
     history::Event,
-    ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
+    ExecuteProposalError, RentalAccount, RentalAgreement, RentalConditions,
+    ValidatedSubnetRentalProposal, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -25,7 +27,6 @@ const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 const SRC_ID: Principal =
     Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
 const SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
-const E8S: u64 = 100_000_000;
 const USER_1: Principal = Principal::from_slice(b"user1");
 const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(3_700 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
@@ -154,16 +155,26 @@ fn test_list_rental_conditions() {
 fn test_proposal_accept() {
     let (pic, canister_id) = setup();
 
+    let time_now = pic
+        .get_time()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
+    // User approves a sufficient amount of ICP.
     let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000);
 
-    // The first time must succeed.
+    // Proposal is accepted and the governance canister calls accept_rental_agreement.
     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
     };
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+
+    // The proposal is executed successfully.
     assert!(res.is_ok());
 
+    // The user's balance is reduced by the rental fee and one transaction fee.
     let user_balance = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
     let historical_exchange_rate_cycles_per_e8s = 1_000_000; // this is what the CMC returns atm
     assert_eq!(
@@ -172,6 +183,38 @@ fn test_proposal_accept() {
             - DEFAULT_FEE // icrc-2 approval fee
             - Tokens::from_e8s(historical_exchange_rate_cycles_per_e8s * 183 * 2_000) // 2_000 XDR for 183 days
     );
+
+    // The rental account is stored in the canister state.
+    let rental_accounts: Vec<(Principal, RentalAccount)> =
+        query(&pic, canister_id, "list_rental_accounts", ());
+
+    assert_eq!(rental_accounts.len(), 1);
+    assert_eq!(rental_accounts[0].0.to_string(), SUBNET_FOR_RENT);
+    assert_eq!(
+        rental_accounts[0].1.cycles_balance,
+        2_000 * TRILLION * 183 - 20_000_000_000 // two transaction fees
+    );
+    assert_eq!(
+        rental_accounts[0].1.covered_until,
+        (time_now + 183 * 24 * 60 * 60 * 1_000_000_000) as u64
+    );
+
+    // The rental agreement is stored in the canister state.
+    let rental_agreements: Vec<RentalAgreement> =
+        query(&pic, canister_id, "list_rental_agreements", ());
+
+    assert_eq!(rental_agreements.len(), 1);
+    assert_eq!(rental_agreements[0].user.0, USER_1);
+    assert_eq!(
+        rental_agreements[0].subnet_id.0.to_string(),
+        SUBNET_FOR_RENT
+    );
+    assert!(rental_agreements[0]
+        .principals
+        .iter()
+        .map(|p| p.0.to_string())
+        .collect_vec()
+        .contains(&USER_1.to_string()));
 }
 
 #[test]
@@ -259,19 +302,19 @@ fn test_burning() {
     accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
 
     let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "get_rental_accounts", ());
+        query(&pic, canister_id, "list_rental_accounts", ());
     let initial_balance = rental_accounts[0].1.cycles_balance;
     pic.advance_time(Duration::from_secs(2));
     pic.tick();
     let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "get_rental_accounts", ());
+        query(&pic, canister_id, "list_rental_accounts", ());
     let balance_1 = rental_accounts[0].1.cycles_balance;
     assert!(balance_1 < initial_balance);
 
     pic.advance_time(Duration::from_secs(4));
     pic.tick();
     let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "get_rental_accounts", ());
+        query(&pic, canister_id, "list_rental_accounts", ());
     let balance_2 = rental_accounts[0].1.cycles_balance;
     assert!(balance_2 < initial_balance);
     assert!(balance_2 < balance_1);

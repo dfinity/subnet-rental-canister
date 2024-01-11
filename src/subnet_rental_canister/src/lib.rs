@@ -27,8 +27,8 @@ pub mod external_types;
 pub mod history;
 mod http_request;
 
-const TRILLION: u128 = 1_000_000_000_000;
-const E8S: u64 = 100_000_000;
+pub const TRILLION: u128 = 1_000_000_000_000;
+pub const E8S: u64 = 100_000_000;
 const MAX_PRINCIPAL_SIZE: u32 = 29;
 const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // hourly
 const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
@@ -126,9 +126,9 @@ pub enum ExecuteProposalError {
 /// Immutable rental agreement; mutabla data and log events should refer to it via the id.
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalAgreement {
-    user: Principal,
-    subnet_id: SubnetId,
-    principals: Vec<Principal>,
+    pub user: Principal,
+    pub subnet_id: SubnetId,
+    pub principals: Vec<Principal>,
     rental_conditions: RentalConditions,
     // nanoseconds since epoch
     creation_date: u64,
@@ -251,7 +251,7 @@ fn list_rental_agreements() -> Vec<RentalAgreement> {
 }
 
 #[query]
-fn get_rental_accounts() -> Vec<(Principal, RentalAccount)> {
+fn list_rental_accounts() -> Vec<(Principal, RentalAccount)> {
     RENTAL_ACCOUNTS.with(|map| map.borrow().iter().collect())
 }
 
@@ -559,7 +559,7 @@ async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Pri
             },),
         )
         .await
-        .expect("Failed to call CMC");
+        .expect("Failed to call CMC"); // TODO: handle error
     }
 }
 
@@ -573,7 +573,7 @@ async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
         },),
     )
     .await
-    .expect("Failed to call CMC")
+    .expect("Failed to call CMC") // TODO: handle error
     .0
 }
 
@@ -593,7 +593,7 @@ async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
         },
     )
     .await
-    .expect("Failed to call ledger canister")
+    .expect("Failed to call ledger canister") // TODO: handle error
 }
 
 async fn icrc2_transfer_to_src(
@@ -620,7 +620,7 @@ async fn icrc2_transfer_to_src(
         },),
     )
     .await
-    .expect("Failed to call ledger canister")
+    .expect("Failed to call ledger canister") // TODO: handle error
     .0
 }
 
@@ -651,7 +651,7 @@ async fn get_exchange_rate_cycles_per_e8s() -> u64 {
         (),
     )
     .await
-    .expect("Failed to call CMC")
+    .expect("Failed to call CMC") // TODO: handle error
     .0;
 
     xdr_permyriad_per_icp

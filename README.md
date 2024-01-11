@@ -20,11 +20,12 @@ Then, build the subnet rental canister Wasm by running:
 ```
 which will be placed in the root folder of the project.
 
-Next, download the required NNS canister Wasms with:
+Next, download the necessary NNS canister Wasms with:
 
 ```bash
 ./scripts/download_wasms.sh
 ```
+A patched version of the CMC is already included in the project.
 
 Finally, run the tests with:
 
