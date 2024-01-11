@@ -233,6 +233,7 @@ pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: candid::Principal,
     pub user: candid::Principal,
     pub principals: Vec<candid::Principal>,
+    pub historical_exchange_rate_timestamp: u64,
 }
 
 #[derive(CandidType, Debug, Clone, Deserialize)]
@@ -245,6 +246,15 @@ pub enum ExecuteProposalError {
     NotifyTopUpError(NotifyError),
 }
 
+async fn get_historical_exchange_rate_cycles_per_e8s(timestamp: u64) -> u64 {
+    // TODO: implement
+    println!(
+        "Getting historical exchange rate for timestamp {}",
+        timestamp
+    );
+    get_exchange_rate_cycles_per_e8s().await
+}
+
 /// TODO: Argument should be something like ValidatedSRProposal, created by governance canister via
 /// SRProposal::validate().
 #[update]
@@ -253,6 +263,7 @@ async fn accept_rental_agreement(
         subnet_id,
         user,
         principals,
+        historical_exchange_rate_timestamp,
     }: ValidatedSubnetRentalProposal,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
@@ -280,17 +291,17 @@ async fn accept_rental_agreement(
         return Err(err);
     }
 
-    // Check if the user has enough ICP to cover the initial rental period and 2 transaction fees.
+    // Check if the user has enough ICP to cover the initial rental period.
     let needed_cycles = rental_conditions.daily_cost_cycles
         * (rental_conditions.initial_rental_period_days as u128);
 
-    let exchange_rate = get_exchange_rate_cycles_per_e8s().await;
-    let needed_e8s_for_cycles = needed_cycles / (exchange_rate as u128);
-    let needed_e8s_for_fees = (DEFAULT_FEE.e8s() as u128) * 2; // once for user to SRC, once for SRC to CMC (direct does not seem possible)
+    let exchange_rate =
+        get_historical_exchange_rate_cycles_per_e8s(historical_exchange_rate_timestamp).await;
+    let needed_e8s = needed_cycles / (exchange_rate as u128);
 
     let icp_balance_e8s = check_e8s_balance(&user).await;
-    if (icp_balance_e8s as u128) < needed_e8s_for_cycles + needed_e8s_for_fees {
-        println!("Insufficient ICP balance to cover cost for initial rental period and fees");
+    if (icp_balance_e8s as u128) < needed_e8s {
+        println!("Insufficient ICP balance to cover cost for initial rental period");
         return Err(ExecuteProposalError::InsufficientFunds);
     }
 
@@ -314,7 +325,7 @@ async fn accept_rental_agreement(
             memo: Some(MEMO_TOP_UP_CANISTER), // For some reason, the CMC does not see this memo if we send it directly to the CMC with the icrc2_transfer_from; it arrives with memo 0.
             // Therefore, we send it to the SRC first (this canister), and then send it to the CMC with a normal transfer (non-icrc2).
             created_at_time: None,
-            amount: needed_e8s_for_cycles + (DEFAULT_FEE.e8s() as u128),
+            amount: needed_e8s - (DEFAULT_FEE.e8s() as u128),
         },),
     )
     .await
@@ -334,6 +345,31 @@ async fn accept_rental_agreement(
         return Err(ExecuteProposalError::TransferUserToSrcError(err));
     }
 
+    // Create preliminary rental agreement.
+    let rental_agreement = RentalAgreement {
+        user: user.into(),
+        subnet_id: subnet_id.into(),
+        principals: principals.into_iter().map(|p| p.into()).collect(),
+        rental_conditions,
+        creation_date,
+    };
+
+    // Whitelist principals for subnet
+    for user in &rental_agreement.principals {
+        // TODO: what about duplicates in rental_agreement.principals?
+        // TODO: what about duplicates in rental_agreement.principals and existing principals in the list?
+        ic_cdk::call::<_, ()>(
+            MAINNET_CYCLES_MINTING_CANISTER_ID,
+            "set_authorized_subnetwork_list",
+            (SetAuthorizedSubnetworkListArgs {
+                who: Some(user.0),
+                subnets: vec![subnet_id],
+            },),
+        )
+        .await
+        .expect("Failed to call CMC");
+    }
+
     // Use normal transfer to send the ICP from SRC to the CMC.
     let transfer_to_cmc_result = transfer(
         MAINNET_LEDGER_CANISTER_ID,
@@ -344,7 +380,7 @@ async fn accept_rental_agreement(
             ),
             fee: DEFAULT_FEE,
             from_subaccount: None,
-            amount: Tokens::from_e8s(needed_e8s_for_cycles as u64),
+            amount: Tokens::from_e8s(needed_e8s as u64) - DEFAULT_FEE - DEFAULT_FEE,
             memo: MEMO_TOP_UP_CANISTER,
             created_at_time: None,
         },
@@ -395,14 +431,6 @@ async fn accept_rental_agreement(
     };
 
     // Add the rental agreement to the rental agreement map.
-    let rental_agreement = RentalAgreement {
-        user: user.into(),
-        subnet_id: subnet_id.into(),
-        principals: principals.into_iter().map(|p| p.into()).collect(),
-        rental_conditions,
-        creation_date,
-    };
-
     println!("Creating rental agreement: {:?}", &rental_agreement);
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut()
@@ -417,22 +445,6 @@ async fn accept_rental_agreement(
     };
     println!("Creating rental account: {:?}", &rental_account);
     RENTAL_ACCOUNTS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_account));
-
-    // Whitelist principals for subnet
-    for user in &rental_agreement.principals {
-        // TODO: what about duplicates in rental_agreement.principals?
-        // TODO: what about duplicates in rental_agreement.principals and existing principals in the list?
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(user.0),
-                subnets: vec![subnet_id],
-            },),
-        )
-        .await
-        .expect("Failed to call CMC");
-    }
 
     persist_event(
         EventType::Created { rental_agreement }.into(),

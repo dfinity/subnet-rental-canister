@@ -165,14 +165,12 @@ fn test_proposal_accept() {
     assert!(res.is_ok());
 
     let user_balance = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
-    let exchange_rate_cycles_per_e8s = 1_000_000; // this is what the CMC returns atm
+    let historical_exchange_rate_cycles_per_e8s = 1_000_000; // this is what the CMC returns atm
     assert_eq!(
         user_balance,
         USER_1_INITIAL_BALANCE
-            - DEFAULT_FEE // icrc2_approve
-            - DEFAULT_FEE // icrc2_transfer_from
-            - DEFAULT_FEE // transfer
-            - Tokens::from_e8s(exchange_rate_cycles_per_e8s * 183 * 2_000) // 2_000 XDR for 183 days
+            - DEFAULT_FEE // icrc-2 approval fee
+            - Tokens::from_e8s(historical_exchange_rate_cycles_per_e8s * 183 * 2_000) // 2_000 XDR for 183 days
     );
 }
 
@@ -273,7 +271,8 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
     let arg = ValidatedSubnetRentalProposal {
         subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
         user: USER_1,
-        principals: vec![],
+        principals: vec![USER_1],
+        historical_exchange_rate_timestamp: 0,
     };
 
     let WasmResult::Reply(res) = pic
@@ -302,6 +301,7 @@ fn accept_test_rental_agreement(
         subnet_id,
         user: *user,
         principals: vec![*user],
+        historical_exchange_rate_timestamp: 0,
     };
 
     pic.update_call(
