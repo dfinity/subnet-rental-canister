@@ -1,7 +1,14 @@
-use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
+use candid::{decode_one, encode_args, encode_one, CandidType, Nat, Principal};
 use ic_ledger_types::{
     AccountBalanceArgs, AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
     MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+};
+use icrc_ledger_types::{
+    icrc1::account::Account,
+    icrc2::{
+        approve::{ApproveArgs, ApproveError},
+        transfer_from::TransferFromError,
+    },
 };
 use itertools::Itertools;
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
@@ -13,8 +20,8 @@ use std::{
 };
 use subnet_rental_canister::{
     external_types::{
-        Account, ApproveArgs, ApproveError, CyclesCanisterInitPayload, FeatureFlags,
-        NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload, TransferFromError,
+        CyclesCanisterInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload,
+        NnsLedgerCanisterPayload,
     },
     history::Event,
     ExecuteProposalError, RentalAccount, RentalAgreement, RentalConditions,
@@ -162,7 +169,7 @@ fn test_proposal_accept() {
         .as_nanos();
 
     // User approves a sufficient amount of ICP.
-    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000);
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
 
     // Proposal is accepted and the governance canister calls accept_rental_agreement.
     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
@@ -222,7 +229,7 @@ fn test_proposal_accept() {
 fn test_proposal_rejected_if_already_rented() {
     let (pic, canister_id) = setup();
 
-    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000);
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
 
     // The first time must succeed.
     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
@@ -249,7 +256,7 @@ fn test_proposal_rejected_if_already_rented() {
 fn test_proposal_rejected_if_too_low_funds() {
     let (pic, canister_id) = setup();
 
-    let _block_index_approve = icrc2_approve(&pic, USER_2, 5_000);
+    let _block_index_approve = icrc2_approve(&pic, USER_2, 5_000 * E8S);
 
     // User 2 has too low funds.
     let wasm_res = accept_test_rental_agreement(&pic, &USER_2, &canister_id, SUBNET_FOR_RENT);
@@ -269,7 +276,7 @@ fn test_proposal_rejected_if_too_low_funds() {
 fn test_proposal_rejected_if_icrc2_approval_too_low() {
     let (pic, canister_id) = setup();
 
-    let _block_index_approve = icrc2_approve(&pic, USER_1, 1);
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 1 * E8S);
 
     // User 1 has approved too little funds.
     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
@@ -299,7 +306,7 @@ fn test_history() {
 #[test]
 fn test_burning() {
     let (pic, canister_id) = setup();
-    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000);
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
     accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
 
     let rental_accounts: Vec<(Principal, RentalAccount)> =
@@ -411,18 +418,18 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn icrc2_approve(pic: &PocketIc, user: Principal, icp_amount: u128) -> u128 {
+fn icrc2_approve(pic: &PocketIc, user: Principal, e8s_amount: u64) -> u128 {
     update::<Result<u128, ApproveError>>(
         pic,
         MAINNET_LEDGER_CANISTER_ID,
         Some(user),
         "icrc2_approve",
         ApproveArgs {
-            fee: Some(DEFAULT_FEE.e8s() as u128),
+            fee: Some(Nat::from(DEFAULT_FEE.e8s())),
             memo: None,
             from_subaccount: None,
             created_at_time: None,
-            amount: icp_amount * E8S as u128,
+            amount: Nat::from(e8s_amount),
             expected_allowance: None,
             expires_at: None,
             spender: Account {

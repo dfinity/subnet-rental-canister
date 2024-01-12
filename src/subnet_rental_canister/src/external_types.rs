@@ -1,30 +1,6 @@
 use candid::{CandidType, Deserialize, Principal};
-use ic_ledger_types::{Memo, Subaccount, Tokens};
+use ic_ledger_types::Tokens;
 use std::collections::{HashMap, HashSet};
-
-#[derive(CandidType, Deserialize, Debug)]
-pub struct TransferFromArgs {
-    pub to: Account,
-    pub fee: Option<u128>,
-    pub spender_subaccount: Option<Subaccount>,
-    pub from: Account,
-    pub memo: Option<Memo>,
-    pub created_at_time: Option<u64>,
-    pub amount: u128,
-}
-
-#[derive(CandidType, Deserialize, Debug, Clone)]
-pub enum TransferFromError {
-    GenericError { message: String, error_code: u128 },
-    TemporarilyUnavailable,
-    InsufficientAllowance { allowance: u128 },
-    BadBurn { min_burn_amount: u128 },
-    Duplicate { duplicate_of: u128 },
-    BadFee { expected_fee: u128 },
-    CreatedInFuture { ledger_time: u64 },
-    TooOld,
-    InsufficientFunds { balance: u128 },
-}
 
 #[derive(CandidType, Deserialize, Debug)]
 pub struct NotifyTopUpArg {
@@ -45,37 +21,6 @@ pub enum NotifyError {
     },
     Processing,
     TransactionTooOld(u64),
-}
-
-#[derive(CandidType, Deserialize, Debug)]
-pub struct Account {
-    pub owner: Principal,
-    pub subaccount: Option<Subaccount>,
-}
-
-#[derive(CandidType, Deserialize, Debug)]
-pub struct ApproveArgs {
-    pub fee: Option<u128>,
-    pub memo: Option<Memo>,
-    pub from_subaccount: Option<Subaccount>,
-    pub created_at_time: Option<u64>,
-    pub amount: u128,
-    pub expected_allowance: Option<u128>,
-    pub expires_at: Option<u64>,
-    pub spender: Account,
-}
-
-#[derive(CandidType, Deserialize, Debug)]
-pub enum ApproveError {
-    GenericError { message: String, error_code: u128 },
-    TemporarilyUnavailable,
-    Duplicate { duplicate_of: u128 },
-    BadFee { expected_fee: u128 },
-    AllowanceChanged { current_allowance: u128 },
-    CreatedInFuture { ledger_time: u64 },
-    TooOld,
-    Expired { ledger_time: u64 },
-    InsufficientFunds { balance: u128 },
 }
 
 #[derive(CandidType, Deserialize, Debug)]

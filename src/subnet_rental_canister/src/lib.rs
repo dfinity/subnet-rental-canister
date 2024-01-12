@@ -1,4 +1,4 @@
-use candid::{CandidType, Decode, Deserialize, Encode};
+use candid::{CandidType, Decode, Deserialize, Encode, Nat};
 use external_types::NotifyError;
 use history::{Event, History};
 use ic_cdk::{heartbeat, init, post_upgrade, println, query, update};
@@ -13,13 +13,15 @@ use ic_stable_structures::{
     storable::Bound,
     DefaultMemoryImpl, StableBTreeMap, Storable,
 };
+use icrc_ledger_types::icrc1::account::Account;
+use icrc_ledger_types::icrc2::transfer_from::{TransferFromArgs, TransferFromError};
 use itertools::Itertools;
 use serde::Serialize;
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
 
 use crate::external_types::{
-    Account, IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyTopUpArg,
-    SetAuthorizedSubnetworkListArgs, TransferFromArgs, TransferFromError,
+    IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyTopUpArg,
+    SetAuthorizedSubnetworkListArgs,
 };
 use crate::history::EventType;
 
@@ -612,7 +614,7 @@ async fn icrc2_transfer_to_src(
                 owner: ic_cdk::id(),
                 subaccount: None,
             },
-            fee: Some(DEFAULT_FEE.e8s() as u128),
+            fee: Some(Nat::from(DEFAULT_FEE.e8s())),
             spender_subaccount: None,
             from: Account {
                 owner: user,
@@ -620,7 +622,7 @@ async fn icrc2_transfer_to_src(
             },
             memo: None,
             created_at_time: None,
-            amount: amount.e8s() as u128,
+            amount: Nat::from(amount.e8s()),
         },),
     )
     .await
