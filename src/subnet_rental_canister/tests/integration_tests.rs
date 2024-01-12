@@ -1,31 +1,40 @@
-use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
+use candid::{decode_one, encode_args, encode_one, CandidType, Nat, Principal};
 use ic_ledger_types::{
-    AccountIdentifier, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
-    MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    AccountBalanceArgs, AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
+    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
+use icrc_ledger_types::{
+    icrc1::account::Account,
+    icrc2::{
+        approve::{ApproveArgs, ApproveError},
+        transfer_from::TransferFromError,
+    },
+};
+use itertools::Itertools;
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    time::Duration,
+    time::{Duration, UNIX_EPOCH},
 };
 use subnet_rental_canister::{
     external_types::{
-        CyclesCanisterInitPayload, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
+        CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     history::Event,
-    ExecuteProposalError, RentalAccount, RentalConditions, ValidatedSubnetRentalProposal,
+    ExecuteProposalError, RentalAccount, RentalAgreement, RentalConditions,
+    ValidatedSubnetRentalProposal, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
-
+const SRC_ID: Principal =
+    Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
 const SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
-const E8S: u64 = 100_000_000;
 const USER_1: Principal = Principal::from_slice(b"user1");
-const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000 * E8S);
+const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(3_700 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
 
@@ -33,19 +42,20 @@ fn install_cmc(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, MAINNET_CYCLES_MINTING_CANISTER_ID)
         .unwrap();
     let cmc_wasm = fs::read(CMC_WASM).expect("Could not find the patched CMC wasm");
-
-    let init_arg: Option<CyclesCanisterInitPayload> = Some(CyclesCanisterInitPayload {
-        exchange_rate_canister: None,
-        last_purged_notification: None,
+    let minter = AccountIdentifier::new(&MAINNET_CYCLES_MINTING_CANISTER_ID, &DEFAULT_SUBACCOUNT);
+    let init_arg = CmcInitPayload {
         governance_canister_id: Some(MAINNET_GOVERNANCE_CANISTER_ID),
-        minting_account_id: None,
+        minting_account_id: minter.to_string(),
         ledger_canister_id: Some(MAINNET_LEDGER_CANISTER_ID),
-    });
+        last_purged_notification: None,
+        exchange_rate_canister: None,
+        cycles_ledger_canister_id: None,
+    };
 
     pic.install_canister(
         MAINNET_CYCLES_MINTING_CANISTER_ID,
         cmc_wasm,
-        encode_args((init_arg,)).unwrap(),
+        encode_args((Some(init_arg),)).unwrap(),
         None,
     );
 }
@@ -71,6 +81,7 @@ fn install_ledger(pic: &PocketIc) {
         transfer_fee: Some(DEFAULT_FEE),
         token_symbol: Some("ICP".to_string()),
         token_name: Some("Internet Computer".to_string()),
+        feature_flags: Some(FeatureFlags { icrc2: true }),
     });
     pic.install_canister(
         MAINNET_LEDGER_CANISTER_ID,
@@ -87,7 +98,7 @@ fn setup() -> (PocketIc, Principal) {
     install_cmc(&pic);
 
     // Install subnet rental canister.
-    let subnet_rental_canister = pic.create_canister();
+    let subnet_rental_canister = pic.create_canister_with_id(None, None, SRC_ID).unwrap();
     let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
 
@@ -149,43 +160,89 @@ fn test_list_rental_conditions() {
     assert!(!conditions.is_empty());
 }
 
-fn accept_test_rental_agreement(
-    pic: &PocketIc,
-    canister_id: &Principal,
-    subnet_id_str: &str,
-) -> WasmResult {
-    let user = Principal::from_text(subnet_id_str).unwrap();
-    let arg = ValidatedSubnetRentalProposal {
-        subnet_id: user,
-        user: USER_1,
-        principals: vec![user],
-    };
-
-    pic.update_call(
-        *canister_id,
-        MAINNET_GOVERNANCE_CANISTER_ID,
-        "accept_rental_agreement",
-        encode_one(arg.clone()).unwrap(),
-    )
-    .unwrap()
-}
-
 #[test]
-fn test_proposal_accepted() {
+fn test_proposal_accept() {
     let (pic, canister_id) = setup();
 
-    // the first time must succeed
-    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let time_now = pic
+        .get_time()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
 
+    // User approves a sufficient amount of ICP.
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
+
+    // Proposal is accepted and the governance canister calls accept_rental_agreement.
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
     };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
 
+    // The proposal is executed successfully.
+    assert!(res.is_ok());
+
+    // The user's balance is reduced by the rental fee and one transaction fee.
+    let user_balance = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
+    let historical_exchange_rate_cycles_per_e8s = 1_000_000; // this is what the CMC returns atm
+    assert_eq!(
+        user_balance,
+        USER_1_INITIAL_BALANCE
+            - DEFAULT_FEE // icrc-2 approval fee
+            - Tokens::from_e8s(historical_exchange_rate_cycles_per_e8s * 183 * 2_000) // 2_000 XDR for 183 days
+    );
+
+    // The rental account is stored in the canister state.
+    let rental_accounts: Vec<(Principal, RentalAccount)> =
+        query(&pic, canister_id, "list_rental_accounts", ());
+
+    assert_eq!(rental_accounts.len(), 1);
+    assert_eq!(rental_accounts[0].0.to_string(), SUBNET_FOR_RENT);
+    assert_eq!(
+        rental_accounts[0].1.cycles_balance,
+        2_000 * TRILLION * 183
+            - (2 * DEFAULT_FEE.e8s() as u128 * historical_exchange_rate_cycles_per_e8s as u128) // two transaction fees
+    );
+    assert_eq!(
+        rental_accounts[0].1.covered_until,
+        (time_now + 183 * 24 * 60 * 60 * 1_000_000_000) as u64
+    );
+
+    // The rental agreement is stored in the canister state.
+    let rental_agreements: Vec<RentalAgreement> =
+        query(&pic, canister_id, "list_rental_agreements", ());
+
+    assert_eq!(rental_agreements.len(), 1);
+    assert_eq!(rental_agreements[0].user.0, USER_1);
+    assert_eq!(
+        rental_agreements[0].subnet_id.0.to_string(),
+        SUBNET_FOR_RENT
+    );
+    assert!(rental_agreements[0]
+        .principals
+        .iter()
+        .map(|p| p.0.to_string())
+        .collect_vec()
+        .contains(&USER_1.to_string()));
+}
+
+#[test]
+fn test_proposal_rejected_if_already_rented() {
+    let (pic, canister_id) = setup();
+
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
+
+    // The first time must succeed.
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
+    let WasmResult::Reply(res) = wasm_res else {
+        panic!("Expected a reply");
+    };
     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
     assert!(res.is_ok());
 
-    // using the same subnet again must fail
-    let wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    // Using the same subnet again must fail.
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
     let WasmResult::Reply(res) = wasm_res else {
         panic!("Expected a reply");
     };
@@ -198,9 +255,49 @@ fn test_proposal_accepted() {
 }
 
 #[test]
+fn test_proposal_rejected_if_too_low_funds() {
+    let (pic, canister_id) = setup();
+
+    let _block_index_approve = icrc2_approve(&pic, USER_2, 5_000 * E8S);
+
+    // User 2 has too low funds.
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_2, &canister_id, SUBNET_FOR_RENT);
+    let WasmResult::Reply(res) = wasm_res else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(
+        res,
+        Err(ExecuteProposalError::TransferUserToSrcError(
+            TransferFromError::InsufficientFunds { .. }
+        ))
+    ));
+}
+
+#[test]
+fn test_proposal_rejected_if_icrc2_approval_too_low() {
+    let (pic, canister_id) = setup();
+
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 2 * E8S);
+
+    // User 1 has approved too little funds.
+    let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
+    let WasmResult::Reply(res) = wasm_res else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(
+        res,
+        Err(ExecuteProposalError::TransferUserToSrcError(
+            TransferFromError::InsufficientAllowance { .. }
+        ))
+    ));
+}
+
+#[test]
 fn test_history() {
     let (pic, canister_id) = setup();
-    let _wasm_res = accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let _wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
     let subnet = Principal::from_text(SUBNET_FOR_RENT).unwrap();
 
     let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
@@ -211,16 +308,75 @@ fn test_history() {
 #[test]
 fn test_burning() {
     let (pic, canister_id) = setup();
-    accept_test_rental_agreement(&pic, &canister_id, SUBNET_FOR_RENT);
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
+    accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
+
     let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "get_rental_accounts", ());
+        query(&pic, canister_id, "list_rental_accounts", ());
     let initial_balance = rental_accounts[0].1.cycles_balance;
     pic.advance_time(Duration::from_secs(2));
     pic.tick();
     let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "get_rental_accounts", ());
-    let new_balance = rental_accounts[0].1.cycles_balance;
-    assert!(new_balance < initial_balance);
+        query(&pic, canister_id, "list_rental_accounts", ());
+    let balance_1 = rental_accounts[0].1.cycles_balance;
+    assert!(balance_1 < initial_balance);
+
+    pic.advance_time(Duration::from_secs(4));
+    pic.tick();
+    let rental_accounts: Vec<(Principal, RentalAccount)> =
+        query(&pic, canister_id, "list_rental_accounts", ());
+    let balance_2 = rental_accounts[0].1.cycles_balance;
+    assert!(balance_2 < initial_balance);
+    assert!(balance_2 < balance_1);
+}
+
+#[test]
+fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
+    let (pic, canister_id) = setup();
+
+    let arg = ValidatedSubnetRentalProposal {
+        subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
+        user: USER_1,
+        principals: vec![USER_1],
+        proposal_creation_timestamp: 0,
+    };
+
+    let WasmResult::Reply(res) = pic
+        .update_call(
+            canister_id,
+            Principal::anonymous(),
+            "accept_rental_agreement",
+            encode_one(arg.clone()).unwrap(),
+        )
+        .unwrap()
+    else {
+        panic!("Expected a reply");
+    };
+    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
+    assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
+}
+
+fn accept_test_rental_agreement(
+    pic: &PocketIc,
+    user: &Principal,
+    canister_id: &Principal,
+    subnet_id_str: &str,
+) -> WasmResult {
+    let subnet_id = Principal::from_text(subnet_id_str).unwrap();
+    let arg = ValidatedSubnetRentalProposal {
+        subnet_id,
+        user: *user,
+        principals: vec![*user],
+        proposal_creation_timestamp: 0,
+    };
+
+    pic.update_call(
+        *canister_id,
+        MAINNET_GOVERNANCE_CANISTER_ID,
+        "accept_rental_agreement",
+        encode_one(arg).unwrap(),
+    )
+    .unwrap()
 }
 
 fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
@@ -243,17 +399,17 @@ fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     decode_one::<T>(&res).unwrap()
 }
 
-#[allow(dead_code)]
 fn update<T: CandidType + for<'a> Deserialize<'a>>(
     pic: &PocketIc,
     canister_id: Principal,
+    sender: Option<Principal>,
     method: &str,
     args: impl CandidType,
 ) -> T {
     let WasmResult::Reply(res) = pic
         .update_call(
             canister_id,
-            Principal::anonymous(),
+            sender.unwrap_or(Principal::anonymous()),
             method,
             encode_one(args).unwrap(),
         )
@@ -264,28 +420,36 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     decode_one::<T>(&res).unwrap()
 }
 
-#[test]
-fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
-    let (pic, canister_id) = setup();
+fn icrc2_approve(pic: &PocketIc, user: Principal, e8s_amount: u64) -> u128 {
+    update::<Result<u128, ApproveError>>(
+        pic,
+        MAINNET_LEDGER_CANISTER_ID,
+        Some(user),
+        "icrc2_approve",
+        ApproveArgs {
+            fee: None,
+            memo: None,
+            from_subaccount: None,
+            created_at_time: None,
+            amount: Nat::from(e8s_amount),
+            expected_allowance: None,
+            expires_at: None,
+            spender: Account {
+                owner: SRC_ID,
+                subaccount: None,
+            },
+        },
+    )
+    .unwrap()
+}
 
-    let arg = ValidatedSubnetRentalProposal {
-        subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
-        user: USER_1,
-        principals: vec![],
-    };
-
-    let WasmResult::Reply(res) = pic
-        .update_call(
-            canister_id,
-            Principal::anonymous(),
-            "accept_rental_agreement",
-            encode_one(arg.clone()).unwrap(),
-        )
-        .unwrap()
-    else {
-        panic!("Expected a reply");
-    };
-    let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-    println!("res {:?}", res);
-    assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
+fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
+    query(
+        pic,
+        MAINNET_LEDGER_CANISTER_ID,
+        "account_balance",
+        AccountBalanceArgs {
+            account: AccountIdentifier::new(&owner, &subaccount),
+        },
+    )
 }

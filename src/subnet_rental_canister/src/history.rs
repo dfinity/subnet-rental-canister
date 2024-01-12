@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use candid::{CandidType, Decode, Encode};
+use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
@@ -63,7 +64,7 @@ pub enum EventType {
     },
     Terminated,
     PaymentSuccess {
-        amount: u64,
+        amount: Tokens,
         covered_until: u64,
     },
     PaymentFailure {
