@@ -2,7 +2,7 @@ use candid::{CandidType, Deserialize, Principal};
 use ic_ledger_types::Tokens;
 use std::collections::{HashMap, HashSet};
 
-#[derive(CandidType, Deserialize, Debug)]
+#[derive(CandidType, Debug)]
 pub struct NotifyTopUpArg {
     pub block_index: u64,
     pub canister_id: Principal,
@@ -36,25 +36,36 @@ pub struct IcpXdrConversionRateResponse {
     pub hash_tree: serde_bytes::ByteBuf,
 }
 
-#[derive(CandidType)]
+#[derive(CandidType, Debug)]
 pub struct SetAuthorizedSubnetworkListArgs {
     pub who: Option<Principal>,
     pub subnets: Vec<Principal>,
 }
 
-#[derive(Deserialize, CandidType, Debug)]
-pub struct CyclesCanisterInitPayload {
+#[derive(CandidType, Debug)]
+pub struct CmcInitPayload {
     pub ledger_canister_id: Option<Principal>,
     pub governance_canister_id: Option<Principal>,
     pub minting_account_id: String,
+    pub last_purged_notification: Option<u64>,
+    pub exchange_rate_canister: Option<ExchangeRateCanister>,
+    pub cycles_ledger_canister_id: Option<Principal>,
 }
 
-#[derive(CandidType)]
+#[derive(CandidType, Debug)]
+pub enum ExchangeRateCanister {
+    /// Enables the exchange rate canister with the given canister ID.
+    Set(Principal),
+    /// Disable the exchange rate canister.
+    Unset,
+}
+
+#[derive(CandidType, Debug)]
 pub enum NnsLedgerCanisterPayload {
     Init(NnsLedgerCanisterInitPayload),
 }
 
-#[derive(CandidType)]
+#[derive(CandidType, Debug)]
 pub struct NnsLedgerCanisterInitPayload {
     pub minting_account: String,
     pub initial_values: HashMap<String, Tokens>,
@@ -65,7 +76,7 @@ pub struct NnsLedgerCanisterInitPayload {
     pub feature_flags: Option<FeatureFlags>,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Debug)]
 pub struct FeatureFlags {
     pub icrc2: bool,
 }

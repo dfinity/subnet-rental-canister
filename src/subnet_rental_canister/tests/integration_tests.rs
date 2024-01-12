@@ -20,8 +20,7 @@ use std::{
 };
 use subnet_rental_canister::{
     external_types::{
-        CyclesCanisterInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload,
-        NnsLedgerCanisterPayload,
+        CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     history::Event,
     ExecuteProposalError, RentalAccount, RentalAgreement, RentalConditions,
@@ -44,10 +43,13 @@ fn install_cmc(pic: &PocketIc) {
         .unwrap();
     let cmc_wasm = fs::read(CMC_WASM).expect("Could not find the patched CMC wasm");
     let minter = AccountIdentifier::new(&MAINNET_CYCLES_MINTING_CANISTER_ID, &DEFAULT_SUBACCOUNT);
-    let init_arg = CyclesCanisterInitPayload {
+    let init_arg = CmcInitPayload {
         governance_canister_id: Some(MAINNET_GOVERNANCE_CANISTER_ID),
         minting_account_id: minter.to_string(),
         ledger_canister_id: Some(MAINNET_LEDGER_CANISTER_ID),
+        last_purged_notification: None,
+        exchange_rate_canister: None,
+        cycles_ledger_canister_id: None,
     };
 
     pic.install_canister(
