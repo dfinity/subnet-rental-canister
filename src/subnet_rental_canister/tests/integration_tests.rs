@@ -276,7 +276,7 @@ fn test_proposal_rejected_if_too_low_funds() {
 fn test_proposal_rejected_if_icrc2_approval_too_low() {
     let (pic, canister_id) = setup();
 
-    let _block_index_approve = icrc2_approve(&pic, USER_1, 1 * E8S);
+    let _block_index_approve = icrc2_approve(&pic, USER_1, 2 * E8S);
 
     // User 1 has approved too little funds.
     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
@@ -425,7 +425,7 @@ fn icrc2_approve(pic: &PocketIc, user: Principal, e8s_amount: u64) -> u128 {
         Some(user),
         "icrc2_approve",
         ApproveArgs {
-            fee: Some(Nat::from(DEFAULT_FEE.e8s())),
+            fee: None,
             memo: None,
             from_subaccount: None,
             created_at_time: None,

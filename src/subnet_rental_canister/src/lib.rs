@@ -195,8 +195,8 @@ fn canister_heartbeat() {
             let Some(rental_agreement) = RENTAL_AGREEMENTS.with(|map| map.borrow().get(&subnet_id))
             else {
                 println!(
-                    "Fatal: Failed to find active rental agreement for active rental account {:?}",
-                    subnet_id
+                    "Fatal: Failed to find active rental agreement for active rental account of subnet {}",
+                    subnet_id.0
                 );
                 return account;
             };
@@ -211,7 +211,7 @@ fn canister_heartbeat() {
             // amount                         < 10^18
             let amount = cost_cycles_per_second * nanos_since_last_burn as u128 / 1_000_000_000;
             if account.cycles_balance < amount {
-                println!("Failed to burn cycles for agreement {:?}", subnet_id);
+                println!("Failed to burn cycles for subnet {}", subnet_id.0);
                 return account;
             }
             // TODO: disabled for testing;
@@ -228,8 +228,8 @@ fn canister_heartbeat() {
             let cycles_balance = account.cycles_balance - amount;
             let last_burned = now;
             println!(
-                "Burned {} cycles for agreement {:?}, remaining: {}",
-                amount, subnet_id, cycles_balance
+                "Burned {} cycles for subnet {}, remaining: {}",
+                amount, subnet_id.0, cycles_balance
             );
             RentalAccount {
                 covered_until: account.covered_until,
@@ -337,7 +337,7 @@ async fn accept_rental_agreement(
 
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
         println!(
-            "Subnet is already in an active rental agreement: {:?}",
+            "Subnet {} is already in an active rental agreement",
             &subnet_id
         );
         let err = ExecuteProposalError::SubnetAlreadyRented;
@@ -377,6 +377,7 @@ async fn accept_rental_agreement(
 
     // Whitelist principals for subnet.
     whitelist_principals(subnet_id, &principals_to_whitelist).await;
+    let rental_agreement_creation_date = ic_cdk::api::time();
 
     // Transfer the ICP from the SRC to the CMC.
     let transfer_to_cmc_result = transfer_to_cmc(needed_icp - DEFAULT_FEE - DEFAULT_FEE).await;
@@ -411,13 +412,12 @@ async fn accept_rental_agreement(
     };
 
     // Add the rental agreement to the rental agreement map.
-    let creation_date = ic_cdk::api::time();
     let rental_agreement = RentalAgreement {
         user: user.into(),
         subnet_id: subnet_id.into(),
         principals: principals_to_whitelist,
         rental_conditions,
-        creation_date,
+        creation_date: rental_agreement_creation_date,
     };
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut()
@@ -427,9 +427,10 @@ async fn accept_rental_agreement(
 
     // Add the rental account to the rental account map.
     let rental_account = RentalAccount {
-        covered_until: creation_date + days_to_nanos(rental_conditions.initial_rental_period_days),
+        covered_until: rental_agreement_creation_date
+            + days_to_nanos(rental_conditions.initial_rental_period_days),
         cycles_balance: actual_cycles, // TODO: what about remaining cycles? what if this rental account already exists?
-        last_burned: creation_date,
+        last_burned: rental_agreement_creation_date,
     };
     RENTAL_ACCOUNTS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_account));
     println!("Created rental account: {:?}", &rental_account);
@@ -455,8 +456,8 @@ async fn billing() {
                 RENTAL_ACCOUNTS.with(|map| map.borrow_mut().get(&subnet_id))
             else {
                 println!(
-                    "FATAL: No rental account found for active rental agreement {:?}",
-                    &subnet_id
+                    "FATAL: No rental account found for active rental agreement for subnet {}",
+                    &subnet_id.0
                 );
                 continue;
             };
@@ -550,14 +551,12 @@ async fn billing() {
 
 async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
     for user in principals {
-        // TODO: what about duplicates in rental_agreement.principals?
-        // TODO: what about duplicates in rental_agreement.principals and existing principals in the list?
         ic_cdk::call::<_, ()>(
             MAINNET_CYCLES_MINTING_CANISTER_ID,
             "set_authorized_subnetwork_list",
             (SetAuthorizedSubnetworkListArgs {
                 who: Some(user.0),
-                subnets: vec![subnet_id],
+                subnets: vec![subnet_id], // TODO: is it fine to override the list here?
             },),
         )
         .await
@@ -614,7 +613,7 @@ async fn icrc2_transfer_to_src(
                 owner: ic_cdk::id(),
                 subaccount: None,
             },
-            fee: Some(Nat::from(DEFAULT_FEE.e8s())),
+            fee: None,
             spender_subaccount: None,
             from: Account {
                 owner: user,
