@@ -112,7 +112,7 @@ pub struct RentalConditions {
 pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: candid::Principal,
     pub user: candid::Principal,
-    pub principals: Vec<candid::Principal>,
+    pub principals: Vec<candid::Principal>, // TODO: limit size
     pub proposal_creation_timestamp: u64,
 }
 
@@ -556,7 +556,7 @@ async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Pri
             "set_authorized_subnetwork_list",
             (SetAuthorizedSubnetworkListArgs {
                 who: Some(user.0),
-                subnets: vec![subnet_id], // TODO: is it fine to override the list here?
+                subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
             },),
         )
         .await
