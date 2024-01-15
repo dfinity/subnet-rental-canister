@@ -17,7 +17,7 @@ use icrc_ledger_types::icrc1::account::Account;
 use icrc_ledger_types::icrc2::transfer_from::{TransferFromArgs, TransferFromError};
 use itertools::Itertools;
 use serde::Serialize;
-use std::{borrow::Cow, cell::RefCell, collections::HashMap, time::Duration};
+use std::{borrow::Cow, cell::RefCell, time::Duration};
 
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyTopUpArg,
@@ -42,36 +42,22 @@ thread_local! {
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
     // Memory region 0
-    static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, VirtualMemory<DefaultMemoryImpl>>> =
+    // Only modify via _set_rental_conditions so that history is updated alongside.
+    static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Principal, RentalConditions, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
     // Memory region 1
-    static RENTAL_ACCOUNTS: RefCell<StableBTreeMap<Principal, RentalAccount, VirtualMemory<DefaultMemoryImpl>>> =
+    static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 
     // Memory region 2
-    static HISTORY: RefCell<StableBTreeMap<Principal, History, VirtualMemory<DefaultMemoryImpl>>> =
+    static BILLING_RECORDS: RefCell<StableBTreeMap<Principal, BillingRecord, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
-    /// Hardcoded subnets and their rental conditions. TODO: make this editable via proposal (method), not canister upgrade.
-    static SUBNETS: RefCell<HashMap<Principal, RentalConditions>> = HashMap::from([
-        (candid::Principal::from_text("bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe").unwrap().into(),
-            RentalConditions {
-                daily_cost_cycles: 1_000 * TRILLION,
-                initial_rental_period_days: 365,
-                billing_period_days: 30,
-                warning_threshold_days: 60,
-            },
-        ),
-        (candid::Principal::from_text("fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae").unwrap().into(),
-            RentalConditions {
-                daily_cost_cycles: 2_000 * TRILLION,
-                initial_rental_period_days: 183,
-                billing_period_days: 30,
-                warning_threshold_days: 4 * 7,
-            },
-        ),
-    ]).into();
+    // Memory region 3
+    static HISTORY: RefCell<StableBTreeMap<Principal, History, VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
+
 }
 
 #[derive(
@@ -105,7 +91,18 @@ pub struct RentalConditions {
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
     billing_period_days: u64,
-    warning_threshold_days: u64,
+}
+
+impl Storable for RentalConditions {
+    // TODO: find max size and bound
+    const BOUND: Bound = Bound::Unbounded;
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        Decode!(&bytes, Self).unwrap()
+    }
 }
 
 #[derive(Clone, CandidType, Deserialize)]
@@ -131,9 +128,15 @@ pub struct RentalAgreement {
     pub user: Principal,
     pub subnet_id: SubnetId,
     pub principals: Vec<Principal>,
-    rental_conditions: RentalConditions,
     // nanoseconds since epoch
     creation_date: u64,
+}
+
+impl RentalAgreement {
+    pub fn get_rental_conditions(&self) -> RentalConditions {
+        // unwrap justified because no rental agreement can exist without rental conditions
+        RENTAL_CONDITIONS.with(|map| map.borrow().get(&self.subnet_id).unwrap())
+    }
 }
 
 impl Storable for RentalAgreement {
@@ -149,10 +152,10 @@ impl Storable for RentalAgreement {
 }
 
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
-pub struct RentalAccount {
+pub struct BillingRecord {
     /// The date (in nanos since epoch) until which the rental agreement is paid for.
     pub covered_until: u64,
-    /// This account's share of cycles among the SRC's cycles.
+    /// This subnet's share of cycles among the SRC's cycles.
     /// Increased by the payment process (via timer).
     /// Decreased by the burning process (via heartbeat).
     pub cycles_balance: u128,
@@ -160,7 +163,7 @@ pub struct RentalAccount {
     pub last_burned: u64,
 }
 
-impl Storable for RentalAccount {
+impl Storable for BillingRecord {
     // Should be bounded once we replace string with real type.
     const BOUND: Bound = Bound::Bounded {
         max_size: 54, // TODO: figure out the actual size
@@ -180,6 +183,8 @@ impl Storable for RentalAccount {
 #[init]
 fn init() {
     ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
+    // Populate rental conditions map and persist these changes in history.
+    set_initial_rental_conditions();
     println!("Subnet rental canister initialized");
 }
 
@@ -190,29 +195,29 @@ fn post_upgrade() {
 
 #[heartbeat]
 fn canister_heartbeat() {
-    RENTAL_ACCOUNTS.with(|map| {
-        update_map(map, |subnet_id, account| {
+    BILLING_RECORDS.with(|map| {
+        update_map(map, |subnet_id, billing_record| {
             let Some(rental_agreement) = RENTAL_AGREEMENTS.with(|map| map.borrow().get(&subnet_id))
             else {
                 println!(
-                    "Fatal: Failed to find active rental agreement for active rental account of subnet {}",
+                    "Fatal: Failed to find active rental agreement for active billing record of subnet {}",
                     subnet_id.0
                 );
-                return account;
+                return billing_record;
             };
             let cost_cycles_per_second =
-                rental_agreement.rental_conditions.daily_cost_cycles / 86400;
+                rental_agreement.get_rental_conditions().daily_cost_cycles / 86400;
             let now = ic_cdk::api::time();
-            let nanos_since_last_burn = now - account.last_burned;
+            let nanos_since_last_burn = now - billing_record.last_burned;
             // cost_cycles_per_second: ~10^10 < 10^12
             // nanos_since_last_burn:  ~10^9  < 10^15
             // product                        < 10^27 << 10^38 (u128_max)
             // divided by 1B                    10^-9
             // amount                         < 10^18
             let amount = cost_cycles_per_second * nanos_since_last_burn as u128 / 1_000_000_000;
-            if account.cycles_balance < amount {
+            if billing_record.cycles_balance < amount {
                 println!("Failed to burn cycles for subnet {}", subnet_id.0);
-                return account;
+                return billing_record;
             }
             // TODO: disabled for testing;
             // let canister_total_available_cycles = ic_cdk::api::canister_balance128();
@@ -225,14 +230,14 @@ fn canister_heartbeat() {
             // }
             // Burn must succeed now
             ic_cdk::api::cycles_burn(amount);
-            let cycles_balance = account.cycles_balance - amount;
+            let cycles_balance = billing_record.cycles_balance - amount;
             let last_burned = now;
             println!(
                 "Burned {} cycles for subnet {}, remaining: {}",
                 amount, subnet_id.0, cycles_balance
             );
-            RentalAccount {
-                covered_until: account.covered_until,
+            BillingRecord {
+                covered_until: billing_record.covered_until,
                 cycles_balance,
                 last_burned,
             }
@@ -243,8 +248,8 @@ fn canister_heartbeat() {
 ////////// QUERY METHODS //////////
 
 #[query]
-fn list_subnet_conditions() -> HashMap<SubnetId, RentalConditions> {
-    SUBNETS.with(|map| map.borrow().clone())
+fn list_rental_conditions() -> Vec<(SubnetId, RentalConditions)> {
+    RENTAL_CONDITIONS.with(|map| map.borrow().iter().collect())
 }
 
 #[query]
@@ -253,8 +258,8 @@ fn list_rental_agreements() -> Vec<RentalAgreement> {
 }
 
 #[query]
-fn list_rental_accounts() -> Vec<(Principal, RentalAccount)> {
-    RENTAL_ACCOUNTS.with(|map| map.borrow().iter().collect())
+fn list_billing_records() -> Vec<(Principal, BillingRecord)> {
+    BILLING_RECORDS.with(|map| map.borrow().iter().collect())
 }
 
 #[query]
@@ -267,6 +272,95 @@ fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
 }
 
 ////////// UPDATE METHODS //////////
+
+/// Insert or overwrite existing rental conditions with Some(value), or remove
+/// rental conditions for this subnet altogether by passing None. Passing None
+/// while a corresponding active rental agreement exists will fail.
+#[update]
+fn set_rental_conditions(
+    subnet_id: candid::Principal,
+    mb_rental_conditions: Option<RentalConditions>,
+) -> Result<(), ExecuteProposalError> {
+    verify_caller_is_governance()?;
+    // Insert or overwrite
+    if let Some(RentalConditions {
+        daily_cost_cycles,
+        initial_rental_period_days,
+        billing_period_days,
+    }) = mb_rental_conditions
+    {
+        _set_rental_conditions(
+            subnet_id,
+            daily_cost_cycles,
+            initial_rental_period_days,
+            billing_period_days,
+        );
+    } else {
+        // Remove this subnet as up for rent by deleting the rental conditions
+        // Fail if an active rental agreement exists
+        if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
+            return Err(ExecuteProposalError::SubnetAlreadyRented);
+        }
+
+        if let Some(rental_conditions) =
+            RENTAL_CONDITIONS.with(|map| map.borrow_mut().remove(&subnet_id.into()))
+        {
+            persist_event(
+                EventType::RentalConditionsRemoved { rental_conditions },
+                subnet_id,
+            );
+        } else {
+            println!(
+                "Failed to remove rental conditions for subnet {}: Not found",
+                subnet_id
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Use only this function to make changes to RENTAL_CONDITIONS, so that
+/// all changes are persisted in the history.
+/// Internally used in canister init.
+fn _set_rental_conditions(
+    subnet_id: candid::Principal,
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+    billing_period_days: u64,
+) {
+    let rental_conditions = RentalConditions {
+        daily_cost_cycles,
+        initial_rental_period_days,
+        billing_period_days,
+    };
+    RENTAL_CONDITIONS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_conditions));
+    persist_event(
+        EventType::RentalConditionsChanged { rental_conditions },
+        subnet_id,
+    );
+}
+
+/// Call this in init
+fn set_initial_rental_conditions() {
+    _set_rental_conditions(
+        candid::Principal::from_text(
+            "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
+        )
+        .unwrap(),
+        1_000 * TRILLION,
+        365,
+        30,
+    );
+    _set_rental_conditions(
+        candid::Principal::from_text(
+            "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
+        )
+        .unwrap(),
+        2_000 * TRILLION,
+        183,
+        30,
+    );
+}
 
 #[update]
 // TODO: remove this endpoint before release
@@ -288,22 +382,16 @@ fn demo_add_rental_agreement() {
                 user: renter,
                 subnet_id,
                 principals: vec![renter, user],
-                rental_conditions: RentalConditions {
-                    daily_cost_cycles: 1_000 * TRILLION,
-                    initial_rental_period_days,
-                    billing_period_days: 30,
-                    warning_threshold_days: 60,
-                },
                 creation_date,
             },
         )
     });
     let test_exchange_rate_e8s_cycles: u128 = 72_401; // 1 ICP = 7.2401T cycles
     let test_icp_balance_e8s: u64 = 50_500 * E8S; // just over one year covered
-    RENTAL_ACCOUNTS.with(|map| {
+    BILLING_RECORDS.with(|map| {
         map.borrow_mut().insert(
             subnet_id,
-            RentalAccount {
+            BillingRecord {
                 covered_until: creation_date + days_to_nanos(initial_rental_period_days),
                 cycles_balance: test_icp_balance_e8s as u128 * test_exchange_rate_e8s_cycles,
                 last_burned: creation_date,
@@ -333,7 +421,8 @@ async fn accept_rental_agreement(
 
     // Get rental conditions.
     // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
-    let rental_conditions = SUBNETS.with(|rc| *rc.borrow().get(&subnet_id.into()).unwrap());
+    let rental_conditions =
+        RENTAL_CONDITIONS.with(|rc| rc.borrow().get(&subnet_id.into()).unwrap());
 
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
         println!(
@@ -345,9 +434,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: err.clone(),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(err);
     }
@@ -368,9 +456,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: ExecuteProposalError::TransferUserToSrcError(err.clone()),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(ExecuteProposalError::TransferUserToSrcError(err));
     }
@@ -388,9 +475,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: ExecuteProposalError::TransferSrcToCmcError(err.clone()),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(ExecuteProposalError::TransferSrcToCmcError(err));
     };
@@ -404,9 +490,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: ExecuteProposalError::NotifyTopUpError(err.clone()),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(ExecuteProposalError::NotifyTopUpError(err));
     };
@@ -416,7 +501,6 @@ async fn accept_rental_agreement(
         user: user.into(),
         subnet_id: subnet_id.into(),
         principals: principals_to_whitelist,
-        rental_conditions,
         creation_date: rental_agreement_creation_date,
     };
     RENTAL_AGREEMENTS.with(|map| {
@@ -425,20 +509,17 @@ async fn accept_rental_agreement(
     });
     println!("Created rental agreement: {:?}", &rental_agreement);
 
-    // Add the rental account to the rental account map.
-    let rental_account = RentalAccount {
+    // Add the billing record to the billing records map.
+    let billing_record = BillingRecord {
         covered_until: rental_agreement_creation_date
             + days_to_nanos(rental_conditions.initial_rental_period_days),
-        cycles_balance: actual_cycles, // TODO: what about remaining cycles? what if this rental account already exists?
+        cycles_balance: actual_cycles, // TODO: what about remaining cycles? what if this billing record already exists?
         last_burned: rental_agreement_creation_date,
     };
-    RENTAL_ACCOUNTS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_account));
-    println!("Created rental account: {:?}", &rental_account);
+    BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id.into(), billing_record));
+    println!("Created billing record: {:?}", &billing_record);
 
-    persist_event(
-        EventType::Created { rental_agreement }.into(),
-        subnet_id.into(),
-    );
+    persist_event(EventType::Created { rental_agreement }, subnet_id);
 
     Ok(())
 }
@@ -452,11 +533,11 @@ async fn billing() {
         RENTAL_AGREEMENTS.with(|map| map.borrow().iter().collect::<Vec<_>>())
     {
         {
-            let Some(RentalAccount { covered_until, .. }) =
-                RENTAL_ACCOUNTS.with(|map| map.borrow_mut().get(&subnet_id))
+            let Some(BillingRecord { covered_until, .. }) =
+                BILLING_RECORDS.with(|map| map.borrow_mut().get(&subnet_id))
             else {
                 println!(
-                    "FATAL: No rental account found for active rental agreement for subnet {}",
+                    "FATAL: No billing record found for active rental agreement for subnet {}",
                     &subnet_id.0
                 );
                 continue;
@@ -465,7 +546,7 @@ async fn billing() {
             // Check if subnet is covered for next billing_period amount of days.
             let now = ic_cdk::api::time();
             let billing_period_nanos =
-                days_to_nanos(rental_agreement.rental_conditions.billing_period_days);
+                days_to_nanos(rental_agreement.get_rental_conditions().billing_period_days);
 
             if covered_until < now {
                 println!(
@@ -473,14 +554,16 @@ async fn billing() {
                     subnet_id.0
                 );
                 // TODO: Degrade service
-                persist_event(EventType::Degraded.into(), subnet_id);
+                persist_event(EventType::Degraded, subnet_id);
             } else if covered_until < now + billing_period_nanos {
                 // Next billing period is not fully covered anymore.
                 // Try to withdraw ICP and convert to cycles.
                 let needed_cycles = rental_agreement
-                    .rental_conditions
+                    .get_rental_conditions()
                     .daily_cost_cycles
-                    .saturating_mul(rental_agreement.rental_conditions.billing_period_days as u128); // TODO: get up to date rental conditions
+                    .saturating_mul(
+                        rental_agreement.get_rental_conditions().billing_period_days as u128,
+                    ); // TODO: get up to date rental conditions
 
                 let icp_amount = Tokens::from_e8s(
                     needed_cycles.saturating_div(exchange_rate_cycles_per_e8s as u128) as u64,
@@ -498,8 +581,7 @@ async fn billing() {
                     persist_event(
                         EventType::PaymentFailure {
                             reason: format!("{err:?}"),
-                        }
-                        .into(),
+                        },
                         subnet_id,
                     );
                     continue;
@@ -523,13 +605,13 @@ async fn billing() {
                     continue;
                 };
 
-                // Add cycles to rental account, update covered_until.
+                // Add cycles to billing record, update covered_until.
                 let new_covered_until = covered_until + billing_period_nanos;
-                RENTAL_ACCOUNTS.with(|map| {
-                    let mut rental_account = map.borrow().get(&subnet_id).unwrap();
-                    rental_account.covered_until = new_covered_until;
-                    rental_account.cycles_balance += actual_cycles;
-                    map.borrow_mut().insert(subnet_id, rental_account);
+                BILLING_RECORDS.with(|map| {
+                    let mut billing_record = map.borrow().get(&subnet_id).unwrap();
+                    billing_record.covered_until = new_covered_until;
+                    billing_record.cycles_balance += actual_cycles;
+                    map.borrow_mut().insert(subnet_id, billing_record);
                 });
 
                 println!("Now covered until {}", new_covered_until);
@@ -537,8 +619,7 @@ async fn billing() {
                     EventType::PaymentSuccess {
                         amount: icp_amount,
                         covered_until: new_covered_until,
-                    }
-                    .into(),
+                    },
                     subnet_id,
                 );
             } else {
@@ -688,10 +769,11 @@ where
     }
 }
 
-fn persist_event(event: Event, subnet: Principal) {
+fn persist_event(event: impl Into<Event>, subnet: impl Into<Principal>) {
     HISTORY.with(|map| {
+        let subnet = subnet.into();
         let mut history = map.borrow().get(&subnet).unwrap_or_default();
-        history.events.push(event);
+        history.events.push(event.into());
         map.borrow_mut().insert(subnet, history);
     })
 }
