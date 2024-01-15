@@ -48,7 +48,6 @@ impl From<EventType> for Event {
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub enum EventType {
-    // TODO: Create this in canister init
     RentalConditionsChanged {
         rental_conditions: RentalConditions,
     },

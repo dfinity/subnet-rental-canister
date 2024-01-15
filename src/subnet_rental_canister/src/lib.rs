@@ -206,7 +206,7 @@ fn canister_heartbeat() {
                 return billing_record;
             };
             let cost_cycles_per_second =
-                rental_agreement.rental_conditions.daily_cost_cycles / 86400;
+                rental_agreement.get_rental_conditions().daily_cost_cycles / 86400;
             let now = ic_cdk::api::time();
             let nanos_since_last_burn = now - billing_record.last_burned;
             // cost_cycles_per_second: ~10^10 < 10^12
@@ -300,8 +300,8 @@ fn set_rental_conditions(
             RENTAL_CONDITIONS.with(|map| map.borrow_mut().remove(&subnet_id.into()))
         {
             persist_event(
-                EventType::RentalConditionsRemoved { rental_conditions }.into(),
-                subnet_id.into(),
+                EventType::RentalConditionsRemoved { rental_conditions },
+                subnet_id,
             );
         } else {
             println!(
@@ -329,8 +329,8 @@ fn _set_rental_conditions(
     };
     RENTAL_CONDITIONS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_conditions));
     persist_event(
-        EventType::RentalConditionsChanged { rental_conditions }.into(),
-        subnet_id.into(),
+        EventType::RentalConditionsChanged { rental_conditions },
+        subnet_id,
     );
 }
 
@@ -376,11 +376,6 @@ fn demo_add_rental_agreement() {
                 user: renter,
                 subnet_id,
                 principals: vec![renter, user],
-                rental_conditions: RentalConditions {
-                    daily_cost_cycles: 1_000 * TRILLION,
-                    initial_rental_period_days,
-                    billing_period_days: 30,
-                },
                 creation_date,
             },
         )
@@ -433,9 +428,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: err.clone(),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(err);
     }
@@ -456,9 +450,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: ExecuteProposalError::TransferUserToSrcError(err.clone()),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(ExecuteProposalError::TransferUserToSrcError(err));
     }
@@ -476,9 +469,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: ExecuteProposalError::TransferSrcToCmcError(err.clone()),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(ExecuteProposalError::TransferSrcToCmcError(err));
     };
@@ -492,9 +484,8 @@ async fn accept_rental_agreement(
             EventType::Failed {
                 user: user.into(),
                 reason: ExecuteProposalError::NotifyTopUpError(err.clone()),
-            }
-            .into(),
-            subnet_id.into(),
+            },
+            subnet_id,
         );
         return Err(ExecuteProposalError::NotifyTopUpError(err));
     };
@@ -504,7 +495,6 @@ async fn accept_rental_agreement(
         user: user.into(),
         subnet_id: subnet_id.into(),
         principals: principals_to_whitelist,
-        rental_conditions,
         creation_date: rental_agreement_creation_date,
     };
     RENTAL_AGREEMENTS.with(|map| {
@@ -523,10 +513,7 @@ async fn accept_rental_agreement(
     BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id.into(), billing_record));
     println!("Created billing record: {:?}", &billing_record);
 
-    persist_event(
-        EventType::Created { rental_agreement }.into(),
-        subnet_id.into(),
-    );
+    persist_event(EventType::Created { rental_agreement }, subnet_id);
 
     Ok(())
 }
@@ -553,7 +540,7 @@ async fn billing() {
             // Check if subnet is covered for next billing_period amount of days.
             let now = ic_cdk::api::time();
             let billing_period_nanos =
-                days_to_nanos(rental_agreement.rental_conditions.billing_period_days);
+                days_to_nanos(rental_agreement.get_rental_conditions().billing_period_days);
 
             if covered_until < now {
                 println!(
@@ -561,14 +548,16 @@ async fn billing() {
                     subnet_id.0
                 );
                 // TODO: Degrade service
-                persist_event(EventType::Degraded.into(), subnet_id);
+                persist_event(EventType::Degraded, subnet_id);
             } else if covered_until < now + billing_period_nanos {
                 // Next billing period is not fully covered anymore.
                 // Try to withdraw ICP and convert to cycles.
                 let needed_cycles = rental_agreement
-                    .rental_conditions
+                    .get_rental_conditions()
                     .daily_cost_cycles
-                    .saturating_mul(rental_agreement.rental_conditions.billing_period_days as u128); // TODO: get up to date rental conditions
+                    .saturating_mul(
+                        rental_agreement.get_rental_conditions().billing_period_days as u128,
+                    ); // TODO: get up to date rental conditions
 
                 let icp_amount = Tokens::from_e8s(
                     needed_cycles.saturating_div(exchange_rate_cycles_per_e8s as u128) as u64,
@@ -586,8 +575,7 @@ async fn billing() {
                     persist_event(
                         EventType::PaymentFailure {
                             reason: format!("{err:?}"),
-                        }
-                        .into(),
+                        },
                         subnet_id,
                     );
                     continue;
@@ -625,8 +613,7 @@ async fn billing() {
                     EventType::PaymentSuccess {
                         amount: icp_amount,
                         covered_until: new_covered_until,
-                    }
-                    .into(),
+                    },
                     subnet_id,
                 );
             } else {
@@ -776,10 +763,10 @@ where
     }
 }
 
-fn persist_event(event: Event, subnet: Principal) {
+fn persist_event(event: impl Into<Event>, subnet: impl Into<Principal>) {
     HISTORY.with(|map| {
-        let mut history = map.borrow().get(&subnet).unwrap_or_default();
-        history.events.push(event);
-        map.borrow_mut().insert(subnet, history);
+        let mut history = map.borrow().get(&subnet.into()).unwrap_or_default();
+        history.events.push(event.into());
+        map.borrow_mut().insert(subnet.into(), history);
     })
 }
