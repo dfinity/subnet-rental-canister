@@ -274,8 +274,8 @@ fn set_rental_conditions(
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
     billing_period_days: u64,
-) {
-    // TODO: access control: only the gov't canister can make this call
+) -> Result<(), ExecuteProposalError> {
+    verify_caller_is_governance()?;
 
     let rental_conditions = RentalConditions {
         daily_cost_cycles,
@@ -289,7 +289,8 @@ fn set_rental_conditions(
     persist_event(
         EventType::RentalConditionsChanged { rental_conditions }.into(),
         subnet_id.into(),
-    )
+    );
+    Ok(())
 }
 
 /// Call this in init
@@ -303,7 +304,8 @@ fn set_initial_rental_conditions() {
         1_000 * TRILLION,
         365,
         30,
-    );
+    )
+    .unwrap();
     set_rental_conditions(
         candid::Principal::from_text(
             "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
@@ -313,7 +315,8 @@ fn set_initial_rental_conditions() {
         2_000 * TRILLION,
         183,
         30,
-    );
+    )
+    .unwrap();
 }
 
 #[update]
