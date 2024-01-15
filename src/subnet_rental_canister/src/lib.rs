@@ -765,8 +765,9 @@ where
 
 fn persist_event(event: impl Into<Event>, subnet: impl Into<Principal>) {
     HISTORY.with(|map| {
-        let mut history = map.borrow().get(&subnet.into()).unwrap_or_default();
+        let subnet = subnet.into();
+        let mut history = map.borrow().get(&subnet).unwrap_or_default();
         history.events.push(event.into());
-        map.borrow_mut().insert(subnet.into(), history);
+        map.borrow_mut().insert(subnet, history);
     })
 }

@@ -4,7 +4,9 @@ use candid::CandidType;
 use ic_cdk::query;
 use serde::Deserialize;
 
-use crate::{list_rental_agreements, list_rental_conditions, RENTAL_AGREEMENTS, TRILLION};
+use crate::{
+    list_rental_agreements, list_rental_conditions, RentalConditions, RENTAL_AGREEMENTS, TRILLION,
+};
 
 const HTML_HEAD: &str =
     r#"<!DOCTYPE html><html lang="en"><head><title>Subnet Rental Canister</title></head>"#;
@@ -61,6 +63,11 @@ fn generate_rental_agreements_html() -> String {
         r#"<body><h1>Rental Agreements</h1><table border="1"><tr><th>Subnet ID</th><th>Renter</th><th>Allowed Principals</th><th>Billing Period (days)</th><th>Initial Rental Period (days)</th><th>Daily Cost (XDR)</th><th>Creation Date</th><th>Status</th></tr>"#,
     );
     for agreement in rental_agreements {
+        let RentalConditions {
+            daily_cost_cycles,
+            initial_rental_period_days,
+            billing_period_days,
+        } = agreement.get_rental_conditions();
         html.push_str("<tr>");
         html.push_str(&format!(
             "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td><td>{}</td>",
@@ -72,9 +79,9 @@ fn generate_rental_agreements_html() -> String {
                 .map(|p| p.0.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            agreement.rental_conditions.billing_period_days,
-            agreement.rental_conditions.initial_rental_period_days,
-            agreement.rental_conditions.daily_cost_cycles / TRILLION,
+            billing_period_days,
+            initial_rental_period_days,
+            daily_cost_cycles / TRILLION,
             Duration::from_nanos(agreement.creation_date),
             "Healthy"
         ));
