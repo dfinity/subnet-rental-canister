@@ -296,6 +296,11 @@ fn set_rental_conditions(
         );
     } else {
         // Remove this subnet as up for rent by deleting the rental conditions
+        // Fail if an active rental agreement exists
+        if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
+            return Err(ExecuteProposalError::SubnetAlreadyRented);
+        }
+
         if let Some(rental_conditions) =
             RENTAL_CONDITIONS.with(|map| map.borrow_mut().remove(&subnet_id.into()))
         {
