@@ -282,10 +282,7 @@ fn set_rental_conditions(
         initial_rental_period_days,
         billing_period_days,
     };
-    RENTAL_CONDITIONS.with(|map| {
-        map.borrow_mut()
-            .insert(subnet_id.into(), rental_conditions.clone())
-    });
+    RENTAL_CONDITIONS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_conditions));
     persist_event(
         EventType::RentalConditionsChanged { rental_conditions }.into(),
         subnet_id.into(),
@@ -299,8 +296,7 @@ fn set_initial_rental_conditions() {
         candid::Principal::from_text(
             "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
         )
-        .unwrap()
-        .into(),
+        .unwrap(),
         1_000 * TRILLION,
         365,
         30,
@@ -310,8 +306,7 @@ fn set_initial_rental_conditions() {
         candid::Principal::from_text(
             "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
         )
-        .unwrap()
-        .into(),
+        .unwrap(),
         2_000 * TRILLION,
         183,
         30,
