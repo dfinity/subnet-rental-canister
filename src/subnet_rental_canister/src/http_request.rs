@@ -4,7 +4,7 @@ use candid::CandidType;
 use ic_cdk::query;
 use serde::Deserialize;
 
-use crate::{list_rental_agreements, list_subnet_conditions, RENTAL_AGREEMENTS, TRILLION};
+use crate::{list_rental_agreements, list_rental_conditions, RENTAL_AGREEMENTS, TRILLION};
 
 const HTML_HEAD: &str =
     r#"<!DOCTYPE html><html lang="en"><head><title>Subnet Rental Canister</title></head>"#;
@@ -85,7 +85,7 @@ fn generate_rental_agreements_html() -> String {
 }
 
 fn generate_rental_conditions_html() -> String {
-    let rental_conditions = list_subnet_conditions();
+    let rental_conditions = list_rental_conditions();
 
     let mut html = String::new();
     html.push_str(HTML_HEAD);

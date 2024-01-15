@@ -23,7 +23,7 @@ use subnet_rental_canister::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     history::Event,
-    ExecuteProposalError, RentalAccount, RentalAgreement, RentalConditions,
+    BillingRecord, ExecuteProposalError, RentalAgreement, RentalConditions,
     ValidatedSubnetRentalProposal, E8S, TRILLION,
 };
 
@@ -148,7 +148,7 @@ fn test_list_rental_conditions() {
         .query_call(
             canister_id,
             Principal::anonymous(),
-            "list_subnet_conditions",
+            "list_rental_conditions",
             encode_one(()).unwrap(),
         )
         .unwrap()
@@ -194,18 +194,18 @@ fn test_proposal_accept() {
     );
 
     // The rental account is stored in the canister state.
-    let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "list_rental_accounts", ());
+    let billing_records: Vec<(Principal, BillingRecord)> =
+        query(&pic, canister_id, "list_billing_records", ());
 
-    assert_eq!(rental_accounts.len(), 1);
-    assert_eq!(rental_accounts[0].0.to_string(), SUBNET_FOR_RENT);
+    assert_eq!(billing_records.len(), 1);
+    assert_eq!(billing_records[0].0.to_string(), SUBNET_FOR_RENT);
     assert_eq!(
-        rental_accounts[0].1.cycles_balance,
+        billing_records[0].1.cycles_balance,
         2_000 * TRILLION * 183
             - (2 * DEFAULT_FEE.e8s() as u128 * historical_exchange_rate_cycles_per_e8s as u128) // two transaction fees
     );
     assert_eq!(
-        rental_accounts[0].1.covered_until,
+        billing_records[0].1.covered_until,
         (time_now + 183 * 24 * 60 * 60 * 1_000_000_000) as u64
     );
 
@@ -301,8 +301,9 @@ fn test_history() {
     let subnet = Principal::from_text(SUBNET_FOR_RENT).unwrap();
 
     let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
+    println!("events: {:?}", events);
     assert!(events.is_some());
-    assert_eq!(events.unwrap().len(), 1);
+    assert_eq!(events.unwrap().len(), 2);
 }
 
 #[test]
@@ -311,21 +312,21 @@ fn test_burning() {
     let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
     accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
 
-    let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "list_rental_accounts", ());
-    let initial_balance = rental_accounts[0].1.cycles_balance;
+    let billing_records: Vec<(Principal, BillingRecord)> =
+        query(&pic, canister_id, "list_billing_records", ());
+    let initial_balance = billing_records[0].1.cycles_balance;
     pic.advance_time(Duration::from_secs(2));
     pic.tick();
-    let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "list_rental_accounts", ());
-    let balance_1 = rental_accounts[0].1.cycles_balance;
+    let billing_records: Vec<(Principal, BillingRecord)> =
+        query(&pic, canister_id, "list_billing_records", ());
+    let balance_1 = billing_records[0].1.cycles_balance;
     assert!(balance_1 < initial_balance);
 
     pic.advance_time(Duration::from_secs(4));
     pic.tick();
-    let rental_accounts: Vec<(Principal, RentalAccount)> =
-        query(&pic, canister_id, "list_rental_accounts", ());
-    let balance_2 = rental_accounts[0].1.cycles_balance;
+    let billing_records: Vec<(Principal, BillingRecord)> =
+        query(&pic, canister_id, "list_billing_records", ());
+    let balance_2 = billing_records[0].1.cycles_balance;
     assert!(balance_2 < initial_balance);
     assert!(balance_2 < balance_1);
 }

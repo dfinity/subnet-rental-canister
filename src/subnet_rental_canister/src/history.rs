@@ -5,7 +5,7 @@ use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{ExecuteProposalError, Principal, RentalAgreement};
+use crate::{ExecuteProposalError, Principal, RentalAgreement, RentalConditions};
 
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
@@ -48,7 +48,10 @@ impl From<EventType> for Event {
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub enum EventType {
-    RentalConditionsChanged, // TODO: Create this in canister init
+    // TODO: Create this in canister init
+    RentalConditionsChanged {
+        rental_conditions: RentalConditions,
+    },
     Created {
         // proposal_id: u64,
         rental_agreement: RentalAgreement,
