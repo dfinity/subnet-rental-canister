@@ -301,7 +301,6 @@ fn test_history() {
     let subnet = Principal::from_text(SUBNET_FOR_RENT).unwrap();
 
     let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
-    println!("events: {:?}", events);
     assert!(events.is_some());
     assert_eq!(events.unwrap().len(), 2);
 }
