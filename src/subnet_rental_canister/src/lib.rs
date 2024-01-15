@@ -42,6 +42,7 @@ thread_local! {
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
     // Memory region 0
+    // Only modify via _set_rental_conditions so that history is updated alongside.
     static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Principal, RentalConditions, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
@@ -266,8 +267,6 @@ fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
 
 ////////// UPDATE METHODS //////////
 
-/// Use this function only to make changes to RENTAL_CONDITIONS, so that
-/// all changes are persisted in the history.
 #[update]
 fn set_rental_conditions(
     subnet_id: candid::Principal,
@@ -276,7 +275,24 @@ fn set_rental_conditions(
     billing_period_days: u64,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
+    _set_rental_conditions(
+        subnet_id,
+        daily_cost_cycles,
+        initial_rental_period_days,
+        billing_period_days,
+    );
+    Ok(())
+}
 
+/// Use only this function to make changes to RENTAL_CONDITIONS, so that
+/// all changes are persisted in the history.
+/// Internally used in canister init.
+fn _set_rental_conditions(
+    subnet_id: candid::Principal,
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+    billing_period_days: u64,
+) {
     let rental_conditions = RentalConditions {
         daily_cost_cycles,
         initial_rental_period_days,
@@ -287,12 +303,11 @@ fn set_rental_conditions(
         EventType::RentalConditionsChanged { rental_conditions }.into(),
         subnet_id.into(),
     );
-    Ok(())
 }
 
 /// Call this in init
 fn set_initial_rental_conditions() {
-    set_rental_conditions(
+    _set_rental_conditions(
         candid::Principal::from_text(
             "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
         )
@@ -300,9 +315,8 @@ fn set_initial_rental_conditions() {
         1_000 * TRILLION,
         365,
         30,
-    )
-    .unwrap();
-    set_rental_conditions(
+    );
+    _set_rental_conditions(
         candid::Principal::from_text(
             "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
         )
@@ -310,8 +324,7 @@ fn set_initial_rental_conditions() {
         2_000 * TRILLION,
         183,
         30,
-    )
-    .unwrap();
+    );
 }
 
 #[update]
