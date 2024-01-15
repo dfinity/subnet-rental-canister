@@ -52,6 +52,9 @@ pub enum EventType {
     RentalConditionsChanged {
         rental_conditions: RentalConditions,
     },
+    RentalConditionsRemoved {
+        rental_conditions: RentalConditions,
+    },
     Created {
         // proposal_id: u64,
         rental_agreement: RentalAgreement,

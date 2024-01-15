@@ -128,9 +128,15 @@ pub struct RentalAgreement {
     pub user: Principal,
     pub subnet_id: SubnetId,
     pub principals: Vec<Principal>,
-    rental_conditions: RentalConditions,
     // nanoseconds since epoch
     creation_date: u64,
+}
+
+impl RentalAgreement {
+    pub fn get_rental_conditions(&self) -> RentalConditions {
+        // unwrap justified because no rental agreement can exist without rental conditions
+        RENTAL_CONDITIONS.with(|map| map.borrow().get(&self.subnet_id).unwrap())
+    }
 }
 
 impl Storable for RentalAgreement {
@@ -267,20 +273,43 @@ fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
 
 ////////// UPDATE METHODS //////////
 
+/// Insert or overwrite existing rental conditions with Some(value), or remove
+/// rental conditions for this subnet altogether by passing None.
 #[update]
 fn set_rental_conditions(
     subnet_id: candid::Principal,
-    daily_cost_cycles: u128,
-    initial_rental_period_days: u64,
-    billing_period_days: u64,
+    mb_rental_conditions: Option<RentalConditions>,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
-    _set_rental_conditions(
-        subnet_id,
+    // Insert or overwrite
+    if let Some(RentalConditions {
         daily_cost_cycles,
         initial_rental_period_days,
         billing_period_days,
-    );
+    }) = mb_rental_conditions
+    {
+        _set_rental_conditions(
+            subnet_id,
+            daily_cost_cycles,
+            initial_rental_period_days,
+            billing_period_days,
+        );
+    } else {
+        // Remove this subnet as up for rent by deleting the rental conditions
+        if let Some(rental_conditions) =
+            RENTAL_CONDITIONS.with(|map| map.borrow_mut().remove(&subnet_id.into()))
+        {
+            persist_event(
+                EventType::RentalConditionsRemoved { rental_conditions }.into(),
+                subnet_id.into(),
+            );
+        } else {
+            println!(
+                "Failed to remove rental conditions for subnet {}: Not found",
+                subnet_id
+            );
+        }
+    }
     Ok(())
 }
 
