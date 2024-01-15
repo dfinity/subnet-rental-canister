@@ -274,7 +274,8 @@ fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
 ////////// UPDATE METHODS //////////
 
 /// Insert or overwrite existing rental conditions with Some(value), or remove
-/// rental conditions for this subnet altogether by passing None.
+/// rental conditions for this subnet altogether by passing None. Passing None
+/// while a corresponding active rental agreement exists will fail.
 #[update]
 fn set_rental_conditions(
     subnet_id: candid::Principal,
