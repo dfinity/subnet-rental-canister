@@ -338,7 +338,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
         user: USER_1,
         principals: vec![USER_1],
-        proposal_creation_timestamp: 0,
+        proposal_creation_time: 0,
     };
 
     let WasmResult::Reply(res) = pic
@@ -367,7 +367,7 @@ fn accept_test_rental_agreement(
         subnet_id,
         user: *user,
         principals: vec![*user],
-        proposal_creation_timestamp: 0,
+        proposal_creation_time: 0,
     };
 
     pic.update_call(
