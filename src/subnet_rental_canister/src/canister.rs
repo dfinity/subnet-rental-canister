@@ -237,7 +237,7 @@ pub async fn accept_rental_agreement(
         .daily_cost_cycles
         .saturating_mul(rental_conditions.initial_rental_period_days as u128);
     let exchange_rate =
-        get_historical_avg_exchange_rate_cycles_per_e8s(proposal_creation_timestamp).await; // TODO: might need rounding
+        get_historical_avg_exchange_rate_cycles_per_e8s(proposal_creation_time).await; // TODO: might need rounding
     let needed_icp = Tokens::from_e8s((needed_cycles.saturating_div(exchange_rate as u128)) as u64);
 
     // Use ICRC2 to transfer ICP from the user to the SRC.
