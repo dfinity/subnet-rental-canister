@@ -5,7 +5,8 @@ use ic_cdk::query;
 use serde::Deserialize;
 
 use crate::{
-    list_rental_agreements, list_rental_conditions, RentalConditions, RENTAL_AGREEMENTS, TRILLION,
+    canister::{list_rental_agreements, list_rental_conditions},
+    RentalConditions, RENTAL_AGREEMENTS, TRILLION,
 };
 
 const HTML_HEAD: &str =
