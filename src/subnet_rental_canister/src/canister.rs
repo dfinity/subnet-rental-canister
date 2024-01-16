@@ -199,7 +199,7 @@ pub async fn accept_rental_agreement(
         subnet_id,
         user,
         principals,
-        proposal_creation_timestamp,
+        proposal_creation_time,
     }: ValidatedSubnetRentalProposal,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
@@ -316,6 +316,7 @@ pub async fn accept_rental_agreement(
     Ok(())
 }
 
+// Technically an update method, but called via canister timers.
 pub async fn billing() {
     let exchange_rate_cycles_per_e8s = get_current_avg_exchange_rate_cycles_per_e8s().await;
 

@@ -105,12 +105,16 @@ impl Storable for RentalConditions {
     }
 }
 
+/// The governance canister validates proposals and calls the SRC with
+/// this argument. It limits the principals vector to a reasonable size.
 #[derive(Clone, CandidType, Deserialize)]
 pub struct ValidatedSubnetRentalProposal {
     pub subnet_id: candid::Principal,
     pub user: candid::Principal,
-    pub principals: Vec<candid::Principal>, // TODO: limit size
-    pub proposal_creation_timestamp: u64,
+    /// Other principals to be whitelisted.
+    pub principals: Vec<candid::Principal>,
+    /// Nanoseconds since epoch.
+    pub proposal_creation_time: u64,
 }
 
 #[derive(CandidType, Debug, Clone, Deserialize)]
@@ -122,14 +126,18 @@ pub enum ExecuteProposalError {
     TransferSrcToCmcError(TransferError),
     NotifyTopUpError(NotifyError),
 }
-/// Immutable rental agreement; mutabla data and log events should refer to it via the id.
+/// Immutable rental agreement; mutabla data belongs in BillingRecord. A rental agreement is uniquely identified by
+/// the (subnet_id, creation_date) 'composite key'.
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalAgreement {
+    /// The principal which pays for the subnet via ICRC-2 approval. Will be whitelisted.
     pub user: Principal,
+    /// The subnet to be rented.
     pub subnet_id: SubnetId,
+    /// Other principals to be whitelisted.
     pub principals: Vec<Principal>,
-    // nanoseconds since epoch
-    creation_date: u64,
+    /// Rental agreement creation date in nanoseconds since epoch.
+    pub creation_date: u64,
 }
 
 impl RentalAgreement {
@@ -151,6 +159,7 @@ impl Storable for RentalAgreement {
     }
 }
 
+/// Mutable data belonging to an active rental agreement.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct BillingRecord {
     /// The date (in nanos since epoch) until which the rental agreement is paid for.
@@ -305,7 +314,8 @@ fn days_to_nanos(days: u64) -> u64 {
 
 /// Use only this function to make changes to RENTAL_CONDITIONS, so that
 /// all changes are persisted in the history.
-/// Internally used in canister init.
+/// Internally used in canister_init, externally available as an update method
+/// which only the governance canister can call, see set_rental_conditions().
 pub fn _set_rental_conditions(
     subnet_id: candid::Principal,
     daily_cost_cycles: u128,
@@ -324,7 +334,7 @@ pub fn _set_rental_conditions(
     );
 }
 
-/// Call this in init
+/// Called in canister_init
 pub fn set_initial_rental_conditions() {
     _set_rental_conditions(
         candid::Principal::from_text(
