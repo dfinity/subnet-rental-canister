@@ -1,6 +1,6 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Nat};
 use external_types::NotifyError;
-use history::{Event, History};
+use history::{Event, EventType, History};
 use ic_cdk::println;
 use ic_ledger_types::{
     transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
@@ -301,6 +301,49 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 
 fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
+}
+
+/// Use only this function to make changes to RENTAL_CONDITIONS, so that
+/// all changes are persisted in the history.
+/// Internally used in canister init.
+pub fn _set_rental_conditions(
+    subnet_id: candid::Principal,
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+    billing_period_days: u64,
+) {
+    let rental_conditions = RentalConditions {
+        daily_cost_cycles,
+        initial_rental_period_days,
+        billing_period_days,
+    };
+    RENTAL_CONDITIONS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_conditions));
+    persist_event(
+        EventType::RentalConditionsChanged { rental_conditions },
+        subnet_id,
+    );
+}
+
+/// Call this in init
+pub fn set_initial_rental_conditions() {
+    _set_rental_conditions(
+        candid::Principal::from_text(
+            "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
+        )
+        .unwrap(),
+        1_000 * TRILLION,
+        365,
+        30,
+    );
+    _set_rental_conditions(
+        candid::Principal::from_text(
+            "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
+        )
+        .unwrap(),
+        2_000 * TRILLION,
+        183,
+        30,
+    );
 }
 
 /// Pass one of the global StableBTreeMaps and a function that transforms a value.
