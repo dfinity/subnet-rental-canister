@@ -35,8 +35,6 @@ const MAX_PRINCIPAL_SIZE: u32 = 29;
 const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // hourly
 const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 
-type SubnetId = Principal;
-
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -117,6 +115,14 @@ pub struct ValidatedSubnetRentalProposal {
     pub proposal_creation_time: u64,
 }
 
+/// The governance canister calls the SRC with this argument on
+/// a termination proposal.
+#[derive(Clone, CandidType, Deserialize)]
+pub struct RentalTerminationProposal {
+    user: Principal,
+    subnet_id: candid::Principal,
+}
+
 #[derive(CandidType, Debug, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     SubnetAlreadyRented,
@@ -125,6 +131,8 @@ pub enum ExecuteProposalError {
     TransferUserToSrcError(TransferFromError),
     TransferSrcToCmcError(TransferError),
     NotifyTopUpError(NotifyError),
+    SubnetNotRented,
+    UserMismatch,
 }
 /// Immutable rental agreement; mutabla data belongs in BillingRecord. A rental agreement is uniquely identified by
 /// the (subnet_id, creation_date) 'composite key'.
@@ -133,7 +141,7 @@ pub struct RentalAgreement {
     /// The principal which pays for the subnet via ICRC-2 approval. Will be whitelisted.
     pub user: Principal,
     /// The subnet to be rented.
-    pub subnet_id: SubnetId,
+    pub subnet_id: Principal,
     /// Other principals to be whitelisted.
     pub principals: Vec<Principal>,
     /// Rental agreement creation date in nanoseconds since epoch.
@@ -195,6 +203,25 @@ async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Pri
             (SetAuthorizedSubnetworkListArgs {
                 who: Some(user.0),
                 subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
+            },),
+        )
+        .await
+        .expect("Failed to call CMC"); // TODO: handle error
+    }
+}
+
+async fn delist_principals(_subnet_id: candid::Principal, principals: &Vec<candid::Principal>) {
+    // TODO: if we allow multiple subnets per user:
+    // first read the current list,
+    // remove this subnet from the list and then
+    // re-whitelist the principal for the remaining list
+    for user in principals {
+        ic_cdk::call::<_, ()>(
+            MAINNET_CYCLES_MINTING_CANISTER_ID,
+            "set_authorized_subnetwork_list",
+            (SetAuthorizedSubnetworkListArgs {
+                who: Some(user.clone()),
+                subnets: vec![],
             },),
         )
         .await
