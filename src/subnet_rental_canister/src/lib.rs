@@ -198,9 +198,8 @@ impl Storable for BillingRecord {
 /// Rental agreements have an associated BillingAccount, which must be removed at the same time.
 fn delete_rental_agreement(subnet_id: Principal) {
     let rental_agreement =
-        RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id.into()).unwrap());
-    let billing_record =
-        BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id.into()).unwrap());
+        RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
+    let billing_record = BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
     persist_event(
         EventType::Terminated {
             rental_agreement,
@@ -235,7 +234,7 @@ async fn delist_principals(_subnet_id: candid::Principal, principals: &Vec<candi
             MAINNET_CYCLES_MINTING_CANISTER_ID,
             "set_authorized_subnetwork_list",
             (SetAuthorizedSubnetworkListArgs {
-                who: Some(user.clone()),
+                who: Some(*user),
                 subnets: vec![],
             },),
         )

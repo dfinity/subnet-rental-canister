@@ -1,5 +1,3 @@
-use std::f32::consts::E;
-
 use ic_cdk::{heartbeat, init, post_upgrade, query, update};
 use ic_ledger_types::{Tokens, DEFAULT_FEE};
 use itertools::Itertools;
