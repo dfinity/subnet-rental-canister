@@ -195,6 +195,21 @@ impl Storable for BillingRecord {
     }
 }
 
+/// Rental agreements have an associated BillingAccount, which must be removed at the same time.
+fn delete_rental_agreement(subnet_id: Principal) {
+    let rental_agreement =
+        RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id.into()).unwrap());
+    let billing_record =
+        BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id.into()).unwrap());
+    persist_event(
+        EventType::Terminated {
+            rental_agreement,
+            billing_record,
+        },
+        subnet_id,
+    );
+}
+
 async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
     for user in principals {
         ic_cdk::call::<_, ()>(

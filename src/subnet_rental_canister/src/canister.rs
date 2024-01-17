@@ -5,7 +5,7 @@ use ic_ledger_types::{Tokens, DEFAULT_FEE};
 use itertools::Itertools;
 
 use crate::{
-    _set_rental_conditions, days_to_nanos, delist_principals,
+    _set_rental_conditions, days_to_nanos, delete_rental_agreement, delist_principals,
     get_current_avg_exchange_rate_cycles_per_e8s, get_historical_avg_exchange_rate_cycles_per_e8s,
     history::{Event, EventType},
     icrc2_transfer_to_src, notify_top_up, persist_event, set_initial_rental_conditions,
@@ -222,11 +222,11 @@ pub async fn terminate_rental_agreement(
                 .collect(),
         )
         .await;
+        delete_rental_agreement(subnet_id.into());
     } else {
         println!("Error: Termination proposal contains a subnet_id that is not in an active rental agreement: {}", subnet_id);
         return Err(ExecuteProposalError::SubnetNotRented);
     }
-
     Ok(())
 }
 
