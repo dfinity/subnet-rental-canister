@@ -220,6 +220,7 @@ pub async fn terminate_rental_agreement(
                 .collect(),
         )
         .await;
+        // TODO: possibly degrade subnet if not degraded yet
         delete_rental_agreement(subnet_id.into());
     } else {
         println!("Error: Termination proposal contains a subnet_id that is not in an active rental agreement: {}", subnet_id);
