@@ -194,22 +194,19 @@ pub fn demo_add_rental_agreement() {
 
 #[update]
 pub async fn terminate_rental_agreement(
-    RentalTerminationProposal { user, subnet_id }: RentalTerminationProposal,
+    RentalTerminationProposal { subnet_id }: RentalTerminationProposal,
 ) -> Result<(), ExecuteProposalError> {
     // delist all principals from whitelists
     // remove all entries in this canister
     // persist in history
     verify_caller_is_governance()?;
     if let Some(RentalAgreement {
-        user: current_user,
+        user,
         subnet_id: _subnet_id,
         principals,
         creation_date: _creation_date,
     }) = RENTAL_AGREEMENTS.with(|map| map.borrow_mut().get(&subnet_id.into()))
     {
-        if user != current_user {
-            return Err(ExecuteProposalError::UserMismatch);
-        }
         delist_principals(
             subnet_id,
             &principals

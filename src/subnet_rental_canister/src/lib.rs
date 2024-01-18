@@ -119,7 +119,6 @@ pub struct ValidatedSubnetRentalProposal {
 /// a termination proposal.
 #[derive(Clone, CandidType, Deserialize)]
 pub struct RentalTerminationProposal {
-    user: Principal,
     subnet_id: candid::Principal,
 }
 
@@ -132,7 +131,6 @@ pub enum ExecuteProposalError {
     TransferSrcToCmcError(TransferError),
     NotifyTopUpError(NotifyError),
     SubnetNotRented,
-    UserMismatch,
 }
 /// Immutable rental agreement; mutabla data belongs in BillingRecord. A rental agreement is uniquely identified by
 /// the (subnet_id, creation_date) 'composite key'.
