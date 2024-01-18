@@ -133,8 +133,8 @@ pub enum ExecuteProposalError {
     NotifyTopUpError(NotifyError),
     SubnetNotRented,
 }
-/// Immutable rental agreement; mutabla data belongs in BillingRecord. A rental agreement is uniquely identified by
-/// the (subnet_id, creation_date) 'composite key'.
+/// Immutable rental agreement; mutabla data belongs in BillingRecord. A rental agreement is
+/// uniquely identified by the (subnet_id, creation_date) 'composite key'.
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalAgreement {
     /// The principal which pays for the subnet via ICRC-2 approval. Will be whitelisted.
@@ -201,11 +201,10 @@ fn create_rental_agreement(
     billing_record: BillingRecord,
 ) {
     RENTAL_AGREEMENTS.with(|map| {
-        map.borrow_mut()
-            .insert(subnet_id.into(), rental_agreement.clone());
+        map.borrow_mut().insert(subnet_id, rental_agreement.clone());
     });
     println!("Created rental agreement: {:?}", &rental_agreement);
-    BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id.into(), billing_record));
+    BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id, billing_record));
     println!("Created billing record: {:?}", &billing_record);
     persist_event(EventType::Created { rental_agreement }, subnet_id);
 }
