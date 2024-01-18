@@ -122,7 +122,7 @@ pub struct RentalTerminationProposal {
     subnet_id: candid::Principal,
 }
 
-#[derive(CandidType, Debug, Copy, Clone, Deserialize)]
+#[derive(CandidType, Debug, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     SubnetNotRentable,
     SubnetAlreadyRented,

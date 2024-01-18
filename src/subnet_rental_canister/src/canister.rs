@@ -10,8 +10,8 @@ use crate::{
     icrc2_transfer_to_src, notify_top_up, persist_event, set_initial_rental_conditions,
     transfer_to_cmc, update_map, verify_caller_is_governance, whitelist_principals, BillingRecord,
     ExecuteProposalError, Principal, RentalAgreement, RentalConditions, RentalTerminationProposal,
-    ValidatedSubnetRentalProposal, BILLING_INTERVAL, BILLING_RECORDS, E8S, HISTORY,
-    RENTAL_AGREEMENTS, RENTAL_CONDITIONS,
+    ValidatedSubnetRentalProposal, BILLING_INTERVAL, BILLING_RECORDS, HISTORY, RENTAL_AGREEMENTS,
+    RENTAL_CONDITIONS,
 };
 
 ////////// CANISTER METHODS //////////
@@ -217,7 +217,7 @@ pub async fn accept_rental_agreement(
         persist_event(
             EventType::Failed {
                 user: user.into(),
-                reason: err,
+                reason: err.clone(),
             },
             subnet_id,
         );
@@ -301,7 +301,7 @@ pub async fn accept_rental_agreement(
         last_burned: rental_agreement_creation_date,
     };
     // Persist new rental agreement and billing record and create event.
-    create_rental_agreement(subnet_id, rental_agreement, billing_record);
+    create_rental_agreement(subnet_id.into(), rental_agreement, billing_record);
     Ok(())
 }
 
