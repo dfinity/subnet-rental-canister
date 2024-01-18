@@ -5,7 +5,7 @@ use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{ExecuteProposalError, Principal, RentalAgreement, RentalConditions};
+use crate::{BillingRecord, ExecuteProposalError, Principal, RentalAgreement, RentalConditions};
 
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
@@ -67,7 +67,10 @@ pub enum EventType {
         user: Principal,
         reason: ExecuteProposalError,
     },
-    Terminated,
+    Terminated {
+        rental_agreement: RentalAgreement,
+        billing_record: BillingRecord,
+    },
     PaymentSuccess {
         amount: Tokens,
         covered_until: u64,

@@ -3,12 +3,12 @@ use ic_ledger_types::{Tokens, DEFAULT_FEE};
 use itertools::Itertools;
 
 use crate::{
-    _set_rental_conditions, days_to_nanos, get_current_avg_exchange_rate_cycles_per_e8s,
-    get_historical_avg_exchange_rate_cycles_per_e8s,
+    _set_rental_conditions, days_to_nanos, delete_rental_agreement, delist_principals,
+    get_current_avg_exchange_rate_cycles_per_e8s, get_historical_avg_exchange_rate_cycles_per_e8s,
     history::{Event, EventType},
     icrc2_transfer_to_src, notify_top_up, persist_event, set_initial_rental_conditions,
     transfer_to_cmc, update_map, verify_caller_is_governance, whitelist_principals, BillingRecord,
-    ExecuteProposalError, Principal, RentalAgreement, RentalConditions, SubnetId,
+    ExecuteProposalError, Principal, RentalAgreement, RentalConditions, RentalTerminationProposal,
     ValidatedSubnetRentalProposal, BILLING_INTERVAL, BILLING_RECORDS, E8S, HISTORY,
     RENTAL_AGREEMENTS, RENTAL_CONDITIONS,
 };
@@ -83,7 +83,7 @@ fn canister_heartbeat() {
 ////////// QUERY METHODS //////////
 
 #[query]
-pub fn list_rental_conditions() -> Vec<(SubnetId, RentalConditions)> {
+pub fn list_rental_conditions() -> Vec<(Principal, RentalConditions)> {
     RENTAL_CONDITIONS.with(|map| map.borrow().iter().collect())
 }
 
@@ -190,6 +190,40 @@ pub fn demo_add_rental_agreement() {
             },
         )
     });
+}
+
+#[update]
+pub async fn terminate_rental_agreement(
+    RentalTerminationProposal { subnet_id }: RentalTerminationProposal,
+) -> Result<(), ExecuteProposalError> {
+    // delist all principals from whitelists
+    // remove all entries in this canister
+    // persist in history
+    verify_caller_is_governance()?;
+    if let Some(RentalAgreement {
+        user,
+        subnet_id: _subnet_id,
+        principals,
+        creation_date: _creation_date,
+    }) = RENTAL_AGREEMENTS.with(|map| map.borrow_mut().get(&subnet_id.into()))
+    {
+        delist_principals(
+            subnet_id,
+            &principals
+                .into_iter()
+                .chain(std::iter::once(user))
+                .unique()
+                .map(|p| p.0)
+                .collect(),
+        )
+        .await;
+        // TODO: possibly degrade subnet if not degraded yet
+        delete_rental_agreement(subnet_id.into());
+    } else {
+        println!("Error: Termination proposal contains a subnet_id that is not in an active rental agreement: {}", subnet_id);
+        return Err(ExecuteProposalError::SubnetNotRented);
+    }
+    Ok(())
 }
 
 // TODO: Argument will be provided by governance canister after validation
