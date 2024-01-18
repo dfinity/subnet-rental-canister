@@ -122,8 +122,9 @@ pub struct RentalTerminationProposal {
     subnet_id: candid::Principal,
 }
 
-#[derive(CandidType, Debug, Clone, Deserialize)]
+#[derive(CandidType, Debug, Copy, Clone, Deserialize)]
 pub enum ExecuteProposalError {
+    SubnetNotRentable,
     SubnetAlreadyRented,
     UnauthorizedCaller,
     InsufficientFunds,
@@ -191,6 +192,22 @@ impl Storable for BillingRecord {
     fn from_bytes(bytes: Cow<[u8]>) -> Self {
         Decode!(&bytes, Self).unwrap()
     }
+}
+
+/// Rental agreement map and billing records map must be in sync, so we add them together
+fn create_rental_agreement(
+    subnet_id: Principal,
+    rental_agreement: RentalAgreement,
+    billing_record: BillingRecord,
+) {
+    RENTAL_AGREEMENTS.with(|map| {
+        map.borrow_mut()
+            .insert(subnet_id.into(), rental_agreement.clone());
+    });
+    println!("Created rental agreement: {:?}", &rental_agreement);
+    BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id.into(), billing_record));
+    println!("Created billing record: {:?}", &billing_record);
+    persist_event(EventType::Created { rental_agreement }, subnet_id);
 }
 
 /// Rental agreements have an associated BillingAccount, which must be removed at the same time.

@@ -3,8 +3,9 @@ use ic_ledger_types::{Tokens, DEFAULT_FEE};
 use itertools::Itertools;
 
 use crate::{
-    _set_rental_conditions, days_to_nanos, delete_rental_agreement, delist_principals,
-    get_current_avg_exchange_rate_cycles_per_e8s, get_historical_avg_exchange_rate_cycles_per_e8s,
+    _set_rental_conditions, create_rental_agreement, days_to_nanos, delete_rental_agreement,
+    delist_principals, get_current_avg_exchange_rate_cycles_per_e8s,
+    get_historical_avg_exchange_rate_cycles_per_e8s,
     history::{Event, EventType},
     icrc2_transfer_to_src, notify_top_up, persist_event, set_initial_rental_conditions,
     transfer_to_cmc, update_map, verify_caller_is_governance, whitelist_principals, BillingRecord,
@@ -155,44 +156,6 @@ pub fn set_rental_conditions(
 }
 
 #[update]
-// TODO: remove this endpoint before release
-pub fn demo_add_rental_agreement() {
-    // Hardcoded rental agreement for testing.
-    let subnet_id = candid::Principal::from_text(
-        "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
-    )
-    .unwrap()
-    .into();
-    let renter = candid::Principal::from_slice(b"user1").into();
-    let user = candid::Principal::from_slice(b"user2").into();
-    let creation_date = ic_cdk::api::time();
-    let initial_rental_period_days = 365;
-    RENTAL_AGREEMENTS.with(|map| {
-        map.borrow_mut().insert(
-            subnet_id,
-            RentalAgreement {
-                user: renter,
-                subnet_id,
-                principals: vec![renter, user],
-                creation_date,
-            },
-        )
-    });
-    let test_exchange_rate_e8s_cycles: u128 = 72_401; // 1 ICP = 7.2401T cycles
-    let test_icp_balance_e8s: u64 = 50_500 * E8S; // just over one year covered
-    BILLING_RECORDS.with(|map| {
-        map.borrow_mut().insert(
-            subnet_id,
-            BillingRecord {
-                covered_until: creation_date + days_to_nanos(initial_rental_period_days),
-                cycles_balance: test_icp_balance_e8s as u128 * test_exchange_rate_e8s_cycles,
-                last_burned: creation_date,
-            },
-        )
-    });
-}
-
-#[update]
 pub async fn terminate_rental_agreement(
     RentalTerminationProposal { subnet_id }: RentalTerminationProposal,
 ) -> Result<(), ExecuteProposalError> {
@@ -238,18 +201,13 @@ pub async fn accept_rental_agreement(
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
 
-    let principals_to_whitelist = principals
-        .into_iter()
-        .chain(std::iter::once(user))
-        .unique()
-        .map(|p| p.into())
-        .collect();
+    // Is the desired subnet up for rent?
+    let Some(rental_conditions) = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id.into()))
+    else {
+        return Err(ExecuteProposalError::SubnetNotRentable);
+    };
 
-    // Get rental conditions.
-    // If the governance canister was able to validate, then this entry must exist, so we can unwrap.
-    let rental_conditions =
-        RENTAL_CONDITIONS.with(|rc| rc.borrow().get(&subnet_id.into()).unwrap());
-
+    // Is the desired subnet already being rented?
     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
         println!(
             "Subnet {} is already in an active rental agreement",
@@ -259,12 +217,19 @@ pub async fn accept_rental_agreement(
         persist_event(
             EventType::Failed {
                 user: user.into(),
-                reason: err.clone(),
+                reason: err,
             },
             subnet_id,
         );
         return Err(err);
     }
+
+    let principals_to_whitelist = principals
+        .into_iter()
+        .chain(std::iter::once(user))
+        .unique()
+        .map(|p| p.into())
+        .collect();
 
     // Attempt to transfer enough ICP to cover the initial rental period.
     let needed_cycles = rental_conditions
@@ -322,31 +287,21 @@ pub async fn accept_rental_agreement(
         return Err(ExecuteProposalError::NotifyTopUpError(err));
     };
 
-    // Add the rental agreement to the rental agreement map.
+    // Create rental agreement and corresponding billing record.
     let rental_agreement = RentalAgreement {
         user: user.into(),
         subnet_id: subnet_id.into(),
         principals: principals_to_whitelist,
         creation_date: rental_agreement_creation_date,
     };
-    RENTAL_AGREEMENTS.with(|map| {
-        map.borrow_mut()
-            .insert(subnet_id.into(), rental_agreement.clone());
-    });
-    println!("Created rental agreement: {:?}", &rental_agreement);
-
-    // Add the billing record to the billing records map.
     let billing_record = BillingRecord {
         covered_until: rental_agreement_creation_date
             + days_to_nanos(rental_conditions.initial_rental_period_days),
-        cycles_balance: actual_cycles, // TODO: what about remaining cycles? what if this billing record already exists?
+        cycles_balance: actual_cycles,
         last_burned: rental_agreement_creation_date,
     };
-    BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id.into(), billing_record));
-    println!("Created billing record: {:?}", &billing_record);
-
-    persist_event(EventType::Created { rental_agreement }, subnet_id);
-
+    // Persist new rental agreement and billing record and create event.
+    create_rental_agreement(subnet_id, rental_agreement, billing_record);
     Ok(())
 }
 
