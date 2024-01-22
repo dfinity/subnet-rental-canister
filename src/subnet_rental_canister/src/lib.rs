@@ -210,6 +210,7 @@ fn create_rental_agreement(
 }
 
 /// Rental agreements have an associated BillingAccount, which must be removed at the same time.
+/// TODO: only call this if agreement exists...
 fn delete_rental_agreement(subnet_id: Principal) {
     let rental_agreement =
         RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
