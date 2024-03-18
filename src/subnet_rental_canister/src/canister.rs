@@ -3,15 +3,13 @@ use ic_ledger_types::{Tokens, DEFAULT_FEE};
 use itertools::Itertools;
 
 use crate::{
-    _set_rental_conditions, create_rental_agreement, days_to_nanos, delete_rental_agreement,
-    delist_principals, get_current_avg_exchange_rate_cycles_per_e8s,
+    days_to_nanos, delist_principals, get_current_avg_exchange_rate_cycles_per_e8s,
     get_historical_avg_exchange_rate_cycles_per_e8s,
     history::{Event, EventType},
-    icrc2_transfer_to_src, notify_top_up, persist_event, set_initial_rental_conditions,
-    transfer_to_cmc, update_map, verify_caller_is_governance, whitelist_principals, BillingRecord,
+    icrc2_transfer_to_src, notify_top_up, set_initial_rental_conditions, set_rental_conditions,
+    transfer_to_cmc, verify_caller_is_governance, whitelist_principals, BillingRecord,
     ExecuteProposalError, Principal, RentalAgreement, RentalConditions, RentalTerminationProposal,
-    ValidatedSubnetRentalProposal, BILLING_INTERVAL, BILLING_RECORDS, HISTORY, RENTAL_AGREEMENTS,
-    RENTAL_CONDITIONS,
+    ValidatedSubnetRentalProposal, BILLING_INTERVAL, RENTAL_CONDITIONS,
 };
 
 ////////// CANISTER METHODS //////////
@@ -113,7 +111,7 @@ pub fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
 /// rental conditions for this subnet altogether by passing None. Passing None
 /// while a corresponding active rental agreement exists will fail.
 #[update]
-pub fn set_rental_conditions(
+pub fn public_set_rental_conditions(
     subnet_id: candid::Principal,
     mb_rental_conditions: Option<RentalConditions>,
 ) -> Result<(), ExecuteProposalError> {
@@ -125,7 +123,7 @@ pub fn set_rental_conditions(
         billing_period_days,
     }) = mb_rental_conditions
     {
-        _set_rental_conditions(
+        set_rental_conditions(
             subnet_id,
             daily_cost_cycles,
             initial_rental_period_days,
