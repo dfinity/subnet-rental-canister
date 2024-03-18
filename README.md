@@ -11,6 +11,8 @@ dfx start --background
 dfx deploy
 ```
 
+To see the UI, run `npm start`, forward the port if necessary, and open http://<backend_canister_id>.localhost:8080/, likely http://bkyz2-fmaaa-aaaaa-qaaaq-cai.localhost:8080/
+
 ## Testing
 To run the integration tests, first download PocketIC from [GitHub](https://github.com/dfinity/pocketic) and move the binary into [/src/subnet_rental_canister](/src/subnet_rental_canister/).
 Then, build the subnet rental canister Wasm by running:
