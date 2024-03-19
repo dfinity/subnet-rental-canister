@@ -37,7 +37,23 @@ const MAX_PRINCIPAL_SIZE: u32 = 29;
 const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // hourly
 const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 
+// ============================================================================
+// Types
+
+/// Rental conditions are kept in a global HashMap and only changed via code upgrades.
+#[derive(Debug, Clone, Copy, CandidType, Deserialize, PartialEq, Eq, Hash)]
+pub enum RentalConditionType {
+    App13,
+}
+
+const APP13: RentalConditions = RentalConditions {
+    daily_cost_cycles: 835 * TRILLION,
+    initial_rental_period_days: 180,
+    billing_period_days: 30,
+};
+
 /// Set of conditions for a specific subnet up for rent.
+/// The subnet_id is the associated key in the StableBTreeMap.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct RentalConditions {
     daily_cost_cycles: u128,
@@ -57,48 +73,78 @@ impl Storable for RentalConditions {
     }
 }
 
-/// The governance canister validates proposals and calls the SRC with
-/// this argument. It limits the principals vector to a reasonable size.
 #[derive(Clone, CandidType, Deserialize)]
-pub struct ValidatedSubnetRentalProposal {
-    pub subnet_id: candid::Principal,
-    pub user: candid::Principal,
-    /// Other principals to be whitelisted.
-    pub principals: Vec<candid::Principal>,
-    /// Nanoseconds since epoch.
-    pub proposal_creation_time: u64,
+pub enum SubnetInfo {
+    /// A description of the desired topology.
+    TopologyDescription(String),
+    /// If this is used, the SRC attempts to make the given subnet
+    /// available for rent immediately.
+    ExistingSubnetId(Principal),
 }
 
-/// The governance canister calls the SRC with this argument on
-/// a termination proposal.
+/// The governance canister calls the SRC with this argument twice.
+/// First in the validation method, which may either reject the proposal
+/// or return a 'Rendering' which will be shown to the voter.
+/// The second time in the proposal execution method, in case the proposal
+/// was valid and adopted.
 #[derive(Clone, CandidType, Deserialize)]
-pub struct RentalTerminationProposal {
-    subnet_id: candid::Principal,
+pub struct SubnetRentalProposalPayload {
+    // The tenant, who makes the payments
+    pub user: Principal,
+    /// Either a description of the desired topology
+    /// or an existing subnet id.
+    pub subnet_info: SubnetInfo,
 }
 
-#[derive(CandidType, Debug, Clone, Deserialize)]
-pub enum ExecuteProposalError {
-    SubnetNotRentable,
-    SubnetAlreadyRented,
-    UnauthorizedCaller,
-    InsufficientFunds,
-    TransferUserToSrcError(TransferFromError),
-    TransferSrcToCmcError(TransferError),
-    NotifyTopUpError(NotifyError),
-    SubnetNotRented,
+/// Successful proposal execution leads to a RentalRequest.
+#[derive(Clone, CandidType, Deserialize)]
+pub struct RentalRequest {
+    user: Principal,
+    locked_amount_cycles: u128,
+    initial_proposal_id: u64,
 }
-/// Immutable rental agreement; mutabla data belongs in BillingRecord. A rental agreement is
+
+impl Storable for RentalRequest {
+    // TODO: find max size and bound
+    const BOUND: Bound = Bound::Unbounded;
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        Decode!(&bytes, Self).unwrap()
+    }
+}
+
+/// Immutable rental agreement. A rental agreement is
 /// uniquely identified by the (subnet_id, creation_date) 'composite key'.
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalAgreement {
+    // ===== Immutable data =====
     /// The principal which paid the deposit and will be whitelisted.
     pub user: Principal,
     /// The subnet to be rented.
     pub subnet_id: Principal,
     /// Other principals to be whitelisted.
     pub principals: Vec<Principal>,
+    /// The ICP ledger subaccount to which the user makes payments.
+    pub user_subaccount: Subaccount,
+    /// The id of the SubnetRentalRequest proposal.
+    pub initial_proposal_id: u64,
+    /// The id of the proposal that created the subnet. Optional in case
+    /// the subnet already existed at initial proposal time.
+    pub subnet_creation_proposal_id: Option<u64>,
     /// Rental agreement creation date in nanoseconds since epoch.
     pub creation_date: u64,
+    // ===== Mutable data =====
+    /// The date in nanos since epoch until which the rental agreement is paid for.
+    pub covered_until: u64,
+    /// This subnet's share of cycles among the SRC's cycles.
+    /// Increased by the payment process (via timer).
+    /// Decreased by the burning process (via heartbeat).
+    pub cycles_balance: u128,
+    /// The last point in time in nanos since epoch when cycles were burned in a heartbeat.
+    pub last_burned: u64,
 }
 
 impl RentalAgreement {
@@ -120,33 +166,20 @@ impl Storable for RentalAgreement {
     }
 }
 
-/// Mutable data belonging to an active rental agreement.
-#[derive(Debug, Clone, Copy, CandidType, Deserialize)]
-pub struct BillingRecord {
-    /// The date (in nanos since epoch) until which the rental agreement is paid for.
-    pub covered_until: u64,
-    /// This subnet's share of cycles among the SRC's cycles.
-    /// Increased by the payment process (via timer).
-    /// Decreased by the burning process (via heartbeat).
-    pub cycles_balance: u128,
-    /// The last point in time (nanos since epoch) when cycles were burned in a heartbeat.
-    pub last_burned: u64,
+#[derive(CandidType, Debug, Clone, Deserialize)]
+pub enum ExecuteProposalError {
+    SubnetNotRentable,
+    SubnetAlreadyRented,
+    UnauthorizedCaller,
+    InsufficientFunds,
+    TransferUserToSrcError(TransferFromError),
+    TransferSrcToCmcError(TransferError),
+    NotifyTopUpError(NotifyError),
+    SubnetNotRented,
 }
 
-impl Storable for BillingRecord {
-    // Should be bounded once we replace string with real type.
-    const BOUND: Bound = Bound::Bounded {
-        max_size: 54, // TODO: figure out the actual size
-        is_fixed_size: false,
-    };
-    fn to_bytes(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        Decode!(&bytes, Self).unwrap()
-    }
-}
+// ============================================================================
+// Outcalls
 
 async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
     for user in principals {
@@ -291,6 +324,9 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
 }
+
+// ============================================================================
+// Misc
 
 /// Called in canister_init
 pub fn set_initial_rental_conditions() {

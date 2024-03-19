@@ -24,7 +24,7 @@ use subnet_rental_canister::{
     },
     history::Event,
     BillingRecord, ExecuteProposalError, RentalAgreement, RentalConditions,
-    ValidatedSubnetRentalProposal, E8S, TRILLION,
+    SubnetRentalProposalPayload, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -334,7 +334,7 @@ fn test_burning() {
 fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
     let (pic, canister_id) = setup();
 
-    let arg = ValidatedSubnetRentalProposal {
+    let arg = SubnetRentalProposalPayload {
         subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
         user: USER_1,
         principals: vec![USER_1],
@@ -363,7 +363,7 @@ fn accept_test_rental_agreement(
     subnet_id_str: &str,
 ) -> WasmResult {
     let subnet_id = Principal::from_text(subnet_id_str).unwrap();
-    let arg = ValidatedSubnetRentalProposal {
+    let arg = SubnetRentalProposalPayload {
         subnet_id,
         user: *user,
         principals: vec![*user],

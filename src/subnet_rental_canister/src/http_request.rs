@@ -72,12 +72,12 @@ fn generate_rental_agreements_html() -> String {
         html.push_str("<tr>");
         html.push_str(&format!(
             "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td><td>{}</td>",
-            agreement.subnet_id.0,
-            agreement.user.0,
+            agreement.subnet_id,
+            agreement.user,
             agreement
                 .principals
                 .iter()
-                .map(|p| p.0.to_string())
+                .map(|p| p.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
             billing_period_days,
@@ -105,7 +105,7 @@ fn generate_rental_conditions_html() -> String {
         let rented = RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id));
         html.push_str(&format!(
             "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
-            subnet_id.0,
+            subnet_id,
             conditions.daily_cost_cycles / TRILLION,
             conditions.initial_rental_period_days,
             conditions.billing_period_days,

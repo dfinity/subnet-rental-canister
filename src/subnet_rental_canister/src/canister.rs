@@ -9,7 +9,7 @@ use crate::{
     icrc2_transfer_to_src, notify_top_up, set_initial_rental_conditions, set_rental_conditions,
     transfer_to_cmc, verify_caller_is_governance, whitelist_principals, BillingRecord,
     ExecuteProposalError, Principal, RentalAgreement, RentalConditions, RentalTerminationProposal,
-    ValidatedSubnetRentalProposal, BILLING_INTERVAL, RENTAL_CONDITIONS,
+    SubnetRentalProposalPayload, BILLING_INTERVAL, RENTAL_CONDITIONS,
 };
 
 ////////// CANISTER METHODS //////////
@@ -174,7 +174,7 @@ pub async fn terminate_rental_agreement(
                 .into_iter()
                 .chain(std::iter::once(user))
                 .unique()
-                .map(|p| p.0)
+                .map(|p| p)
                 .collect(),
         )
         .await;
@@ -190,12 +190,12 @@ pub async fn terminate_rental_agreement(
 // TODO: Argument will be provided by governance canister after validation
 #[update]
 pub async fn accept_rental_agreement(
-    ValidatedSubnetRentalProposal {
+    SubnetRentalProposalPayload {
         subnet_id,
         user,
         principals,
         proposal_creation_time,
-    }: ValidatedSubnetRentalProposal,
+    }: SubnetRentalProposalPayload,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
 

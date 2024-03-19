@@ -1,22 +1,32 @@
-use std::cell::RefCell;
-
+/// The canister state is modelled using stable structures, so that upgrade safety is guaranteed.
+///
+/// Since the SRC handles an arbitrary number of rented subnets, we associate the subnet_id with
+/// the state structs by using StableBTreeMaps.
+///
+/// Most updates to state should leave a trace in the corresponding History trace log.
+///
+use crate::{
+    history::{Event, EventType, History},
+    Principal, RentalAgreement, RentalConditionType, RentalConditions, RentalRequest, APP13,
+};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     DefaultMemoryImpl, Memory, StableBTreeMap, Storable,
 };
-
-use crate::{
-    history::{Event, EventType, History},
-    BillingRecord, Principal, RentalAgreement, RentalConditions,
-};
+use std::{cell::RefCell, collections::HashMap};
 
 thread_local! {
+
+    static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionType, RentalConditions>> =
+        RefCell::new(HashMap::from([(RentalConditionType::App13, APP13); 1]));
+
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
     // Memory region 0
-    // Only modify via _set_rental_conditions so that history is updated alongside.
-    static RENTAL_CONDITIONS: RefCell<StableBTreeMap<Principal, RentalConditions, VirtualMemory<DefaultMemoryImpl>>> =
+    /// The keys are user principals, because a subnet_id is not known at request time. Furthermore, only one active
+    /// request is allowed per user principal.
+    static RENTAL_REQUESTS: RefCell<StableBTreeMap<Principal, RentalRequest, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
     // Memory region 1
@@ -24,12 +34,8 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 
     // Memory region 2
-    static BILLING_RECORDS: RefCell<StableBTreeMap<Principal, BillingRecord, VirtualMemory<DefaultMemoryImpl>>> =
-        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
-
-    // Memory region 3
     static HISTORY: RefCell<StableBTreeMap<Principal, History, VirtualMemory<DefaultMemoryImpl>>> =
-        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
 }
 
@@ -57,16 +63,12 @@ fn persist_event(event: impl Into<Event>, subnet: impl Into<Principal>) {
 }
 
 /// Rental agreement map and billing records map must be in sync, so we add them together
-fn create_rental_agreement(
-    subnet_id: Principal,
-    rental_agreement: RentalAgreement,
-    billing_record: BillingRecord,
-) {
+fn create_rental_agreement(subnet_id: Principal, rental_agreement: RentalAgreement) {
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(subnet_id, rental_agreement.clone());
     });
     println!("Created rental agreement: {:?}", &rental_agreement);
-    BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id, billing_record));
+    // BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id, billing_record));
     println!("Created billing record: {:?}", &billing_record);
     persist_event(EventType::Created { rental_agreement }, subnet_id);
 }
@@ -76,7 +78,7 @@ fn create_rental_agreement(
 fn delete_rental_agreement(subnet_id: Principal) {
     let rental_agreement =
         RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
-    let billing_record = BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
+    // let billing_record = BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
     persist_event(
         EventType::Terminated {
             rental_agreement,
