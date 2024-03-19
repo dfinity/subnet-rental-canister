@@ -3,6 +3,7 @@ use ic_ledger_types::{Tokens, DEFAULT_FEE};
 use itertools::Itertools;
 
 use crate::{
+    canister_state::persist_event,
     days_to_nanos, delist_principals, get_current_avg_exchange_rate_cycles_per_e8s,
     get_historical_avg_exchange_rate_cycles_per_e8s,
     history::{Event, EventType},

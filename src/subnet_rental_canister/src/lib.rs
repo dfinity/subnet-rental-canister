@@ -94,14 +94,26 @@ pub struct SubnetRentalProposalPayload {
     /// Either a description of the desired topology
     /// or an existing subnet id.
     pub subnet_info: SubnetInfo,
+    /// A key into the global RENTAL_CONDITIONS HashMap.
+    pub rental_condition_type: RentalConditionType,
 }
 
 /// Successful proposal execution leads to a RentalRequest.
 #[derive(Clone, CandidType, Deserialize)]
 pub struct RentalRequest {
     user: Principal,
+    /// The amount of cycles that are no longer refundable.
     locked_amount_cycles: u128,
+    /// The initial proposal id will be mentioned in the subnet
+    /// creation proposal. When this is found on the governance
+    /// canister, polling can stop.
     initial_proposal_id: u64,
+    // ===== Some fields from the proposal payload for the rental agreement =====
+    /// Either a description of the desired topology
+    /// or an existing subnet id.
+    pub subnet_info: SubnetInfo,
+    /// A key into the global RENTAL_CONDITIONS HashMap.
+    pub rental_condition_type: RentalConditionType,
 }
 
 impl Storable for RentalRequest {
@@ -123,10 +135,6 @@ pub struct RentalAgreement {
     // ===== Immutable data =====
     /// The principal which paid the deposit and will be whitelisted.
     pub user: Principal,
-    /// The subnet to be rented.
-    pub subnet_id: Principal,
-    /// Other principals to be whitelisted.
-    pub principals: Vec<Principal>,
     /// The ICP ledger subaccount to which the user makes payments.
     pub user_subaccount: Subaccount,
     /// The id of the SubnetRentalRequest proposal.
@@ -147,13 +155,6 @@ pub struct RentalAgreement {
     pub last_burned: u64,
 }
 
-impl RentalAgreement {
-    pub fn get_rental_conditions(&self) -> RentalConditions {
-        // unwrap justified because no rental agreement can exist without rental conditions
-        RENTAL_CONDITIONS.with(|map| map.borrow().get(&self.subnet_id).unwrap())
-    }
-}
-
 impl Storable for RentalAgreement {
     // should be bounded once we replace string with real type
     const BOUND: Bound = Bound::Unbounded;
@@ -172,7 +173,7 @@ pub enum ExecuteProposalError {
     SubnetAlreadyRented,
     UnauthorizedCaller,
     InsufficientFunds,
-    TransferUserToSrcError(TransferFromError),
+    TransferUserToSrcError(TransferError),
     TransferSrcToCmcError(TransferError),
     NotifyTopUpError(NotifyError),
     SubnetNotRented,
@@ -278,20 +279,6 @@ async fn icrc2_transfer_to_src(
     .await
     .expect("Failed to call ledger canister") // TODO: handle error
     .0
-}
-
-async fn get_historical_avg_exchange_rate_cycles_per_e8s(timestamp: u64) -> u64 {
-    // TODO: implement
-    println!(
-        "Getting historical average exchange rate for timestamp {}",
-        timestamp
-    );
-    get_exchange_rate_cycles_per_e8s().await
-}
-
-async fn get_current_avg_exchange_rate_cycles_per_e8s() -> u64 {
-    // TODO: implement
-    get_exchange_rate_cycles_per_e8s().await
 }
 
 async fn get_exchange_rate_cycles_per_e8s() -> u64 {

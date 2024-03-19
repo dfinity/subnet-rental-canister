@@ -5,7 +5,10 @@ use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{BillingRecord, ExecuteProposalError, Principal, RentalAgreement, RentalConditions};
+use crate::{
+    BillingRecord, ExecuteProposalError, Principal, RentalAgreement, RentalConditions,
+    RentalRequest,
+};
 
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
@@ -48,33 +51,42 @@ impl From<EventType> for Event {
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub enum EventType {
+    /// Either changed via NNS function (proposal) OR add these in the post-upgrade hook everytime.
     RentalConditionsChanged {
         rental_conditions: RentalConditions,
     },
+    ///
     RentalConditionsRemoved {
         rental_conditions: RentalConditions,
     },
-    Created {
-        // proposal_id: u64,
-        rental_agreement: RentalAgreement,
+    /// A successful proposal execution leads to a RentalRequest
+    RentalRequestCreated {
+        // TODO: project only immutable fields
+        rental_request: RentalRequest,
     },
-    Rejected {
-        // proposal_id: u64,
-        user: Principal,
-    },
-    Failed {
+    /// An unsuccessful proposal execution
+    ProposalExecutionFailed {
         // proposal_id: u64,
         user: Principal,
         reason: ExecuteProposalError,
     },
+    /// After successfull polling, a RentalAgreement is created
+    RentalAgreementCreated {
+        // TODO: project only immutable fields
+        // proposal_id: u64,
+        rental_agreement: RentalAgreement,
+    },
+    // TODO: How to even get this?
     Terminated {
         rental_agreement: RentalAgreement,
         billing_record: BillingRecord,
     },
+    //
     PaymentSuccess {
         amount: Tokens,
         covered_until: u64,
     },
+    // TODO: this would happen every day. That may be too much history data.
     PaymentFailure {
         reason: String,
     },

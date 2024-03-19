@@ -39,8 +39,13 @@ thread_local! {
 
 }
 
+// TODO: generalize
+pub fn get_rental_conditions(key: RentalConditionType) -> Option<RentalConditions> {
+    RENTAL_CONDITIONS.with(|map| map.borrow().get(&key).cloned())
+}
+
 /// Pass one of the global StableBTreeMaps and a function that transforms a value.
-fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
+pub fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
 where
     K: Storable + Ord + Clone,
     V: Storable,
@@ -53,9 +58,9 @@ where
     }
 }
 
-fn persist_event(event: impl Into<Event>, subnet: impl Into<Principal>) {
+pub fn persist_event(event: impl Into<Event>, subnet: Principal) {
     HISTORY.with(|map| {
-        let subnet = subnet.into();
+        let subnet = subnet;
         let mut history = map.borrow().get(&subnet).unwrap_or_default();
         history.events.push(event.into());
         map.borrow_mut().insert(subnet, history);
@@ -63,14 +68,17 @@ fn persist_event(event: impl Into<Event>, subnet: impl Into<Principal>) {
 }
 
 /// Rental agreement map and billing records map must be in sync, so we add them together
-fn create_rental_agreement(subnet_id: Principal, rental_agreement: RentalAgreement) {
+pub fn create_rental_agreement(subnet_id: Principal, rental_agreement: RentalAgreement) {
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(subnet_id, rental_agreement.clone());
     });
     println!("Created rental agreement: {:?}", &rental_agreement);
     // BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id, billing_record));
     println!("Created billing record: {:?}", &billing_record);
-    persist_event(EventType::Created { rental_agreement }, subnet_id);
+    persist_event(
+        EventType::RentalAgreementCreated { rental_agreement },
+        subnet_id,
+    );
 }
 
 /// Rental agreements have an associated BillingAccount, which must be removed at the same time.
