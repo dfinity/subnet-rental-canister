@@ -1,32 +1,16 @@
-use candid::{CandidType, Decode, Deserialize, Encode, Nat, Principal};
-use canister_state::{set_rental_conditions, RENTAL_CONDITIONS};
+use candid::{CandidType, Decode, Deserialize, Encode, Principal};
+use canister_state::set_rental_conditions;
 use external_types::NotifyError;
-use history::{Event, EventType, History};
 use ic_cdk::println;
-use ic_ledger_types::{
-    transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
-    DEFAULT_FEE, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
-};
-use ic_stable_structures::Memory;
-use ic_stable_structures::{
-    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
-    storable::Bound,
-    DefaultMemoryImpl, StableBTreeMap, Storable,
-};
-use icrc_ledger_types::icrc1::account::Account;
-use icrc_ledger_types::icrc2::transfer_from::{TransferFromArgs, TransferFromError};
 
-use serde::Serialize;
-use std::{borrow::Cow, cell::RefCell, time::Duration};
+use ic_ledger_types::{Memo, TransferError, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_stable_structures::{storable::Bound, Storable};
 
-use crate::external_types::{
-    IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyTopUpArg,
-    SetAuthorizedSubnetworkListArgs,
-};
+use std::{borrow::Cow, time::Duration};
 
 pub mod canister;
 pub mod canister_state;
+pub mod external_calls;
 pub mod external_types;
 pub mod history;
 mod http_request;
@@ -43,10 +27,10 @@ const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 /// Rental conditions are kept in a global HashMap and only changed via code upgrades.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize, PartialEq, Eq, Hash)]
 pub enum RentalConditionType {
-    App13,
+    App13Switzerland,
 }
 
-const APP13: RentalConditions = RentalConditions {
+const APP13SWITZERLAND: RentalConditions = RentalConditions {
     daily_cost_cycles: 835 * TRILLION,
     initial_rental_period_days: 180,
     billing_period_days: 30,
@@ -73,7 +57,7 @@ impl Storable for RentalConditions {
     }
 }
 
-#[derive(Clone, CandidType, Deserialize)]
+#[derive(Clone, CandidType, Debug, Deserialize)]
 pub enum SubnetInfo {
     /// A description of the desired topology.
     TopologyDescription(String),
@@ -99,7 +83,7 @@ pub struct SubnetRentalProposalPayload {
 }
 
 /// Successful proposal execution leads to a RentalRequest.
-#[derive(Clone, CandidType, Deserialize)]
+#[derive(Clone, CandidType, Debug, Deserialize)]
 pub struct RentalRequest {
     user: Principal,
     /// The amount of cycles that are no longer refundable.
@@ -135,8 +119,6 @@ pub struct RentalAgreement {
     // ===== Immutable data =====
     /// The principal which paid the deposit and will be whitelisted.
     pub user: Principal,
-    /// The ICP ledger subaccount to which the user makes payments.
-    pub user_subaccount: Subaccount,
     /// The id of the SubnetRentalRequest proposal.
     pub initial_proposal_id: u64,
     /// The id of the proposal that created the subnet. Optional in case
@@ -180,125 +162,7 @@ pub enum ExecuteProposalError {
 }
 
 // ============================================================================
-// Outcalls
-
-async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
-    for user in principals {
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(user.clone()),
-                subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
-            },),
-        )
-        .await
-        .expect("Failed to call CMC"); // TODO: handle error
-    }
-}
-
-async fn delist_principals(_subnet_id: candid::Principal, principals: &Vec<candid::Principal>) {
-    // TODO: if we allow multiple subnets per user:
-    // first read the current list,
-    // remove this subnet from the list and then
-    // re-whitelist the principal for the remaining list
-    for user in principals {
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(*user),
-                subnets: vec![],
-            },),
-        )
-        .await
-        .expect("Failed to call CMC"); // TODO: handle error
-    }
-}
-
-async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
-    ic_cdk::call::<_, (Result<u128, NotifyError>,)>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "notify_top_up",
-        (NotifyTopUpArg {
-            block_index,
-            canister_id: ic_cdk::id(),
-        },),
-    )
-    .await
-    .expect("Failed to call CMC") // TODO: handle error
-    .0
-    // TODO: In the canister logs, the CMC claims that the burning of ICPs failed, but the cycles are minted anyway.
-    // It states that the "transfer fee should be 0.00010000 Token", but that fee is hardcoded to
-    // (ZERO)[https://sourcegraph.com/github.com/dfinity/ic@8126ad2fab0196908d9456a65914a3e05179ac4b/-/blob/rs/nns/cmc/src/main.rs?L1835]
-    // in the CMC, and cannot be changed from outside. What's going on here?
-}
-
-async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
-    transfer(
-        MAINNET_LEDGER_CANISTER_ID,
-        TransferArgs {
-            to: AccountIdentifier::new(
-                &MAINNET_CYCLES_MINTING_CANISTER_ID,
-                &Subaccount::from(ic_cdk::id()),
-            ),
-            fee: DEFAULT_FEE,
-            from_subaccount: None,
-            amount,
-            memo: MEMO_TOP_UP_CANISTER,
-            created_at_time: None,
-        },
-    )
-    .await
-    .expect("Failed to call ledger canister") // TODO: handle error
-}
-
-async fn icrc2_transfer_to_src(
-    user: candid::Principal,
-    amount: Tokens,
-) -> Result<u128, TransferFromError> {
-    ic_cdk::call::<_, (Result<u128, TransferFromError>,)>(
-        MAINNET_LEDGER_CANISTER_ID,
-        "icrc2_transfer_from",
-        (TransferFromArgs {
-            to: Account {
-                owner: ic_cdk::id(),
-                subaccount: None,
-            },
-            fee: None,
-            spender_subaccount: None,
-            from: Account {
-                owner: user,
-                subaccount: None,
-            },
-            memo: None,
-            created_at_time: None,
-            amount: Nat::from(amount.e8s()),
-        },),
-    )
-    .await
-    .expect("Failed to call ledger canister") // TODO: handle error
-    .0
-}
-
-async fn get_exchange_rate_cycles_per_e8s() -> u64 {
-    let IcpXdrConversionRateResponse {
-        data: IcpXdrConversionRate {
-            xdr_permyriad_per_icp,
-            ..
-        },
-        ..
-    } = ic_cdk::call::<_, (IcpXdrConversionRateResponse,)>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "get_icp_xdr_conversion_rate",
-        (),
-    )
-    .await
-    .expect("Failed to call CMC") // TODO: handle error
-    .0;
-
-    xdr_permyriad_per_icp
-}
+// Misc
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
@@ -311,9 +175,6 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
 }
-
-// ============================================================================
-// Misc
 
 /// Called in canister_init
 pub fn set_initial_rental_conditions() {

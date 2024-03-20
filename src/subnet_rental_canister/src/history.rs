@@ -5,10 +5,7 @@ use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{
-    BillingRecord, ExecuteProposalError, Principal, RentalAgreement, RentalConditions,
-    RentalRequest,
-};
+use crate::{ExecuteProposalError, Principal, RentalAgreement, RentalConditions, RentalRequest};
 
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
@@ -33,7 +30,8 @@ impl Storable for History {
 }
 
 /// A rental agreement state change.
-/// Prefer creating events via EventType::SomeVariant.into().
+/// Prefer creating events via EventType::SomeVariant.into()
+/// so that system time is captured automatically.
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct Event {
     event: EventType,
@@ -78,12 +76,13 @@ pub enum EventType {
     },
     // TODO: How to even get this?
     Terminated {
+        // TODO: project
         rental_agreement: RentalAgreement,
-        billing_record: BillingRecord,
     },
-    //
+    ///
     PaymentSuccess {
         amount: Tokens,
+        cycles: u128,
         covered_until: u64,
     },
     // TODO: this would happen every day. That may be too much history data.
