@@ -49,20 +49,20 @@ jobs:
     - name: Deploy
       run: dfx deploy
 
-  # lint:
-  #   name: Lint
-  #   runs-on: ubuntu-latest
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #   - name: Run clippy
-  #     run: cargo clippy --all-targets --all-features -- -D warnings
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
 
-  # format:
-  #   name: Format
-  #   runs-on: ubuntu-latest
+  format:
+    name: Format
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #   - name: Run fmt
-  #     run: cargo fmt --all -- --check
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run fmt
+      run: cargo fmt --all -- --check
