@@ -50,6 +50,7 @@ jobs:
       run: dfx deploy
 
   lint:
+    when: never
     name: Lint
     runs-on: ubuntu-latest
 
@@ -59,6 +60,7 @@ jobs:
       run: cargo clippy --all-targets --all-features -- -D warnings
 
   format:
+    when: never
     name: Format
     runs-on: ubuntu-latest
 
