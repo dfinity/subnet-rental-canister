@@ -95,7 +95,7 @@ pub fn create_rental_agreement(subnet_id: Principal, rental_agreement: RentalAgr
     });
     println!("Created rental agreement: {:?}", &rental_agreement);
     // BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id, billing_record));
-    println!("Created billing record: {:?}", &billing_record);
+    // println!("Created billing record: {:?}", &billing_record);
     persist_event(
         EventType::RentalAgreementCreated { rental_agreement },
         subnet_id,
@@ -111,7 +111,7 @@ fn delete_rental_agreement(subnet_id: Principal) {
     persist_event(
         EventType::Terminated {
             rental_agreement,
-            billing_record,
+            // billing_record,
         },
         subnet_id,
     );

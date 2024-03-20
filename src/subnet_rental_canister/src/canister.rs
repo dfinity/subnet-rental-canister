@@ -1,7 +1,6 @@
 use crate::{
     canister_state::{iter_rental_conditions, persist_event},
     history::{Event, EventType},
-    set_initial_rental_conditions, set_rental_conditions, verify_caller_is_governance,
     ExecuteProposalError, Principal, RentalAgreement, RentalConditions, BILLING_INTERVAL,
 };
 use candid::types::principal;
