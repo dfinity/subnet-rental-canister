@@ -1,9 +1,11 @@
 use crate::{
-    canister_state::persist_event,
+    canister_state::{iter_rental_conditions, persist_event},
     history::{Event, EventType},
     set_initial_rental_conditions, set_rental_conditions, verify_caller_is_governance,
     ExecuteProposalError, Principal, RentalAgreement, RentalConditions, BILLING_INTERVAL,
 };
+use candid::types::principal;
+use ic_cdk::println;
 use ic_cdk::{heartbeat, init, post_upgrade, query, update};
 
 ////////// CANISTER METHODS //////////
@@ -11,7 +13,17 @@ use ic_cdk::{heartbeat, init, post_upgrade, query, update};
 #[init]
 fn init() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
-    // Persist rental conditions in history.
+
+    // Persist initial rental conditions in history.
+    for (k, v) in iter_rental_conditions().iter() {
+        // associate events that belong to no subnet with anon
+        persist_event(
+            EventType::RentalConditionsChanged {
+                rental_conditions: v.clone(),
+            },
+            Principal::anonymous(),
+        )
+    }
     println!("Subnet rental canister initialized");
 }
 

@@ -10,6 +10,7 @@ use crate::{
     Principal, RentalAgreement, RentalConditionType, RentalConditions, RentalRequest,
     APP13SWITZERLAND,
 };
+use ic_cdk::println;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     DefaultMemoryImpl, Memory, StableBTreeMap, Storable,
