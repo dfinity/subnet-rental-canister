@@ -1,158 +1,104 @@
-use ic_cdk::{heartbeat, init, post_upgrade, query, update};
-use ic_ledger_types::{Tokens, DEFAULT_FEE};
-use itertools::Itertools;
-
 use crate::{
     canister_state::persist_event,
-    days_to_nanos, delist_principals, get_current_avg_exchange_rate_cycles_per_e8s,
-    get_historical_avg_exchange_rate_cycles_per_e8s,
     history::{Event, EventType},
-    icrc2_transfer_to_src, notify_top_up, set_initial_rental_conditions, set_rental_conditions,
-    transfer_to_cmc, verify_caller_is_governance, whitelist_principals, BillingRecord,
-    ExecuteProposalError, Principal, RentalAgreement, RentalConditions, RentalTerminationProposal,
-    SubnetRentalProposalPayload, BILLING_INTERVAL, RENTAL_CONDITIONS,
+    set_initial_rental_conditions, set_rental_conditions, verify_caller_is_governance,
+    ExecuteProposalError, Principal, RentalAgreement, RentalConditions, BILLING_INTERVAL,
 };
+use ic_cdk::{heartbeat, init, post_upgrade, query, update};
 
 ////////// CANISTER METHODS //////////
 
 #[init]
 fn init() {
-    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
-    // Populate rental conditions map and persist these changes in history.
-    set_initial_rental_conditions();
+    // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
+    // Persist rental conditions in history.
     println!("Subnet rental canister initialized");
 }
 
 #[post_upgrade]
 fn post_upgrade() {
-    ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
+    // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 }
 
-#[heartbeat]
-fn canister_heartbeat() {
-    BILLING_RECORDS.with(|map| {
-        update_map(map, |subnet_id, billing_record| {
-            let Some(rental_agreement) = RENTAL_AGREEMENTS.with(|map| map.borrow().get(&subnet_id))
-            else {
-                println!(
-                    "Fatal: Failed to find active rental agreement for active billing record of subnet {}",
-                    subnet_id.0
-                );
-                return billing_record;
-            };
-            let cost_cycles_per_second =
-                rental_agreement.get_rental_conditions().daily_cost_cycles / 86400;
-            let now = ic_cdk::api::time();
-            let nanos_since_last_burn = now - billing_record.last_burned;
-            // cost_cycles_per_second: ~10^10 < 10^12
-            // nanos_since_last_burn:  ~10^9  < 10^15
-            // product                        < 10^27 << 10^38 (u128_max)
-            // divided by 1B                    10^-9
-            // amount                         < 10^18
-            let amount = cost_cycles_per_second * nanos_since_last_burn as u128 / 1_000_000_000;
-            if billing_record.cycles_balance < amount {
-                println!("Failed to burn cycles for subnet {}", subnet_id.0);
-                return billing_record;
-            }
-            // TODO: disabled for testing;
-            // let canister_total_available_cycles = ic_cdk::api::canister_balance128();
-            // if canister_total_available_cycles < amount {
-            //     println!(
-            //         "Fatal: Canister has fewer cycles {} than subaccount {:?}: {}",
-            //         canister_total_available_cycles, subnet_id, account.cycles_balance
-            //     );
-            //     return account;
-            // }
-            // Burn must succeed now
-            ic_cdk::api::cycles_burn(amount);
-            let cycles_balance = billing_record.cycles_balance - amount;
-            let last_burned = now;
-            println!(
-                "Burned {} cycles for subnet {}, remaining: {}",
-                amount, subnet_id.0, cycles_balance
-            );
-            BillingRecord {
-                covered_until: billing_record.covered_until,
-                cycles_balance,
-                last_burned,
-            }
-        });
-    });
-}
+// #[heartbeat]
+// fn canister_heartbeat() {
+// BILLING_RECORDS.with(|map| {
+//     update_map(map, |subnet_id, billing_record| {
+//         let Some(rental_agreement) = RENTAL_AGREEMENTS.with(|map| map.borrow().get(&subnet_id))
+//         else {
+//             println!(
+//                 "Fatal: Failed to find active rental agreement for active billing record of subnet {}",
+//                 subnet_id.0
+//             );
+//             return billing_record;
+//         };
+//         let cost_cycles_per_second =
+//             rental_agreement.get_rental_conditions().daily_cost_cycles / 86400;
+//         let now = ic_cdk::api::time();
+//         let nanos_since_last_burn = now - billing_record.last_burned;
+//         // cost_cycles_per_second: ~10^10 < 10^12
+//         // nanos_since_last_burn:  ~10^9  < 10^15
+//         // product                        < 10^27 << 10^38 (u128_max)
+//         // divided by 1B                    10^-9
+//         // amount                         < 10^18
+//         let amount = cost_cycles_per_second * nanos_since_last_burn as u128 / 1_000_000_000;
+//         if billing_record.cycles_balance < amount {
+//             println!("Failed to burn cycles for subnet {}", subnet_id.0);
+//             return billing_record;
+//         }
+//         // TODO: disabled for testing;
+//         // let canister_total_available_cycles = ic_cdk::api::canister_balance128();
+//         // if canister_total_available_cycles < amount {
+//         //     println!(
+//         //         "Fatal: Canister has fewer cycles {} than subaccount {:?}: {}",
+//         //         canister_total_available_cycles, subnet_id, account.cycles_balance
+//         //     );
+//         //     return account;
+//         // }
+//         // Burn must succeed now
+//         ic_cdk::api::cycles_burn(amount);
+//         let cycles_balance = billing_record.cycles_balance - amount;
+//         let last_burned = now;
+//         println!(
+//             "Burned {} cycles for subnet {}, remaining: {}",
+//             amount, subnet_id.0, cycles_balance
+//         );
+//         BillingRecord {
+//             covered_until: billing_record.covered_until,
+//             cycles_balance,
+//             last_burned,
+//         }
+//     });
+// });
+// }
 
 ////////// QUERY METHODS //////////
 
-#[query]
-pub fn list_rental_conditions() -> Vec<(Principal, RentalConditions)> {
-    RENTAL_CONDITIONS.with(|map| map.borrow().iter().collect())
-}
+// #[query]
+// pub fn list_rental_conditions() -> Vec<(Principal, RentalConditions)> {
+//     RENTAL_CONDITIONS.with(|map| map.borrow().iter().collect())
+// }
 
-#[query]
-pub fn list_rental_agreements() -> Vec<RentalAgreement> {
-    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
-}
+// #[query]
+// pub fn list_rental_agreements() -> Vec<RentalAgreement> {
+//     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
+// }
 
-#[query]
-pub fn list_billing_records() -> Vec<(Principal, BillingRecord)> {
-    BILLING_RECORDS.with(|map| map.borrow().iter().collect())
-}
+// #[query]
+// pub fn list_billing_records() -> Vec<(Principal, BillingRecord)> {
+//     BILLING_RECORDS.with(|map| map.borrow().iter().collect())
+// }
 
-#[query]
-pub fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
-    HISTORY.with(|map| {
-        map.borrow()
-            .get(&subnet.into())
-            .map(|history| history.events)
-    })
-}
+// #[query]
+// pub fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
+//     HISTORY.with(|map| {
+//         map.borrow()
+//             .get(&subnet.into())
+//             .map(|history| history.events)
+//     })
+// }
 
 ////////// UPDATE METHODS //////////
-
-/// Insert or overwrite existing rental conditions with Some(value), or remove
-/// rental conditions for this subnet altogether by passing None. Passing None
-/// while a corresponding active rental agreement exists will fail.
-#[update]
-pub fn public_set_rental_conditions(
-    subnet_id: candid::Principal,
-    mb_rental_conditions: Option<RentalConditions>,
-) -> Result<(), ExecuteProposalError> {
-    verify_caller_is_governance()?;
-    // Insert or overwrite
-    if let Some(RentalConditions {
-        daily_cost_cycles,
-        initial_rental_period_days,
-        billing_period_days,
-    }) = mb_rental_conditions
-    {
-        set_rental_conditions(
-            subnet_id,
-            daily_cost_cycles,
-            initial_rental_period_days,
-            billing_period_days,
-        );
-    } else {
-        // Remove this subnet as up for rent by deleting the rental conditions
-        // Fail if an active rental agreement exists
-        if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
-            return Err(ExecuteProposalError::SubnetAlreadyRented);
-        }
-
-        if let Some(rental_conditions) =
-            RENTAL_CONDITIONS.with(|map| map.borrow_mut().remove(&subnet_id.into()))
-        {
-            persist_event(
-                EventType::RentalConditionsRemoved { rental_conditions },
-                subnet_id,
-            );
-        } else {
-            println!(
-                "Failed to remove rental conditions for subnet {}: Not found",
-                subnet_id
-            );
-        }
-    }
-    Ok(())
-}
 
 // #[update]
 // pub async fn terminate_rental_agreement(

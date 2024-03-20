@@ -1,5 +1,4 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
-use canister_state::set_rental_conditions;
 use external_types::NotifyError;
 use ic_cdk::println;
 
@@ -124,6 +123,8 @@ pub struct RentalAgreement {
     /// The id of the proposal that created the subnet. Optional in case
     /// the subnet already existed at initial proposal time.
     pub subnet_creation_proposal_id: Option<u64>,
+    /// A key into the global RENTAL_CONDITIONS HashMap.
+    pub rental_condition_type: RentalConditionType,
     /// Rental agreement creation date in nanoseconds since epoch.
     pub creation_date: u64,
     // ===== Mutable data =====
@@ -174,26 +175,4 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 
 fn days_to_nanos(days: u64) -> u64 {
     days * 24 * 60 * 60 * 1_000_000_000
-}
-
-/// Called in canister_init
-pub fn set_initial_rental_conditions() {
-    set_rental_conditions(
-        candid::Principal::from_text(
-            "bkfrj-6k62g-dycql-7h53p-atvkj-zg4to-gaogh-netha-ptybj-ntsgw-rqe",
-        )
-        .unwrap(),
-        1_000 * TRILLION,
-        365,
-        30,
-    );
-    set_rental_conditions(
-        candid::Principal::from_text(
-            "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae",
-        )
-        .unwrap(),
-        2_000 * TRILLION,
-        183,
-        30,
-    );
 }

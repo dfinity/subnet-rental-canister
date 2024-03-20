@@ -7,7 +7,8 @@
 ///
 use crate::{
     history::{Event, EventType, History},
-    Principal, RentalAgreement, RentalConditionType, RentalConditions, RentalRequest, APP13,
+    Principal, RentalAgreement, RentalConditionType, RentalConditions, RentalRequest,
+    APP13SWITZERLAND,
 };
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -18,7 +19,7 @@ use std::{cell::RefCell, collections::HashMap};
 thread_local! {
 
     static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionType, RentalConditions>> =
-        RefCell::new(HashMap::from([(RentalConditionType::App13, APP13); 1]));
+        RefCell::new(HashMap::from([(RentalConditionType::App13Switzerland, APP13SWITZERLAND); 1]));
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -39,9 +40,28 @@ thread_local! {
 
 }
 
-// TODO: generalize
 pub fn get_rental_conditions(key: RentalConditionType) -> Option<RentalConditions> {
     RENTAL_CONDITIONS.with(|map| map.borrow().get(&key).cloned())
+}
+
+pub fn iter_rental_conditions() -> Vec<(RentalConditionType, RentalConditions)> {
+    RENTAL_CONDITIONS.with(|map| map.borrow().iter().map(|(k, v)| (*k, *v)).collect())
+}
+
+pub fn get_rental_request(requester: &Principal) -> Option<RentalRequest> {
+    RENTAL_REQUESTS.with(|map| map.borrow().get(requester))
+}
+
+pub fn iter_rental_requests() -> Vec<(Principal, RentalRequest)> {
+    RENTAL_REQUESTS.with(|map| map.borrow().iter().collect())
+}
+
+pub fn get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
+    RENTAL_AGREEMENTS.with(|map| map.borrow().get(subnet_id))
+}
+
+pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
+    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().collect())
 }
 
 /// Pass one of the global StableBTreeMaps and a function that transforms a value.
@@ -92,28 +112,6 @@ fn delete_rental_agreement(subnet_id: Principal) {
             rental_agreement,
             billing_record,
         },
-        subnet_id,
-    );
-}
-
-/// Use only this function to make changes to RENTAL_CONDITIONS, so that
-/// all changes are persisted in the history.
-/// Internally used in canister_init, externally available as an update method
-/// which only the governance canister can call, see set_rental_conditions().
-pub fn set_rental_conditions(
-    subnet_id: candid::Principal,
-    daily_cost_cycles: u128,
-    initial_rental_period_days: u64,
-    billing_period_days: u64,
-) {
-    let rental_conditions = RentalConditions {
-        daily_cost_cycles,
-        initial_rental_period_days,
-        billing_period_days,
-    };
-    RENTAL_CONDITIONS.with(|map| map.borrow_mut().insert(subnet_id.into(), rental_conditions));
-    persist_event(
-        EventType::RentalConditionsChanged { rental_conditions },
         subnet_id,
     );
 }
