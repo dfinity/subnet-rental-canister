@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
 use crate::{
-    ExecuteProposalError, Principal, RentalAgreement, RentalConditionType, RentalConditions,
-    RentalRequest, SubnetSpecification,
+    ExecuteProposalError, Principal, RentalConditionType, RentalConditions, RentalRequest,
+    SubnetSpecification,
 };
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
