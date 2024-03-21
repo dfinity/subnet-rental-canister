@@ -8,7 +8,7 @@
 use crate::{
     history::{Event, EventType, History},
     Principal, RentalAgreement, RentalConditionType, RentalConditions, RentalRequest,
-    SubnetSpecification, APP13SWITZERLAND,
+    SubnetSpecification, APP13CH,
 };
 use ic_cdk::println;
 use ic_stable_structures::{
@@ -20,7 +20,7 @@ use std::{cell::RefCell, collections::HashMap};
 thread_local! {
 
     static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionType, RentalConditions>> =
-        RefCell::new(HashMap::from([(RentalConditionType::App13Switzerland, APP13SWITZERLAND); 1]));
+        RefCell::new(HashMap::from([(RentalConditionType::App13CH, APP13CH); 1]));
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));

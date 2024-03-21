@@ -2,7 +2,7 @@ use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use external_types::NotifyError;
 // use ic_cdk::println;
 
-use ic_ledger_types::{Memo, TransferError, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_ledger_types::{Memo, TransferError};
 use ic_stable_structures::{storable::Bound, Storable};
 
 use std::borrow::Cow;
@@ -25,10 +25,10 @@ const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 /// Rental conditions are kept in a global HashMap and only changed via code upgrades.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize, PartialEq, Eq, Hash)]
 pub enum RentalConditionType {
-    App13Switzerland,
+    App13CH,
 }
 
-const APP13SWITZERLAND: RentalConditions = RentalConditions {
+const APP13CH: RentalConditions = RentalConditions {
     daily_cost_cycles: 835 * TRILLION,
     initial_rental_period_days: 180,
     billing_period_days: 30,
@@ -161,15 +161,4 @@ pub enum ExecuteProposalError {
     TransferSrcToCmcError(TransferError),
     NotifyTopUpError(NotifyError),
     SubnetNotRented,
-}
-
-// ============================================================================
-// Misc
-
-fn _verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
-    if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
-        println!("Caller is not the governance canister");
-        return Err(ExecuteProposalError::UnauthorizedCaller);
-    }
-    Ok(())
 }
