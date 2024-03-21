@@ -8,7 +8,7 @@
 use crate::{
     history::{Event, EventType, History},
     Principal, RentalAgreement, RentalConditionType, RentalConditions, RentalRequest,
-    APP13SWITZERLAND,
+    SubnetSpecification, APP13SWITZERLAND,
 };
 use ic_cdk::println;
 use ic_stable_structures::{
@@ -87,21 +87,41 @@ pub fn persist_event(event: impl Into<Event>, subnet: Principal) {
     })
 }
 
-/// Rental agreement map and billing records map must be in sync, so we add them together
-pub fn create_rental_agreement(subnet_id: Principal, rental_agreement: RentalAgreement) {
+/// Create a RentalAgreement with consistent timestamps and create the corresponding event.
+#[allow(clippy::too_many_arguments)]
+pub fn create_rental_agreement(
+    subnet_id: Principal,
+    user: Principal,
+    initial_proposal_id: u64,
+    subnet_creation_proposal_id: Option<u64>,
+    subnet_spec: SubnetSpecification,
+    rental_condition_type: RentalConditionType,
+    covered_until: u64,
+    cycles_balance: u128,
+) {
+    let now = ic_cdk::api::time();
+    let rental_agreement = RentalAgreement {
+        user,
+        initial_proposal_id,
+        subnet_creation_proposal_id,
+        subnet_spec: subnet_spec.clone(),
+        rental_condition_type,
+        creation_date: now,
+        covered_until,
+        cycles_balance,
+        last_burned: now,
+    };
     RENTAL_AGREEMENTS.with(|map| {
         map.borrow_mut().insert(subnet_id, rental_agreement.clone());
     });
     println!("Created rental agreement: {:?}", &rental_agreement);
-    // BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id, billing_record));
-    // println!("Created billing record: {:?}", &billing_record);
     persist_event(
         EventType::RentalAgreementCreated {
-            user: rental_agreement.user,
-            initial_proposal_id: rental_agreement.initial_proposal_id,
-            subnet_creation_proposal_id: rental_agreement.subnet_creation_proposal_id,
-            subnet_spec: rental_agreement.subnet_spec,
-            rental_condition_type: rental_agreement.rental_condition_type,
+            user,
+            initial_proposal_id,
+            subnet_creation_proposal_id,
+            subnet_spec,
+            rental_condition_type,
         },
         subnet_id,
     );
