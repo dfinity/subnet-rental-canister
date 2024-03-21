@@ -22,7 +22,7 @@ const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 const SRC_ID: Principal =
     Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
-const SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
+const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const USER_1: Principal = Principal::from_slice(b"user1");
 const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(3_700 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
@@ -95,6 +95,10 @@ fn setup() -> (PocketIc, Principal) {
     (pic, subnet_rental_canister)
 }
 
+#[test]
+fn dummy() {
+    setup();
+}
 // #[test]
 // fn _test_authorization() {
 //     // This test is incomplete because with PocketIC, we cannot create negative whitelist tests.
@@ -369,7 +373,7 @@ fn setup() -> (PocketIc, Principal) {
 //     .unwrap()
 // }
 
-fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
+fn _query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     pic: &PocketIc,
     canister_id: Principal,
     method: &str,
@@ -389,7 +393,7 @@ fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn update<T: CandidType + for<'a> Deserialize<'a>>(
+fn _update<T: CandidType + for<'a> Deserialize<'a>>(
     pic: &PocketIc,
     canister_id: Principal,
     sender: Option<Principal>,
@@ -410,8 +414,8 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
-    query(
+fn _check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
+    _query(
         pic,
         MAINNET_LEDGER_CANISTER_ID,
         "account_balance",

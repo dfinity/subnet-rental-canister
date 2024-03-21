@@ -1,6 +1,6 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use external_types::NotifyError;
-use ic_cdk::println;
+// use ic_cdk::println;
 
 use ic_ledger_types::{Memo, TransferError, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::{storable::Bound, Storable};
