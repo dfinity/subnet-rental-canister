@@ -42,34 +42,34 @@ thread_local! {
 }
 
 pub fn get_rental_conditions(key: RentalConditionType) -> Option<RentalConditions> {
-    RENTAL_CONDITIONS.with(|map| map.borrow().get(&key).cloned())
+    RENTAL_CONDITIONS.with_borrow(|map| map.get(&key).cloned())
 }
 
 pub fn iter_rental_conditions() -> Vec<(RentalConditionType, RentalConditions)> {
-    RENTAL_CONDITIONS.with(|map| map.borrow().iter().map(|(k, v)| (*k, *v)).collect())
+    RENTAL_CONDITIONS.with_borrow(|map| map.iter().map(|(k, v)| (*k, *v)).collect())
 }
 
 pub fn get_rental_request(requester: &Principal) -> Option<RentalRequest> {
-    RENTAL_REQUESTS.with(|map| map.borrow().get(requester))
+    RENTAL_REQUESTS.with_borrow(|map| map.get(requester))
 }
 
 pub fn iter_rental_requests() -> Vec<(Principal, RentalRequest)> {
-    RENTAL_REQUESTS.with(|map| map.borrow().iter().collect())
+    RENTAL_REQUESTS.with_borrow(|map| map.iter().collect())
 }
 
 pub fn get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
-    RENTAL_AGREEMENTS.with(|map| map.borrow().get(subnet_id))
+    RENTAL_AGREEMENTS.with_borrow(|map| map.get(subnet_id))
 }
 
 pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
-    RENTAL_AGREEMENTS.with(|map| map.borrow().iter().collect())
+    RENTAL_AGREEMENTS.with_borrow(|map| map.iter().collect())
 }
 
 pub fn persist_event(event: impl Into<Event>, subnet: Principal) {
-    HISTORY.with(|map| {
-        let mut history = map.borrow().get(&subnet).unwrap_or_default();
+    HISTORY.with_borrow_mut(|map| {
+        let mut history = map.get(&subnet).unwrap_or_default();
         history.events.push(event.into());
-        map.borrow_mut().insert(subnet, history);
+        map.insert(subnet, history);
     })
 }
 
@@ -91,8 +91,7 @@ pub fn create_rental_request(
         subnet_spec,
         rental_condition_type,
     };
-    RENTAL_REQUESTS.with(|map| {
-        let mut requests = map.borrow_mut();
+    RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {
             Err(format!(
                 "Principal {} already has an active RentalRequest",
@@ -105,6 +104,10 @@ pub fn create_rental_request(
             Ok(())
         }
     })
+}
+
+pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
+    RENTAL_REQUESTS.with_borrow_mut(|requests| requests.remove(&user))
 }
 
 /// Create a RentalAgreement with consistent timestamps, insert into canister state
@@ -132,8 +135,7 @@ pub fn create_rental_agreement(
         cycles_balance,
         last_burned: now,
     };
-    RENTAL_AGREEMENTS.with(|map| {
-        let mut agreements = map.borrow_mut();
+    RENTAL_AGREEMENTS.with_borrow_mut(|agreements| {
         if agreements.contains_key(&subnet_id) {
             Err(format!(
                 "Subnet_id {:?} already has an active RentalAgreement",
