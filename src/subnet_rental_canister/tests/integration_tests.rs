@@ -1,30 +1,20 @@
-use candid::{decode_one, encode_args, encode_one, CandidType, Nat, Principal};
+use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
 use ic_ledger_types::{
     AccountBalanceArgs, AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
     MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
-use icrc_ledger_types::{
-    icrc1::account::Account,
-    icrc2::{
-        approve::{ApproveArgs, ApproveError},
-        transfer_from::TransferFromError,
-    },
-};
-use itertools::Itertools;
+
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    time::{Duration, UNIX_EPOCH},
 };
 use subnet_rental_canister::{
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
-    history::Event,
-    BillingRecord, ExecuteProposalError, RentalAgreement, RentalConditions,
-    SubnetRentalProposalPayload, E8S, TRILLION,
+    E8S,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -418,29 +408,6 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
         panic!("Expected Reply");
     };
     decode_one::<T>(&res).unwrap()
-}
-
-fn icrc2_approve(pic: &PocketIc, user: Principal, e8s_amount: u64) -> u128 {
-    update::<Result<u128, ApproveError>>(
-        pic,
-        MAINNET_LEDGER_CANISTER_ID,
-        Some(user),
-        "icrc2_approve",
-        ApproveArgs {
-            fee: None,
-            memo: None,
-            from_subaccount: None,
-            created_at_time: None,
-            amount: Nat::from(e8s_amount),
-            expected_allowance: None,
-            expires_at: None,
-            spender: Account {
-                owner: SRC_ID,
-                subaccount: None,
-            },
-        },
-    )
-    .unwrap()
 }
 
 fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {

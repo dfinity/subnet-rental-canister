@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use candid::{CandidType, Decode, Encode};
-use ic_cdk::println;
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
@@ -13,8 +12,9 @@ use crate::{
 
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
-/// corresponding subnet_id is always implied. The first event in a History
-/// should be a RentalConditionsChanged variant, created in canister_init.
+/// corresponding subnet_id is always implied.
+/// Events that are not associated with a subnet are collected under the
+/// anonymous principal.
 /// Events belonging to a valid rental agreement are then bracketed by the variants
 /// Created and Terminated.
 #[derive(Debug, Default, Clone, CandidType, Deserialize)]
@@ -60,7 +60,8 @@ pub enum EventType {
     },
     ///
     RentalConditionsRemoved {
-        rental_conditions: RentalConditions,
+        rental_condition_type: Option<RentalConditionType>,
+        rental_conditions: Option<RentalConditions>,
     },
     /// A successful SubnetRentalAgreement proposal execution leads to a RentalRequest
     RentalRequestCreated {

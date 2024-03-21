@@ -16,8 +16,7 @@ mod http_request;
 
 pub const TRILLION: u128 = 1_000_000_000_000;
 pub const E8S: u64 = 100_000_000;
-const MAX_PRINCIPAL_SIZE: u32 = 29;
-const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60); // hourly
+const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24);
 const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 
 // ============================================================================
@@ -166,8 +165,4 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
     Ok(())
-}
-
-fn days_to_nanos(days: u64) -> u64 {
-    days * 24 * 60 * 60 * 1_000_000_000
 }
