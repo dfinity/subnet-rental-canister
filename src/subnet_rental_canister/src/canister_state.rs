@@ -96,7 +96,13 @@ pub fn create_rental_agreement(subnet_id: Principal, rental_agreement: RentalAgr
     // BILLING_RECORDS.with(|map| map.borrow_mut().insert(subnet_id, billing_record));
     // println!("Created billing record: {:?}", &billing_record);
     persist_event(
-        EventType::RentalAgreementCreated { rental_agreement },
+        EventType::RentalAgreementCreated {
+            user: rental_agreement.user,
+            initial_proposal_id: rental_agreement.initial_proposal_id,
+            subnet_creation_proposal_id: rental_agreement.subnet_creation_proposal_id,
+            subnet_spec: rental_agreement.subnet_spec,
+            rental_condition_type: rental_agreement.rental_condition_type,
+        },
         subnet_id,
     );
 }

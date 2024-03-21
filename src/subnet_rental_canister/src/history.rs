@@ -1,14 +1,13 @@
 use std::borrow::Cow;
 
+use crate::{
+    ExecuteProposalError, Principal, RentalAgreement, RentalConditionType, RentalConditions,
+    RentalRequest, SubnetSpecification,
+};
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
-
-use crate::{
-    ExecuteProposalError, Principal, RentalAgreement, RentalConditionType, RentalConditions,
-    RentalRequest,
-};
 
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
@@ -53,39 +52,37 @@ impl From<EventType> for Event {
 
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub enum EventType {
-    /// Either changed via NNS function (proposal) OR add these in the post-upgrade hook everytime.
+    /// Changed via code upgrade, which should create this event in the post-upgrade hook.
+    /// A None value means that the entry has been removed from the map.
     RentalConditionsChanged {
         rental_condition_type: RentalConditionType,
-        rental_conditions: RentalConditions,
-    },
-    ///
-    RentalConditionsRemoved {
-        rental_condition_type: Option<RentalConditionType>,
         rental_conditions: Option<RentalConditions>,
     },
     /// A successful SubnetRentalAgreement proposal execution leads to a RentalRequest
     RentalRequestCreated {
-        // TODO: project only immutable fields
         rental_request: RentalRequest,
     },
-    /// An unsuccessful proposal execution
+    /// An unsuccessful SubnetRentalAgreement proposal execution
     ProposalExecutionFailed {
-        // proposal_id: u64,
         user: Principal,
+        proposal_id: u64,
         reason: ExecuteProposalError,
     },
     /// After successfull polling for a CreateSubnet proposal, a RentalAgreement is created
     RentalAgreementCreated {
-        // TODO: project only immutable fields
-        // proposal_id: u64,
-        rental_agreement: RentalAgreement,
+        user: Principal,
+        initial_proposal_id: u64,
+        subnet_creation_proposal_id: Option<u64>,
+        subnet_spec: SubnetSpecification,
+        rental_condition_type: RentalConditionType,
     },
     // TODO: How to even get this?
     Terminated {
-        // TODO: project
-        rental_agreement: RentalAgreement,
+        user: Principal,
+        initial_proposal_id: u64,
+        subnet_creation_proposal_id: Option<u64>,
+        subnet_spec: SubnetSpecification,
     },
-    ///
     PaymentSuccess {
         amount: Tokens,
         cycles: u128,
@@ -93,7 +90,6 @@ pub enum EventType {
     },
     PaymentFailure {
         reason: String,
-        date: u64,
     },
     Degraded,
     Undegraded,

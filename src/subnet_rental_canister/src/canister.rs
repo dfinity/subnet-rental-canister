@@ -14,12 +14,12 @@ fn init() {
 
     // Persist initial rental conditions in history.
     for (k, v) in iter_rental_conditions().iter() {
-        // associate events that belong to no subnet with anon
         persist_event(
             EventType::RentalConditionsChanged {
                 rental_condition_type: *k,
-                rental_conditions: *v,
+                rental_conditions: Some(*v),
             },
+            // associate events that belong to no subnet with anon
             Principal::anonymous(),
         )
     }
