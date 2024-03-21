@@ -1,18 +1,15 @@
-use candid::{Nat, Principal};
+use candid::Principal;
 use ic_ledger_types::{
     transfer, AccountIdentifier, Subaccount, Tokens, TransferArgs, TransferError, DEFAULT_FEE,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
-
-use icrc_ledger_types::icrc1::account::Account;
-use icrc_ledger_types::icrc2::transfer_from::{TransferFromArgs, TransferFromError};
 
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
     SetAuthorizedSubnetworkListArgs,
 };
 use crate::MEMO_TOP_UP_CANISTER;
-use ic_cdk::println;
+// use ic_cdk::println;
 
 pub async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
     for user in principals {

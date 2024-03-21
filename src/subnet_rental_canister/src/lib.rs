@@ -5,7 +5,7 @@ use ic_cdk::println;
 use ic_ledger_types::{Memo, TransferError, MAINNET_GOVERNANCE_CANISTER_ID};
 use ic_stable_structures::{storable::Bound, Storable};
 
-use std::{borrow::Cow, time::Duration};
+use std::borrow::Cow;
 
 pub mod canister;
 pub mod canister_state;

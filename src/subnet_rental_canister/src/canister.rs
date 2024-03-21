@@ -1,11 +1,10 @@
 use crate::{
     canister_state::{iter_rental_conditions, persist_event},
-    history::{Event, EventType},
-    ExecuteProposalError, Principal, RentalAgreement, RentalConditions, BILLING_INTERVAL,
+    history::EventType,
+    Principal,
 };
-use candid::types::principal;
 use ic_cdk::println;
-use ic_cdk::{heartbeat, init, post_upgrade, query, update};
+use ic_cdk::{init, post_upgrade};
 
 ////////// CANISTER METHODS //////////
 
