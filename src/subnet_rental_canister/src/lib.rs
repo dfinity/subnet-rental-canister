@@ -166,7 +166,7 @@ pub enum ExecuteProposalError {
 // ============================================================================
 // Misc
 
-fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
+fn _verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         println!("Caller is not the governance canister");
         return Err(ExecuteProposalError::UnauthorizedCaller);

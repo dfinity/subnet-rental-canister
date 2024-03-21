@@ -17,7 +17,7 @@ pub async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec
             MAINNET_CYCLES_MINTING_CANISTER_ID,
             "set_authorized_subnetwork_list",
             (SetAuthorizedSubnetworkListArgs {
-                who: Some(user.clone()),
+                who: Some(*user),
                 subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
             },),
         )

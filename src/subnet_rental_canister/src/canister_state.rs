@@ -81,7 +81,6 @@ where
 
 pub fn persist_event(event: impl Into<Event>, subnet: Principal) {
     HISTORY.with(|map| {
-        let subnet = subnet;
         let mut history = map.borrow().get(&subnet).unwrap_or_default();
         history.events.push(event.into());
         map.borrow_mut().insert(subnet, history);
@@ -102,17 +101,17 @@ pub fn create_rental_agreement(subnet_id: Principal, rental_agreement: RentalAgr
     );
 }
 
-/// Rental agreements have an associated BillingAccount, which must be removed at the same time.
-/// TODO: only call this if agreement exists...
-fn delete_rental_agreement(subnet_id: Principal) {
-    let rental_agreement =
-        RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
-    // let billing_record = BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
-    persist_event(
-        EventType::Terminated {
-            rental_agreement,
-            // billing_record,
-        },
-        subnet_id,
-    );
-}
+// Rental agreements have an associated BillingAccount, which must be removed at the same time.
+// TODO: only call this if agreement exists...
+// fn delete_rental_agreement(subnet_id: Principal) {
+//     let rental_agreement =
+//         RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
+//     // let billing_record = BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
+//     persist_event(
+//         EventType::Terminated {
+//             rental_agreement,
+//             // billing_record,
+//         },
+//         subnet_id,
+//     );
+// }
