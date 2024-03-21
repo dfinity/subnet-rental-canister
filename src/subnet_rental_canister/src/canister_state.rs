@@ -32,11 +32,13 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
 
     // Memory region 1
+    // Keys are subnet_ids
     static RENTAL_AGREEMENTS: RefCell<StableBTreeMap<Principal, RentalAgreement, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 
     // Memory region 2
-    static HISTORY: RefCell<StableBTreeMap<Principal, History, VirtualMemory<DefaultMemoryImpl>>> =
+    // Keys are subnet_id, user principal or None for changes to the SRC's configuration.
+    static HISTORY: RefCell<StableBTreeMap<Option<Principal>, History, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
 }
@@ -65,11 +67,11 @@ pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
     RENTAL_AGREEMENTS.with_borrow(|map| map.iter().collect())
 }
 
-pub fn persist_event(event: impl Into<Event>, subnet: Principal) {
+pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
     HISTORY.with_borrow_mut(|map| {
-        let mut history = map.get(&subnet).unwrap_or_default();
+        let mut history = map.get(&key).unwrap_or_default();
         history.events.push(event.into());
-        map.insert(subnet, history);
+        map.insert(key, history);
     })
 }
 
@@ -100,7 +102,10 @@ pub fn create_rental_request(
         } else {
             requests.insert(user, rental_request.clone());
             println!("Created rental request: {:?}", &rental_request);
-            persist_event(EventType::RentalRequestCreated { rental_request }, user);
+            persist_event(
+                EventType::RentalRequestCreated { rental_request },
+                Some(user),
+            );
             Ok(())
         }
     })
@@ -152,7 +157,7 @@ pub fn create_rental_agreement(
                     subnet_spec,
                     rental_condition_type,
                 },
-                subnet_id,
+                Some(subnet_id),
             );
             Ok(())
         }

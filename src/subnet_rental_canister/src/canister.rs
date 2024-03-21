@@ -1,7 +1,6 @@
 use crate::{
     canister_state::{iter_rental_conditions, persist_event},
     history::EventType,
-    Principal,
 };
 use ic_cdk::println;
 use ic_cdk::{init, post_upgrade};
@@ -19,8 +18,8 @@ fn init() {
                 rental_condition_type: *k,
                 rental_conditions: Some(*v),
             },
-            // associate events that belong to no subnet with anon
-            Principal::anonymous(),
+            // associate events that belong to no subnet with None
+            None,
         )
     }
     println!("Subnet rental canister initialized");
