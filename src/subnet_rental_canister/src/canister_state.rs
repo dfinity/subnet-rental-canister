@@ -13,7 +13,7 @@ use crate::{
 use ic_cdk::println;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
-    DefaultMemoryImpl, Memory, StableBTreeMap, Storable,
+    DefaultMemoryImpl, StableBTreeMap,
 };
 use std::{cell::RefCell, collections::HashMap};
 
@@ -65,20 +65,6 @@ pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().collect())
 }
 
-/// Pass one of the global StableBTreeMaps and a function that transforms a value.
-pub fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
-where
-    K: Storable + Ord + Clone,
-    V: Storable,
-    M: Memory,
-{
-    let keys: Vec<K> = map.borrow().iter().map(|(k, _v)| k).collect();
-    for key in keys {
-        let value = map.borrow().get(&key).unwrap();
-        map.borrow_mut().insert(key.clone(), f(key, value));
-    }
-}
-
 pub fn persist_event(event: impl Into<Event>, subnet: Principal) {
     HISTORY.with(|map| {
         let mut history = map.borrow().get(&subnet).unwrap_or_default();
@@ -87,7 +73,42 @@ pub fn persist_event(event: impl Into<Event>, subnet: Principal) {
     })
 }
 
-/// Create a RentalAgreement with consistent timestamps and create the corresponding event.
+/// Create a RentalRequest with the current time as create_date, insert into canister state
+/// and persist the corresponding event.
+pub fn create_rental_request(
+    user: Principal,
+    locked_amount_cycles: u128,
+    initial_proposal_id: u64,
+    subnet_spec: SubnetSpecification,
+    rental_condition_type: RentalConditionType,
+) -> Result<(), String> {
+    let now = ic_cdk::api::time();
+    let rental_request = RentalRequest {
+        user,
+        locked_amount_cycles,
+        initial_proposal_id,
+        creation_date: now,
+        subnet_spec,
+        rental_condition_type,
+    };
+    RENTAL_REQUESTS.with(|map| {
+        let mut requests = map.borrow_mut();
+        if requests.contains_key(&user) {
+            Err(format!(
+                "Principal {} already has an active RentalRequest",
+                &user
+            ))
+        } else {
+            requests.insert(user, rental_request.clone());
+            println!("Created rental request: {:?}", &rental_request);
+            persist_event(EventType::RentalRequestCreated { rental_request }, user);
+            Ok(())
+        }
+    })
+}
+
+/// Create a RentalAgreement with consistent timestamps, insert into canister state
+/// and create the corresponding event.
 #[allow(clippy::too_many_arguments)]
 pub fn create_rental_agreement(
     subnet_id: Principal,
@@ -98,7 +119,7 @@ pub fn create_rental_agreement(
     rental_condition_type: RentalConditionType,
     covered_until: u64,
     cycles_balance: u128,
-) {
+) -> Result<(), String> {
     let now = ic_cdk::api::time();
     let rental_agreement = RentalAgreement {
         user,
@@ -112,19 +133,28 @@ pub fn create_rental_agreement(
         last_burned: now,
     };
     RENTAL_AGREEMENTS.with(|map| {
-        map.borrow_mut().insert(subnet_id, rental_agreement.clone());
-    });
-    println!("Created rental agreement: {:?}", &rental_agreement);
-    persist_event(
-        EventType::RentalAgreementCreated {
-            user,
-            initial_proposal_id,
-            subnet_creation_proposal_id,
-            subnet_spec,
-            rental_condition_type,
-        },
-        subnet_id,
-    );
+        let mut agreements = map.borrow_mut();
+        if agreements.contains_key(&subnet_id) {
+            Err(format!(
+                "Subnet_id {:?} already has an active RentalAgreement",
+                subnet_id
+            ))
+        } else {
+            agreements.insert(subnet_id, rental_agreement.clone());
+            println!("Created rental agreement: {:?}", &rental_agreement);
+            persist_event(
+                EventType::RentalAgreementCreated {
+                    user,
+                    initial_proposal_id,
+                    subnet_creation_proposal_id,
+                    subnet_spec,
+                    rental_condition_type,
+                },
+                subnet_id,
+            );
+            Ok(())
+        }
+    })
 }
 
 // Rental agreements have an associated BillingAccount, which must be removed at the same time.
@@ -140,4 +170,18 @@ pub fn create_rental_agreement(
 //         },
 //         subnet_id,
 //     );
+// }
+
+// Pass one of the global StableBTreeMaps and a function that transforms a value.
+// pub fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
+// where
+//     K: Storable + Ord + Clone,
+//     V: Storable,
+//     M: Memory,
+// {
+//     let keys: Vec<K> = map.borrow().iter().map(|(k, _v)| k).collect();
+//     for key in keys {
+//         let value = map.borrow().get(&key).unwrap();
+//         map.borrow_mut().insert(key.clone(), f(key, value));
+//     }
 // }
