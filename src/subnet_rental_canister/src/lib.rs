@@ -16,7 +16,7 @@ mod http_request;
 
 pub const TRILLION: u128 = 1_000_000_000_000;
 pub const E8S: u64 = 100_000_000;
-const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24);
+// const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24);
 const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 
 // ============================================================================
@@ -56,7 +56,7 @@ impl Storable for RentalConditions {
 }
 
 #[derive(Clone, CandidType, Debug, Deserialize)]
-pub enum SubnetInfo {
+pub enum SubnetSpecification {
     /// A description of the desired topology.
     TopologyDescription(String),
     /// If this is used, the SRC attempts to make the given subnet
@@ -72,7 +72,7 @@ pub struct SubnetRentalProposalPayload {
     pub user: Principal,
     /// Either a description of the desired topology
     /// or an existing subnet id.
-    pub subnet_info: SubnetInfo,
+    pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionType,
 }
@@ -80,17 +80,19 @@ pub struct SubnetRentalProposalPayload {
 /// Successful proposal execution leads to a RentalRequest.
 #[derive(Clone, CandidType, Debug, Deserialize)]
 pub struct RentalRequest {
-    user: Principal,
+    pub user: Principal,
     /// The amount of cycles that are no longer refundable.
-    locked_amount_cycles: u128,
+    pub locked_amount_cycles: u128,
     /// The initial proposal id will be mentioned in the subnet
     /// creation proposal. When this is found on the governance
     /// canister, polling can stop.
-    initial_proposal_id: u64,
+    pub initial_proposal_id: u64,
+    /// Rental request creation date in nanoseconds since epoch.
+    pub creation_date: u64,
     // ===== Some fields from the proposal payload for the rental agreement =====
     /// Either a description of the desired topology
     /// or an existing subnet id.
-    pub subnet_info: SubnetInfo,
+    pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionType,
 }
@@ -117,6 +119,10 @@ pub struct RentalAgreement {
     /// The id of the proposal that created the subnet. Optional in case
     /// the subnet already existed at initial proposal time.
     pub subnet_creation_proposal_id: Option<u64>,
+    /// Either a description of the desired topology
+    /// or an existing subnet id. Kept in the rental agreement so that
+    /// UI can easily serve this associated information.
+    pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionType,
     /// Rental agreement creation date in nanoseconds since epoch.
@@ -125,6 +131,7 @@ pub struct RentalAgreement {
     /// The date in nanos since epoch until which the rental agreement is paid for.
     pub covered_until: u64,
     /// This subnet's share of cycles among the SRC's cycles.
+    /// Increased by the locking mechanism, monthly.
     /// Increased by the payment process (via timer).
     /// Decreased by the burning process (via heartbeat).
     pub cycles_balance: u128,

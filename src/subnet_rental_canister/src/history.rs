@@ -91,7 +91,6 @@ pub enum EventType {
         cycles: u128,
         covered_until: u64,
     },
-    // TODO: this would happen every day. That may be too much history data.
     PaymentFailure {
         reason: String,
         date: u64,
