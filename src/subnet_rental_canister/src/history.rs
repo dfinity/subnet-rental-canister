@@ -6,7 +6,10 @@ use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
-use crate::{ExecuteProposalError, Principal, RentalAgreement, RentalConditions, RentalRequest};
+use crate::{
+    ExecuteProposalError, Principal, RentalAgreement, RentalConditionType, RentalConditions,
+    RentalRequest,
+};
 
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
@@ -52,13 +55,14 @@ impl From<EventType> for Event {
 pub enum EventType {
     /// Either changed via NNS function (proposal) OR add these in the post-upgrade hook everytime.
     RentalConditionsChanged {
+        rental_condition_type: RentalConditionType,
         rental_conditions: RentalConditions,
     },
     ///
     RentalConditionsRemoved {
         rental_conditions: RentalConditions,
     },
-    /// A successful proposal execution leads to a RentalRequest
+    /// A successful SubnetRentalAgreement proposal execution leads to a RentalRequest
     RentalRequestCreated {
         // TODO: project only immutable fields
         rental_request: RentalRequest,
@@ -69,7 +73,7 @@ pub enum EventType {
         user: Principal,
         reason: ExecuteProposalError,
     },
-    /// After successfull polling, a RentalAgreement is created
+    /// After successfull polling for a CreateSubnet proposal, a RentalAgreement is created
     RentalAgreementCreated {
         // TODO: project only immutable fields
         // proposal_id: u64,
@@ -89,6 +93,7 @@ pub enum EventType {
     // TODO: this would happen every day. That may be too much history data.
     PaymentFailure {
         reason: String,
+        date: u64,
     },
     Degraded,
     Undegraded,

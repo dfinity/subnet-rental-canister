@@ -78,39 +78,11 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
             from_subaccount: None,
             amount,
             memo: MEMO_TOP_UP_CANISTER,
-            created_at_time: None,
+            created_at_time: None, // TODO: set for deduplication
         },
     )
     .await
     .expect("Failed to call ledger canister") // TODO: handle error
-}
-
-pub async fn icrc2_transfer_to_src(
-    user: candid::Principal,
-    amount: Tokens,
-) -> Result<u128, TransferFromError> {
-    ic_cdk::call::<_, (Result<u128, TransferFromError>,)>(
-        MAINNET_LEDGER_CANISTER_ID,
-        "icrc2_transfer_from",
-        (TransferFromArgs {
-            to: Account {
-                owner: ic_cdk::id(),
-                subaccount: None,
-            },
-            fee: None,
-            spender_subaccount: None,
-            from: Account {
-                owner: user,
-                subaccount: None,
-            },
-            memo: None,
-            created_at_time: None,
-            amount: Nat::from(amount.e8s()),
-        },),
-    )
-    .await
-    .expect("Failed to call ledger canister") // TODO: handle error
-    .0
 }
 
 pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {

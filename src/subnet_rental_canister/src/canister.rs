@@ -18,7 +18,8 @@ fn init() {
         // associate events that belong to no subnet with anon
         persist_event(
             EventType::RentalConditionsChanged {
-                rental_conditions: v.clone(),
+                rental_condition_type: *k,
+                rental_conditions: *v,
             },
             Principal::anonymous(),
         )

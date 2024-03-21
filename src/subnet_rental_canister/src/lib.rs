@@ -35,8 +35,8 @@ const APP13SWITZERLAND: RentalConditions = RentalConditions {
     billing_period_days: 30,
 };
 
-/// Set of conditions for a specific subnet up for rent.
-/// The subnet_id is the associated key in the StableBTreeMap.
+/// Set of conditions for a subnet up for rent.
+/// Rental conditions are kept in a global HashMap and only changed via code upgrades.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize)]
 pub struct RentalConditions {
     daily_cost_cycles: u128,
@@ -65,11 +65,8 @@ pub enum SubnetInfo {
     ExistingSubnetId(Principal),
 }
 
-/// The governance canister calls the SRC with this argument twice.
-/// First in the validation method, which may either reject the proposal
-/// or return a 'Rendering' which will be shown to the voter.
-/// The second time in the proposal execution method, in case the proposal
-/// was valid and adopted.
+/// The governance canister calls the SRC's proposal execution method
+/// with this argument in case the proposal was valid and adopted.
 #[derive(Clone, CandidType, Deserialize)]
 pub struct SubnetRentalProposalPayload {
     // The tenant, who makes the payments
@@ -111,8 +108,6 @@ impl Storable for RentalRequest {
     }
 }
 
-/// Immutable rental agreement. A rental agreement is
-/// uniquely identified by the (subnet_id, creation_date) 'composite key'.
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalAgreement {
     // ===== Immutable data =====
