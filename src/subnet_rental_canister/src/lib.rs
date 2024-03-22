@@ -2,7 +2,7 @@ use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use external_types::NotifyError;
 // use ic_cdk::println;
 
-use ic_ledger_types::{Memo, TransferError, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_ledger_types::{Memo, TransferError};
 use ic_stable_structures::{storable::Bound, Storable};
 
 use std::borrow::Cow;
@@ -10,6 +10,7 @@ use std::borrow::Cow;
 pub mod canister;
 pub mod canister_state;
 pub mod external_calls;
+pub mod external_canister_interfaces;
 pub mod external_types;
 pub mod history;
 mod http_request;
@@ -158,15 +159,4 @@ pub enum ExecuteProposalError {
     TransferSrcToCmcError(TransferError),
     NotifyTopUpError(NotifyError),
     SubnetNotRented,
-}
-
-// ============================================================================
-// Misc
-
-fn _verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
-    if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
-        println!("Caller is not the governance canister");
-        return Err(ExecuteProposalError::UnauthorizedCaller);
-    }
-    Ok(())
 }

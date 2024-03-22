@@ -4,6 +4,10 @@ use ic_ledger_types::{
     MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 
+use crate::external_canister_interfaces::exchange_rate_canister::{
+    Asset, AssetClass, GetExchangeRateRequest, GetExchangeRateResult,
+    EXCHANGE_RATE_CANISTER_PRINCIPAL,
+};
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
     SetAuthorizedSubnetworkListArgs,
@@ -99,4 +103,31 @@ pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
     .0;
 
     xdr_permyriad_per_icp
+}
+
+/// Query the BaseAsset / QuoteAsset exchange rate at the given time
+pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> u128 {
+    let icp_asset = Asset {
+        class: AssetClass::Cryptocurrency,
+        symbol: String::from("ICP"),
+    };
+    let xdr_asset = Asset {
+        class: AssetClass::FiatCurrency,
+        symbol: String::from("XDR"),
+    };
+
+    let request = GetExchangeRateRequest {
+        timestamp: Some(time),
+        quote_asset: xdr_asset,
+        base_asset: icp_asset,
+    };
+
+    let response = ic_cdk::call::<_, (GetExchangeRateResult,)>(
+        EXCHANGE_RATE_CANISTER_PRINCIPAL,
+        "get_exchange_rate",
+        (request,),
+    )
+    .await;
+
+    12
 }
