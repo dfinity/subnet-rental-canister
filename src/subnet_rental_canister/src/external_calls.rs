@@ -5,8 +5,8 @@ use ic_ledger_types::{
 };
 
 use crate::external_canister_interfaces::exchange_rate_canister::{
-    Asset, AssetClass, GetExchangeRateRequest, GetExchangeRateResult,
-    EXCHANGE_RATE_CANISTER_PRINCIPAL,
+    Asset, AssetClass, ExchangeRate, ExchangeRateError, GetExchangeRateRequest,
+    GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL,
 };
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
@@ -106,7 +106,7 @@ pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
 }
 
 /// Query the BaseAsset / QuoteAsset exchange rate at the given time
-pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> u128 {
+pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> Result<u64, ExchangeRateError> {
     let icp_asset = Asset {
         class: AssetClass::Cryptocurrency,
         symbol: String::from("ICP"),
@@ -115,19 +115,20 @@ pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> u128 {
         class: AssetClass::FiatCurrency,
         symbol: String::from("XDR"),
     };
-
     let request = GetExchangeRateRequest {
         timestamp: Some(time),
         quote_asset: xdr_asset,
         base_asset: icp_asset,
     };
-
     let response = ic_cdk::call::<_, (GetExchangeRateResult,)>(
         EXCHANGE_RATE_CANISTER_PRINCIPAL,
         "get_exchange_rate",
         (request,),
     )
-    .await;
-
-    12
+    .await
+    .expect("Failed to call ExchangeRateCanister");
+    match response.0 {
+        GetExchangeRateResult::Ok(ExchangeRate { rate, .. }) => Ok(rate),
+        GetExchangeRateResult::Err(e) => Err(e),
+    }
 }
