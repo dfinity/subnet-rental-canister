@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    ExecuteProposalError, Principal, RentalConditionType, RentalConditions, RentalRequest,
+    ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest,
     SubnetSpecification,
 };
 use candid::{CandidType, Decode, Encode};
@@ -12,8 +12,7 @@ use serde::Deserialize;
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
 /// corresponding subnet_id is always implied.
-/// Events that are not associated with a subnet are collected under the
-/// anonymous principal.
+/// Events that are not associated with a subnet are collected under 'None'.
 /// Events belonging to a valid rental agreement are then bracketed by the variants
 /// Created and Terminated.
 #[derive(Debug, Default, Clone, CandidType, Deserialize)]
@@ -55,7 +54,7 @@ pub enum EventType {
     /// Changed via code upgrade, which should create this event in the post-upgrade hook.
     /// A None value means that the entry has been removed from the map.
     RentalConditionsChanged {
-        rental_condition_type: RentalConditionType,
+        rental_condition_type: RentalConditionId,
         rental_conditions: Option<RentalConditions>,
     },
     /// A successful SubnetRentalAgreement proposal execution leads to a RentalRequest
@@ -74,7 +73,7 @@ pub enum EventType {
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
         subnet_spec: SubnetSpecification,
-        rental_condition_type: RentalConditionType,
+        rental_condition_type: RentalConditionId,
     },
     // TODO: How to even get this?
     RentalAgreementTerminated {
@@ -82,7 +81,7 @@ pub enum EventType {
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
         subnet_spec: SubnetSpecification,
-        rental_condition_type: RentalConditionType,
+        rental_condition_type: RentalConditionId,
     },
     PaymentSuccess {
         amount: Tokens,

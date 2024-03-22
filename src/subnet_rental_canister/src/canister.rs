@@ -1,6 +1,6 @@
 use crate::{
-    canister_state::{iter_rental_conditions, persist_event},
-    history::EventType,
+    canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
+    TRILLION,
 };
 use ic_cdk::println;
 use ic_cdk::{init, post_upgrade};
@@ -12,15 +12,26 @@ fn init() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 
     // Persist initial rental conditions in history.
-    for (k, v) in iter_rental_conditions().iter() {
+    let initial_conditions = vec![(
+        RentalConditionId::App13CH,
+        RentalConditions {
+            description: "All nodes must be in Switzerland.".to_string(),
+            subnet_id: None,
+            daily_cost_cycles: 835 * TRILLION,
+            initial_rental_period_days: 180,
+            billing_period_days: 30,
+        },
+    )];
+    for (k, v) in initial_conditions.iter() {
+        println!("Created initial rental condition {:?}: {:?}", k, v);
         persist_event(
             EventType::RentalConditionsChanged {
                 rental_condition_type: *k,
-                rental_conditions: Some(*v),
+                rental_conditions: Some(v.clone()),
             },
-            // associate events that belong to no subnet with None
+            // Associate events that belong to no subnet with None.
             None,
-        )
+        );
     }
     println!("Subnet rental canister initialized");
 }

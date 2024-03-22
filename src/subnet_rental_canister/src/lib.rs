@@ -24,23 +24,20 @@ const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 
 /// Rental conditions are kept in a global HashMap and only changed via code upgrades.
 #[derive(Debug, Clone, Copy, CandidType, Deserialize, PartialEq, Eq, Hash)]
-pub enum RentalConditionType {
-    App13Switzerland,
+pub enum RentalConditionId {
+    App13CH,
 }
-
-const APP13SWITZERLAND: RentalConditions = RentalConditions {
-    daily_cost_cycles: 835 * TRILLION,
-    initial_rental_period_days: 180,
-    billing_period_days: 30,
-};
 
 /// Set of conditions for a subnet up for rent.
 /// Rental conditions are kept in a global HashMap and only changed via code upgrades.
-#[derive(Debug, Clone, Copy, CandidType, Deserialize)]
+/// Once the subnet_id is known, it is added as Some().
+#[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalConditions {
-    daily_cost_cycles: u128,
-    initial_rental_period_days: u64,
-    billing_period_days: u64,
+    pub description: String,
+    pub subnet_id: Option<Principal>,
+    pub daily_cost_cycles: u128,
+    pub initial_rental_period_days: u64,
+    pub billing_period_days: u64,
 }
 
 impl Storable for RentalConditions {
@@ -74,7 +71,7 @@ pub struct SubnetRentalProposalPayload {
     /// or an existing subnet id.
     pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionType,
+    pub rental_condition_type: RentalConditionId,
 }
 
 /// Successful proposal execution leads to a RentalRequest.
@@ -94,7 +91,7 @@ pub struct RentalRequest {
     /// or an existing subnet id.
     pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionType,
+    pub rental_condition_type: RentalConditionId,
 }
 
 impl Storable for RentalRequest {
@@ -124,7 +121,7 @@ pub struct RentalAgreement {
     /// UI can easily serve this associated information.
     pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionType,
+    pub rental_condition_type: RentalConditionId,
     /// Rental agreement creation date in nanoseconds since epoch.
     pub creation_date: u64,
     // ===== Mutable data =====

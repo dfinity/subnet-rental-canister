@@ -7,8 +7,8 @@
 ///
 use crate::{
     history::{Event, EventType, History},
-    Principal, RentalAgreement, RentalConditionType, RentalConditions, RentalRequest,
-    SubnetSpecification, APP13SWITZERLAND,
+    Principal, RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
+    SubnetSpecification,
 };
 use ic_cdk::println;
 use ic_stable_structures::{
@@ -19,8 +19,8 @@ use std::{cell::RefCell, collections::HashMap};
 
 thread_local! {
 
-    static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionType, RentalConditions>> =
-        RefCell::new(HashMap::from([(RentalConditionType::App13Switzerland, APP13SWITZERLAND); 1]));
+    static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionId, RentalConditions>> =
+        RefCell::new(HashMap::new());
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -43,12 +43,12 @@ thread_local! {
 
 }
 
-pub fn get_rental_conditions(key: RentalConditionType) -> Option<RentalConditions> {
+pub fn get_rental_conditions(key: RentalConditionId) -> Option<RentalConditions> {
     RENTAL_CONDITIONS.with_borrow(|map| map.get(&key).cloned())
 }
 
-pub fn iter_rental_conditions() -> Vec<(RentalConditionType, RentalConditions)> {
-    RENTAL_CONDITIONS.with_borrow(|map| map.iter().map(|(k, v)| (*k, *v)).collect())
+pub fn iter_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
+    RENTAL_CONDITIONS.with_borrow(|map| map.iter().map(|(k, v)| (*k, v.clone())).collect())
 }
 
 pub fn get_rental_request(requester: &Principal) -> Option<RentalRequest> {
@@ -82,7 +82,7 @@ pub fn create_rental_request(
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
     subnet_spec: SubnetSpecification,
-    rental_condition_type: RentalConditionType,
+    rental_condition_type: RentalConditionId,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
@@ -124,7 +124,7 @@ pub fn create_rental_agreement(
     initial_proposal_id: u64,
     subnet_creation_proposal_id: Option<u64>,
     subnet_spec: SubnetSpecification,
-    rental_condition_type: RentalConditionType,
+    rental_condition_type: RentalConditionId,
     covered_until: u64,
     cycles_balance: u128,
 ) -> Result<(), String> {
