@@ -5,8 +5,8 @@ use ic_ledger_types::{
 };
 
 use crate::external_canister_interfaces::exchange_rate_canister::{
-    Asset, AssetClass, ExchangeRate, ExchangeRateError, GetExchangeRateRequest,
-    GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL,
+    Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
+    GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL,
 };
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
@@ -105,8 +105,8 @@ pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
     xdr_permyriad_per_icp
 }
 
-/// Query the BaseAsset / QuoteAsset exchange rate at the given time
-pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> Result<u64, ExchangeRateError> {
+/// Query the BaseAsset/QuoteAsset, XDR/ICP, exchange rate at the given time
+pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> Result<f64, ExchangeRateError> {
     let icp_asset = Asset {
         class: AssetClass::Cryptocurrency,
         symbol: String::from("ICP"),
@@ -117,8 +117,8 @@ pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> Result<u64, 
     };
     let request = GetExchangeRateRequest {
         timestamp: Some(time),
-        quote_asset: xdr_asset,
-        base_asset: icp_asset,
+        quote_asset: icp_asset,
+        base_asset: xdr_asset,
     };
     let response = ic_cdk::call::<_, (GetExchangeRateResult,)>(
         EXCHANGE_RATE_CANISTER_PRINCIPAL,
@@ -128,7 +128,14 @@ pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> Result<u64, 
     .await
     .expect("Failed to call ExchangeRateCanister");
     match response.0 {
-        GetExchangeRateResult::Ok(ExchangeRate { rate, .. }) => Ok(rate),
+        GetExchangeRateResult::Ok(ExchangeRate {
+            metadata: ExchangeRateMetadata { decimals, .. },
+            rate,
+            ..
+        }) => {
+            let res = todo!();
+            Ok(res)
+        }
         GetExchangeRateResult::Err(e) => Err(e),
     }
 }
