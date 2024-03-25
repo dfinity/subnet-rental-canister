@@ -120,17 +120,23 @@ pub fn create_rental_agreement(
     initial_proposal_id: u64,
     subnet_creation_proposal_id: Option<u64>,
     rental_condition_id: RentalConditionId,
-    covered_until: u64,
     cycles_balance: u128,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
+    // unwrap safety: all rental_condition_id keys have a value
+    // in the static global HashMap at compile time.
+    let billing_period_nanos = get_rental_conditions(rental_condition_id)
+        .unwrap()
+        .billing_period_days
+        * 86_400
+        * 1_000_000_000;
     let rental_agreement = RentalAgreement {
         user,
         initial_proposal_id,
         subnet_creation_proposal_id,
         rental_condition_type: rental_condition_id,
         creation_date: now,
-        covered_until,
+        covered_until: now + billing_period_nanos,
         cycles_balance,
         last_burned: now,
     };
