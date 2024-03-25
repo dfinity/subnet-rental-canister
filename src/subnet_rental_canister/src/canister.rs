@@ -1,4 +1,4 @@
-use crate::canister_state::{get_rental_conditions, iter_rental_conditions};
+use crate::canister_state::iter_rental_conditions;
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,

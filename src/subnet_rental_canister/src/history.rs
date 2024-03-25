@@ -1,9 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{
-    ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetSpecification,
-};
+use crate::{ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest};
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
@@ -83,7 +80,6 @@ pub enum EventType {
         user: Principal,
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
-        subnet_spec: SubnetSpecification,
         rental_condition_type: RentalConditionId,
     },
     PaymentSuccess {
