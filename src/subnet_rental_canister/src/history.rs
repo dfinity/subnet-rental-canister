@@ -72,8 +72,11 @@ pub enum EventType {
         user: Principal,
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
-        subnet_spec: SubnetSpecification,
         rental_condition_type: RentalConditionId,
+    },
+    /// When the user calls get_refund and the effort is abandoned.
+    RentalAgreementFailed {
+        refund_amount: Tokens,
     },
     // TODO: How to even get this?
     RentalAgreementTerminated {

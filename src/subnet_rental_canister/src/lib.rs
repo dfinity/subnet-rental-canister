@@ -33,7 +33,10 @@ pub enum RentalConditionId {
 /// Once the subnet_id is known, it is added as Some().
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalConditions {
+    /// A description of the special topology of this subnet.
     pub description: String,
+    /// Initially None, this field is filled when a new rental subnet
+    /// is created with the given topology.
     pub subnet_id: Option<Principal>,
     pub daily_cost_cycles: u128,
     pub initial_rental_period_days: u64,
@@ -52,24 +55,12 @@ impl Storable for RentalConditions {
     }
 }
 
-#[derive(Clone, CandidType, Debug, Deserialize)]
-pub enum SubnetSpecification {
-    /// A description of the desired topology.
-    TopologyDescription(String),
-    /// If this is used, the SRC attempts to make the given subnet
-    /// available for rent immediately.
-    ExistingSubnetId(Principal),
-}
-
 /// The governance canister calls the SRC's proposal execution method
 /// with this argument in case the proposal was valid and adopted.
 #[derive(Clone, CandidType, Deserialize)]
 pub struct SubnetRentalProposalPayload {
     // The tenant, who makes the payments
     pub user: Principal,
-    /// Either a description of the desired topology
-    /// or an existing subnet id.
-    pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionId,
 }
@@ -87,9 +78,6 @@ pub struct RentalRequest {
     /// Rental request creation date in nanoseconds since epoch.
     pub creation_date: u64,
     // ===== Some fields from the proposal payload for the rental agreement =====
-    /// Either a description of the desired topology
-    /// or an existing subnet id.
-    pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionId,
 }
@@ -116,10 +104,6 @@ pub struct RentalAgreement {
     /// The id of the proposal that created the subnet. Optional in case
     /// the subnet already existed at initial proposal time.
     pub subnet_creation_proposal_id: Option<u64>,
-    /// Either a description of the desired topology
-    /// or an existing subnet id. Kept in the rental agreement so that
-    /// UI can easily serve this associated information.
-    pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionId,
     /// Rental agreement creation date in nanoseconds since epoch.
