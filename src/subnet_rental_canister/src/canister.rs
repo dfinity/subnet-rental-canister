@@ -1,3 +1,4 @@
+use crate::canister_state::{get_rental_conditions, iter_rental_conditions};
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
@@ -26,10 +27,10 @@ fn init() {
         println!("Created initial rental condition {:?}: {:?}", k, v);
         persist_event(
             EventType::RentalConditionsChanged {
-                rental_condition_type: *k,
+                rental_condition_id: *k,
                 rental_conditions: Some(v.clone()),
             },
-            // Associate events that belong to no subnet with None.
+            // Associate events that might belong to no subnet with None.
             None,
         );
     }
@@ -39,6 +40,18 @@ fn init() {
 #[post_upgrade]
 fn post_upgrade() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
+    // persist all rental conditions in the history
+    for (k, v) in iter_rental_conditions().iter() {
+        println!("Loaded rental condition {:?}: {:?}", k, v);
+        persist_event(
+            EventType::RentalConditionsChanged {
+                rental_condition_id: *k,
+                rental_conditions: Some(v.clone()),
+            },
+            // Associate events that might belong to no subnet with None.
+            None,
+        );
+    }
 }
 
 // #[heartbeat]

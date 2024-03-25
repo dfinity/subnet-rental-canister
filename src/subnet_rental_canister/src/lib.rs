@@ -150,7 +150,6 @@ impl Storable for RentalAgreement {
 
 #[derive(CandidType, Debug, Clone, Deserialize)]
 pub enum ExecuteProposalError {
-    SubnetNotRentable,
     SubnetAlreadyRented,
     UnauthorizedCaller,
     InsufficientFunds,
