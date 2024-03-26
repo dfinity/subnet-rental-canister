@@ -16,6 +16,7 @@ pub mod external_types;
 pub mod history;
 mod http_request;
 
+pub const BILLION: u64 = 1_000_000_000;
 pub const TRILLION: u128 = 1_000_000_000_000;
 pub const E8S: u64 = 100_000_000;
 // const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24);

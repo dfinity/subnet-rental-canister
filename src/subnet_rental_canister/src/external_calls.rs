@@ -106,8 +106,8 @@ pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
     xdr_permyriad_per_icp
 }
 
-/// Query the XDR/ICP exchange rate at the given time
-pub async fn get_exchange_rate_xdr_per_icp_at_time(time: u64) -> Result<f64, ExchangeRateError> {
+/// Query the ICP/XDR exchange rate at the given time
+pub async fn get_exchange_rate_icp_per_xdr_at_time(time: u64) -> Result<f64, ExchangeRateError> {
     let icp_asset = Asset {
         class: AssetClass::Cryptocurrency,
         symbol: String::from("ICP"),
@@ -120,8 +120,8 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(time: u64) -> Result<f64, Exc
     // order: BaseAsset/QuoteAsset
     let request = GetExchangeRateRequest {
         timestamp: Some(time),
-        quote_asset: icp_asset,
-        base_asset: xdr_asset,
+        quote_asset: xdr_asset,
+        base_asset: icp_asset,
     };
     let response = ic_cdk::call::<_, (GetExchangeRateResult,)>(
         Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),

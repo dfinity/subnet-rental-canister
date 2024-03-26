@@ -1,14 +1,16 @@
 use crate::canister_state::{get_rental_conditions, iter_rental_conditions};
-use crate::external_calls::get_exchange_rate_xdr_per_icp_at_time;
+use crate::external_calls::get_exchange_rate_icp_per_xdr_at_time;
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
 };
-use crate::{ExecuteProposalError, SubnetRentalProposalPayload};
+use crate::{ExecuteProposalError, SubnetRentalProposalPayload, BILLION};
 use chrono::{DateTime, Timelike};
 use ic_cdk::{init, post_upgrade};
 use ic_cdk::{println, update};
-use ic_ledger_types::MAINNET_GOVERNANCE_CANISTER_ID;
+use ic_ledger_types::{
+    AccountIdentifier, Tokens, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
+};
 
 ////////// CANISTER METHODS //////////
 
@@ -201,25 +203,19 @@ pub async fn accept_rental_agreement(
     // Attempt to transfer enough ICP to cover the initial rental period.
     let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time);
-    // TODO: how to handle failures? if the exchange rate at the time is unknown, we have to move back a minute. wrap
-    let exchange_rate_xdr_per_icp =
-        get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
+    // TODO: how to handle failures? if the exchange rate at the time is unknown, we have to move back a minute.
+    //      wrap in retry loop?
+    //      and keep success timestamp for next query
+    let exchange_rate_icp_per_xdr = get_exchange_rate_icp_per_xdr_at_time(exchange_rate_query_time)
+        .await
+        .unwrap();
+    // trillion / e8 = 10_000
+    let e8s = (needed_cycles as f64 * exchange_rate_icp_per_xdr) as u64 / 10_000;
+    let needed_icp = Tokens::from_e8s(e8s);
 
-    // let needed_icp = Tokens::from_e8s((needed_cycles.saturating_div(exchange_rate as u128)) as u64);
-
-    //     // Use ICRC2 to transfer ICP from the user to the SRC.
-    //     let transfer_to_src_result = icrc2_transfer_to_src(user, needed_icp - DEFAULT_FEE).await;
-    //     if let Err(err) = transfer_to_src_result {
-    //         println!("Transfer from user to SRC failed: {:?}", err);
-    //         persist_event(
-    //             EventType::Failed {
-    //                 user: user.into(),
-    //                 reason: ExecuteProposalError::TransferUserToSrcError(err.clone()),
-    //             },
-    //             subnet_id,
-    //         );
-    //         return Err(ExecuteProposalError::TransferUserToSrcError(err));
-    //     }
+    // subaccount that the user pays to:
+    let user_subaccount = AccountIdentifier::new(&ic_cdk::id(), &user.into());
+    let src_account = AccountIdentifier::new(&ic_cdk::id(), &DEFAULT_SUBACCOUNT);
 
     //     // Whitelist principals for subnet.
     //     whitelist_principals(subnet_id, &principals_to_whitelist).await;
@@ -393,9 +389,7 @@ fn round_to_previous_midnight(time: u64) -> u64 {
     // unwrap safety: incoming time is the IC's system time.
     // Setting hour, minute, seconds and nanosecond to 0 cannot lead to
     // an invalid date.
-    let time =
-        DateTime::from_timestamp((time / 1_000_000_000) as i64, (time % 1_000_000_000) as u32)
-            .unwrap();
+    let time = DateTime::from_timestamp((time / BILLION) as i64, (time % BILLION) as u32).unwrap();
     let res = time
         .with_hour(0)
         .and_then(|x| x.with_minute(0))
