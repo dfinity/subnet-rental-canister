@@ -6,7 +6,7 @@ use ic_ledger_types::{
 
 use crate::external_canister_interfaces::exchange_rate_canister::{
     Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
-    GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL,
+    GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
 };
 
 use crate::external_types::{
@@ -122,7 +122,7 @@ pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> Result<f64, 
         base_asset: xdr_asset,
     };
     let response = ic_cdk::call::<_, (GetExchangeRateResult,)>(
-        EXCHANGE_RATE_CANISTER_PRINCIPAL,
+        Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
         "get_exchange_rate",
         (request,),
     )

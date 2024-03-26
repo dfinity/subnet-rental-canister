@@ -1,4 +1,5 @@
-use crate::canister_state::iter_rental_conditions;
+use crate::canister_state::{get_rental_conditions, iter_rental_conditions};
+use crate::external_calls::get_exchange_rate_cycles_per_e8s_at_time;
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
@@ -6,7 +7,7 @@ use crate::{
 use crate::{ExecuteProposalError, SubnetRentalProposalPayload};
 use ic_cdk::{init, post_upgrade};
 use ic_cdk::{println, update};
-use ic_ledger_types::{Tokens, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_ledger_types::MAINNET_GOVERNANCE_CANISTER_ID;
 
 ////////// CANISTER METHODS //////////
 
@@ -176,7 +177,6 @@ fn post_upgrade() {
 pub async fn accept_rental_agreement(
     SubnetRentalProposalPayload {
         user,
-        subnet_spec,
         rental_condition_type,
     }: SubnetRentalProposalPayload,
 ) -> Result<(), ExecuteProposalError> {
@@ -200,7 +200,7 @@ pub async fn accept_rental_agreement(
     // Attempt to transfer enough ICP to cover the initial rental period.
     let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
     let exchange_rate = get_exchange_rate_cycles_per_e8s_at_time(proposal_creation_time).await;
-    let needed_icp = Tokens::from_e8s((needed_cycles.saturating_div(exchange_rate as u128)) as u64);
+    // let needed_icp = Tokens::from_e8s((needed_cycles.saturating_div(exchange_rate as u128)) as u64);
 
     //     // Use ICRC2 to transfer ICP from the user to the SRC.
     //     let transfer_to_src_result = icrc2_transfer_to_src(user, needed_icp - DEFAULT_FEE).await;

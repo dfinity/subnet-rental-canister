@@ -2,7 +2,7 @@ use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use external_types::NotifyError;
 // use ic_cdk::println;
 
-use ic_ledger_types::{Memo, TransferError, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_ledger_types::{Memo, TransferError};
 use ic_stable_structures::{storable::Bound, Storable};
 
 use std::borrow::Cow;
@@ -80,26 +80,6 @@ pub struct RentalRequest {
     /// Rental request creation date in nanoseconds since epoch.
     pub creation_date: u64,
     // ===== Some fields from the proposal payload for the rental agreement =====
-    /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionId,
-}
-
-/// Successful proposal execution leads to a RentalRequest.
-#[derive(Clone, CandidType, Debug, Deserialize)]
-pub struct RentalRequest {
-    pub user: Principal,
-    /// The amount of cycles that are no longer refundable.
-    pub locked_amount_cycles: u128,
-    /// The initial proposal id will be mentioned in the subnet
-    /// creation proposal. When this is found on the governance
-    /// canister, polling can stop.
-    pub initial_proposal_id: u64,
-    /// Rental request creation date in nanoseconds since epoch.
-    pub creation_date: u64,
-    // ===== Some fields from the proposal payload for the rental agreement =====
-    /// Either a description of the desired topology
-    /// or an existing subnet id.
-    pub subnet_spec: SubnetSpecification,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionId,
 }
