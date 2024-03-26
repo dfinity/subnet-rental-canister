@@ -1,7 +1,8 @@
 use candid::Principal;
 use ic_ledger_types::{
-    transfer, AccountIdentifier, Subaccount, Tokens, TransferArgs, TransferError, DEFAULT_FEE,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
+    DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
 };
 
 use crate::external_canister_interfaces::exchange_rate_canister::{
@@ -80,6 +81,26 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
             from_subaccount: None,
             amount,
             memo: MEMO_TOP_UP_CANISTER,
+            created_at_time: None, // TODO: set for deduplication
+        },
+    )
+    .await
+    .expect("Failed to call ledger canister") // TODO: handle error
+}
+
+/// Transfer ICP from user-derived subaccount to SRC default subaccount
+pub async fn transfer_to_src_main(
+    source: Subaccount,
+    amount: Tokens,
+) -> Result<u64, TransferError> {
+    transfer(
+        MAINNET_LEDGER_CANISTER_ID,
+        TransferArgs {
+            to: AccountIdentifier::new(&ic_cdk::id(), &DEFAULT_SUBACCOUNT),
+            fee: DEFAULT_FEE,
+            from_subaccount: Some(source),
+            amount,
+            memo: Memo(0),
             created_at_time: None, // TODO: set for deduplication
         },
     )

@@ -200,6 +200,7 @@ pub async fn accept_rental_agreement(
         billing_period_days,
     } = get_rental_conditions(rental_condition_type).expect("Fatal: Rental conditions not found");
 
+    // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
     let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time);
