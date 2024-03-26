@@ -33,7 +33,7 @@ pub enum RentalConditionId {
 /// Once the subnet_id is known, it is added as Some().
 #[derive(Debug, Clone, CandidType, Deserialize)]
 pub struct RentalConditions {
-    /// A description of the special topology of this subnet.
+    /// A description of the topology of this subnet.
     pub description: String,
     /// Initially None, this field is filled when a new rental subnet
     /// is created with the given topology.
@@ -105,7 +105,7 @@ pub struct RentalAgreement {
     /// the subnet already existed at initial proposal time.
     pub subnet_creation_proposal_id: Option<u64>,
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionId,
+    pub rental_condition_id: RentalConditionId,
     /// Rental agreement creation date in nanoseconds since epoch.
     pub creation_date: u64,
     // ===== Mutable data =====

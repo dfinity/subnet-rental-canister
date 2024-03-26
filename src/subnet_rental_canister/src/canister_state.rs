@@ -111,7 +111,7 @@ pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow_mut(|requests| requests.remove(&user))
 }
 
-/// Create a RentalAgreement with consistent timestamps, insert into canister state
+/// Create a RentalAgreement with the current time as creation_date, insert into canister state  
 /// and create the corresponding event.
 #[allow(clippy::too_many_arguments)]
 pub fn create_rental_agreement(
@@ -125,18 +125,18 @@ pub fn create_rental_agreement(
     let now = ic_cdk::api::time();
     // unwrap safety: all rental_condition_id keys have a value
     // in the static global HashMap at compile time.
-    let billing_period_nanos = get_rental_conditions(rental_condition_id)
+    let initial_rental_period_nanos = get_rental_conditions(rental_condition_id)
         .unwrap()
-        .billing_period_days
+        .initial_rental_period_days
         * 86_400
         * 1_000_000_000;
     let rental_agreement = RentalAgreement {
         user,
         initial_proposal_id,
         subnet_creation_proposal_id,
-        rental_condition_type: rental_condition_id,
+        rental_condition_id,
         creation_date: now,
-        covered_until: now + billing_period_nanos,
+        covered_until: now + initial_rental_period_nanos,
         cycles_balance,
         last_burned: now,
     };

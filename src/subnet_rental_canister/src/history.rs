@@ -59,10 +59,15 @@ pub enum EventType {
         rental_request: RentalRequest,
     },
     /// An unsuccessful SubnetRentalAgreement proposal execution
-    ProposalExecutionFailed {
+    RentalRequestFailed {
         user: Principal,
         proposal_id: u64,
         reason: ExecuteProposalError,
+    },
+    /// When the user calls get_refund and the effort is abandoned.
+    RentalRequestCancelled {
+        rental_request: RentalRequest,
+        refund_amount: Tokens,
     },
     /// After successfull polling for a CreateSubnet proposal, a RentalAgreement is created
     RentalAgreementCreated {
@@ -70,10 +75,6 @@ pub enum EventType {
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
         rental_condition_type: RentalConditionId,
-    },
-    /// When the user calls get_refund and the effort is abandoned.
-    RentalAgreementFailed {
-        refund_amount: Tokens,
     },
     // TODO: How to even get this?
     RentalAgreementTerminated {
