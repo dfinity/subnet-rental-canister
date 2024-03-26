@@ -1,9 +1,13 @@
 use std::borrow::Cow;
 
+<<<<<<< HEAD
 use crate::{
     ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest,
     SubnetSpecification,
 };
+=======
+use crate::{ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest};
+>>>>>>> origin
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
@@ -12,7 +16,11 @@ use serde::Deserialize;
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
 /// corresponding subnet_id is always implied.
+<<<<<<< HEAD
 /// Events that are not associated with a subnet are collected under 'None'.
+=======
+/// Events on rental conditions changes are collected under 'None'.  
+>>>>>>> origin
 /// Events belonging to a valid rental agreement are then bracketed by the variants
 /// Created and Terminated.
 #[derive(Debug, Default, Clone, CandidType, Deserialize)]
@@ -54,25 +62,29 @@ pub enum EventType {
     /// Changed via code upgrade, which should create this event in the post-upgrade hook.
     /// A None value means that the entry has been removed from the map.
     RentalConditionsChanged {
-        rental_condition_type: RentalConditionId,
+        rental_condition_id: RentalConditionId,
         rental_conditions: Option<RentalConditions>,
     },
-    /// A successful SubnetRentalAgreement proposal execution leads to a RentalRequest
+    /// A successful SubnetRentalRequest proposal execution leads to a RentalRequest
     RentalRequestCreated {
         rental_request: RentalRequest,
     },
-    /// An unsuccessful SubnetRentalAgreement proposal execution
-    ProposalExecutionFailed {
+    /// An unsuccessful SubnetRentalRequest proposal execution
+    RentalRequestFailed {
         user: Principal,
         proposal_id: u64,
         reason: ExecuteProposalError,
+    },
+    /// When the user calls get_refund and the effort is abandoned.
+    RentalRequestCancelled {
+        rental_request: RentalRequest,
+        refund_amount: Tokens,
     },
     /// After successfull polling for a CreateSubnet proposal, a RentalAgreement is created
     RentalAgreementCreated {
         user: Principal,
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
-        subnet_spec: SubnetSpecification,
         rental_condition_type: RentalConditionId,
     },
     // TODO: How to even get this?
@@ -80,7 +92,6 @@ pub enum EventType {
         user: Principal,
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
-        subnet_spec: SubnetSpecification,
         rental_condition_type: RentalConditionId,
     },
     PaymentSuccess {

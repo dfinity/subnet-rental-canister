@@ -3,12 +3,10 @@
 /// Since the SRC handles an arbitrary number of rented subnets, we associate the subnet_id with
 /// the state structs by using StableBTreeMaps.
 ///
-/// Most updates to state should leave a trace in the corresponding History trace log.
-///
+/// Relevant updates to state leave a trace in the corresponding History trace log.  
 use crate::{
     history::{Event, EventType, History},
     Principal, RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetSpecification,
 };
 use ic_cdk::println;
 use ic_stable_structures::{
@@ -26,7 +24,7 @@ thread_local! {
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
     // Memory region 0
-    /// The keys are user principals, because a subnet_id is not known at request time. Furthermore, only one active
+    /// The keys are user principals, because a subnet_id might not be known at request time. Furthermore, only one active
     /// request is allowed per user principal.
     static RENTAL_REQUESTS: RefCell<StableBTreeMap<Principal, RentalRequest, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0)))));
@@ -37,7 +35,7 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 
     // Memory region 2
-    // Keys are subnet_id, user principal or None for changes to the SRC's configuration.
+    // Keys are subnet_id, user principal or None for changes to rental conditions.
     static HISTORY: RefCell<StableBTreeMap<Option<Principal>, History, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
@@ -81,8 +79,7 @@ pub fn create_rental_request(
     user: Principal,
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
-    subnet_spec: SubnetSpecification,
-    rental_condition_type: RentalConditionId,
+    rental_condition_id: RentalConditionId,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
@@ -90,8 +87,7 @@ pub fn create_rental_request(
         locked_amount_cycles,
         initial_proposal_id,
         creation_date: now,
-        subnet_spec,
-        rental_condition_type,
+        rental_condition_type: rental_condition_id,
     };
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {
@@ -115,7 +111,7 @@ pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow_mut(|requests| requests.remove(&user))
 }
 
-/// Create a RentalAgreement with consistent timestamps, insert into canister state
+/// Create a RentalAgreement with the current time as creation_date, insert into canister state  
 /// and create the corresponding event.
 #[allow(clippy::too_many_arguments)]
 pub fn create_rental_agreement(
@@ -123,20 +119,24 @@ pub fn create_rental_agreement(
     user: Principal,
     initial_proposal_id: u64,
     subnet_creation_proposal_id: Option<u64>,
-    subnet_spec: SubnetSpecification,
-    rental_condition_type: RentalConditionId,
-    covered_until: u64,
+    rental_condition_id: RentalConditionId,
     cycles_balance: u128,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
+    // unwrap safety: all rental_condition_id keys have a value
+    // in the static global HashMap at compile time.
+    let initial_rental_period_nanos = get_rental_conditions(rental_condition_id)
+        .unwrap()
+        .initial_rental_period_days
+        * 86_400
+        * 1_000_000_000;
     let rental_agreement = RentalAgreement {
         user,
         initial_proposal_id,
         subnet_creation_proposal_id,
-        subnet_spec: subnet_spec.clone(),
-        rental_condition_type,
+        rental_condition_id,
         creation_date: now,
-        covered_until,
+        covered_until: now + initial_rental_period_nanos,
         cycles_balance,
         last_burned: now,
     };
@@ -154,8 +154,7 @@ pub fn create_rental_agreement(
                     user,
                     initial_proposal_id,
                     subnet_creation_proposal_id,
-                    subnet_spec,
-                    rental_condition_type,
+                    rental_condition_type: rental_condition_id,
                 },
                 Some(subnet_id),
             );

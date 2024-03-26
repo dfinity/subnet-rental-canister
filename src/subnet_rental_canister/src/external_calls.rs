@@ -8,6 +8,7 @@ use crate::external_canister_interfaces::exchange_rate_canister::{
     Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
     GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL,
 };
+
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
     SetAuthorizedSubnetworkListArgs,
