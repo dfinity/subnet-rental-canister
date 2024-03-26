@@ -54,11 +54,11 @@ pub enum EventType {
         rental_condition_id: RentalConditionId,
         rental_conditions: Option<RentalConditions>,
     },
-    /// A successful SubnetRentalAgreement proposal execution leads to a RentalRequest
+    /// A successful SubnetRentalRequest proposal execution leads to a RentalRequest
     RentalRequestCreated {
         rental_request: RentalRequest,
     },
-    /// An unsuccessful SubnetRentalAgreement proposal execution
+    /// An unsuccessful SubnetRentalRequest proposal execution
     RentalRequestFailed {
         user: Principal,
         proposal_id: u64,
