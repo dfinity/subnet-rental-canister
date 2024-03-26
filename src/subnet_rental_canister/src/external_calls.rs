@@ -134,7 +134,9 @@ pub async fn get_exchange_rate_cycles_per_e8s_at_time(time: u64) -> Result<f64, 
             rate,
             ..
         }) => {
-            let res = todo!();
+            // The rate is a scaled integer. The scaling factor is 10^decimals.
+            let scale = u64::pow(10, decimals);
+            let res = rate as f64 / scale as f64;
             Ok(res)
         }
         GetExchangeRateResult::Err(e) => Err(e),
