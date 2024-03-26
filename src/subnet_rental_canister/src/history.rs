@@ -1,13 +1,6 @@
 use std::borrow::Cow;
 
-<<<<<<< HEAD
-use crate::{
-    ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetSpecification,
-};
-=======
 use crate::{ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest};
->>>>>>> origin
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
@@ -16,11 +9,7 @@ use serde::Deserialize;
 /// Important events are persisted for auditing by the community.
 /// History struct instances are values in a Map<SubnetId, History>, so the
 /// corresponding subnet_id is always implied.
-<<<<<<< HEAD
-/// Events that are not associated with a subnet are collected under 'None'.
-=======
 /// Events on rental conditions changes are collected under 'None'.  
->>>>>>> origin
 /// Events belonging to a valid rental agreement are then bracketed by the variants
 /// Created and Terminated.
 #[derive(Debug, Default, Clone, CandidType, Deserialize)]
