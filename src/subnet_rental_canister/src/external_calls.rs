@@ -17,38 +17,34 @@ use crate::external_types::{
 use crate::MEMO_TOP_UP_CANISTER;
 // use ic_cdk::println;
 
-pub async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
-    for user in principals {
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(*user),
-                subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
-            },),
-        )
-        .await
-        .expect("Failed to call CMC"); // TODO: handle error
-    }
+pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
+    ic_cdk::call::<_, ()>(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        "set_authorized_subnetwork_list",
+        (SetAuthorizedSubnetworkListArgs {
+            who: Some(*user),
+            subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
+        },),
+    )
+    .await
+    .expect("Failed to call CMC"); // TODO: handle error
 }
 
-pub async fn delist_principals(_subnet_id: candid::Principal, principals: &Vec<candid::Principal>) {
+pub async fn delist_principal(_subnet_id: candid::Principal, user: &Principal) {
     // TODO: if we allow multiple subnets per user:
     // first read the current list,
     // remove this subnet from the list and then
     // re-whitelist the principal for the remaining list
-    for user in principals {
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(*user),
-                subnets: vec![],
-            },),
-        )
-        .await
-        .expect("Failed to call CMC"); // TODO: handle error
-    }
+    ic_cdk::call::<_, ()>(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        "set_authorized_subnetwork_list",
+        (SetAuthorizedSubnetworkListArgs {
+            who: Some(*user),
+            subnets: vec![],
+        },),
+    )
+    .await
+    .expect("Failed to call CMC"); // TODO: handle error
 }
 
 pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
@@ -105,7 +101,8 @@ pub async fn transfer_to_src_main(
         },
     )
     .await
-    .expect("Failed to call ledger canister") // TODO: handle error
+    // expect safety: chance of synchronous errors on NNS is small
+    .expect("Failed to call ledger canister")
 }
 
 pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
@@ -164,4 +161,27 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(time: u64) -> Result<f64, Exc
         }
         GetExchangeRateResult::Err(e) => Err(e),
     }
+}
+
+pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, String> {
+    // Transfer the ICP from the SRC to the CMC. The second fee is for the notify top-up.
+    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE).await;
+    let Ok(block_index) = transfer_to_cmc_result else {
+        let err = transfer_to_cmc_result.unwrap_err();
+        println!("Transfer from SRC to CMC failed: {:?}", err);
+        // TODO: event
+        // return Err(ExecuteProposalError::TransferSrcToCmcError(err));
+        return Err(String::new());
+    };
+
+    // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
+    let notify_top_up_result = notify_top_up(block_index).await;
+    let Ok(actual_cycles) = notify_top_up_result else {
+        let err = notify_top_up_result.unwrap_err();
+        println!("Notify top-up failed: {:?}", err);
+        // TODO: event
+        // return Err(ExecuteProposalError::NotifyTopUpError(err));
+        return Err(String::new());
+    };
+    Ok(actual_cycles)
 }

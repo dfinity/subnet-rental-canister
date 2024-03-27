@@ -1,5 +1,8 @@
-use crate::canister_state::{get_rental_conditions, iter_rental_conditions};
-use crate::external_calls::get_exchange_rate_icp_per_xdr_at_time;
+use crate::canister_state::{create_rental_request, get_rental_conditions, iter_rental_conditions};
+use crate::external_calls::{
+    convert_icp_to_cycles, get_exchange_rate_icp_per_xdr_at_time, notify_top_up, transfer_to_cmc,
+    transfer_to_src_main, whitelist_principals,
+};
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
@@ -9,7 +12,8 @@ use chrono::{DateTime, Timelike};
 use ic_cdk::{init, post_upgrade};
 use ic_cdk::{println, update};
 use ic_ledger_types::{
-    AccountIdentifier, Tokens, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
+    AccountIdentifier, Tokens, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
+    MAINNET_GOVERNANCE_CANISTER_ID,
 };
 
 ////////// CANISTER METHODS //////////
@@ -180,7 +184,7 @@ fn post_upgrade() {
 pub async fn accept_rental_agreement(
     SubnetRentalProposalPayload {
         user,
-        rental_condition_type,
+        rental_condition_type: rental_condition_id,
     }: SubnetRentalProposalPayload,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
@@ -198,7 +202,7 @@ pub async fn accept_rental_agreement(
         daily_cost_cycles,
         initial_rental_period_days,
         billing_period_days,
-    } = get_rental_conditions(rental_condition_type).expect("Fatal: Rental conditions not found");
+    } = get_rental_conditions(rental_condition_id).expect("Fatal: Rental conditions not found");
 
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
@@ -215,42 +219,26 @@ pub async fn accept_rental_agreement(
     let needed_icp = Tokens::from_e8s(e8s);
 
     // subaccount that the user pays to:
-    let user_subaccount = AccountIdentifier::new(&ic_cdk::id(), &user.into());
-    let src_account = AccountIdentifier::new(&ic_cdk::id(), &DEFAULT_SUBACCOUNT);
+    match transfer_to_src_main(user.into(), needed_icp).await {
+        Ok(_) => {}
+        Err(TransferError::InsufficientFunds { balance }) => {}
+        Err(e) => {}
+    }
 
-    //     // Whitelist principals for subnet.
-    //     whitelist_principals(subnet_id, &principals_to_whitelist).await;
+    // lock 10% by converting to cycles
+    let lock_amount_icp = Tokens::from_e8s(e8s / 10);
+
+    let locked_cycles = convert_icp_to_cycles(lock_amount_icp).await.unwrap();
+
+    create_rental_request(
+        user,
+        locked_cycles,
+        initial_proposal_id,
+        rental_condition_id,
+    )
+    .unwrap(); // TODO: recover from error OR fail early in proposal
+
     //     let rental_agreement_creation_date = ic_cdk::api::time();
-
-    //     // Transfer the ICP from the SRC to the CMC.
-    //     let transfer_to_cmc_result = transfer_to_cmc(needed_icp - DEFAULT_FEE - DEFAULT_FEE).await;
-    //     let Ok(block_index) = transfer_to_cmc_result else {
-    //         let err = transfer_to_cmc_result.unwrap_err();
-    //         println!("Transfer from SRC to CMC failed: {:?}", err);
-    //         persist_event(
-    //             EventType::Failed {
-    //                 user: user.into(),
-    //                 reason: ExecuteProposalError::TransferSrcToCmcError(err.clone()),
-    //             },
-    //             subnet_id,
-    //         );
-    //         return Err(ExecuteProposalError::TransferSrcToCmcError(err));
-    //     };
-
-    //     // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
-    //     let notify_top_up_result = notify_top_up(block_index).await;
-    //     let Ok(actual_cycles) = notify_top_up_result else {
-    //         let err = notify_top_up_result.unwrap_err();
-    //         println!("Notify top-up failed: {:?}", err);
-    //         persist_event(
-    //             EventType::Failed {
-    //                 user: user.into(),
-    //                 reason: ExecuteProposalError::NotifyTopUpError(err.clone()),
-    //             },
-    //             subnet_id,
-    //         );
-    //         return Err(ExecuteProposalError::NotifyTopUpError(err));
-    //     };
 
     //     // Create rental agreement and corresponding billing record.
     //     let rental_agreement = RentalAgreement {
