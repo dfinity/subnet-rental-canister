@@ -195,11 +195,11 @@ pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
         include_reward_status: vec![],
         omit_large_fields: Some(true),
         before_proposal: None,
-        limit: 0,
-        exclude_topic: vec![], // TODO
-        include_all_manage_neuron_proposals: Some(false),
-        // This is the relevant part: we only want active ones
-        include_status: vec![0],
+        limit: 100,
+        exclude_topic: vec![],
+        include_all_manage_neuron_proposals: Some(true),
+        // We only want ProposalStatus::Adopted = 3
+        include_status: vec![3],
     };
     let ListProposalInfoResponse { proposal_info } =
         ic_cdk::call::<_, (ListProposalInfoResponse,)>(
