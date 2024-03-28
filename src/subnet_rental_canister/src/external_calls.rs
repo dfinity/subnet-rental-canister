@@ -10,6 +10,9 @@ use crate::external_canister_interfaces::exchange_rate_canister::{
     GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
 };
 
+use crate::external_canister_interfaces::governance_canister::{
+    ListProposalInfo, ListProposalInfoResponse, ProposalInfo, GOVERNANCE_CANISTER_PRINCIPAL_STR,
+};
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
     SetAuthorizedSubnetworkListArgs,
@@ -184,4 +187,37 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, String> {
         return Err(String::new());
     };
     Ok(actual_cycles)
+}
+
+/// Get the proposal id and the proposal creation time in seconds.
+pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
+    let request = ListProposalInfo {
+        include_reward_status: vec![],
+        omit_large_fields: Some(true),
+        before_proposal: None,
+        limit: 0,
+        exclude_topic: vec![], // TODO
+        include_all_manage_neuron_proposals: Some(false),
+        // This is the relevant part: we only want active ones
+        include_status: vec![0],
+    };
+    let ListProposalInfoResponse { proposal_info } =
+        ic_cdk::call::<_, (ListProposalInfoResponse,)>(
+            Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap(),
+            "list_proposals",
+            (request,),
+        )
+        .await
+        .expect("Failed to call GovernanceCanister")
+        .0;
+    // with the correct, unique topic and the correct status, there should be exactly one result:
+    if proposal_info.len() < 1 {
+        return Err("Found no active proposals, expected one".to_string());
+    } else if proposal_info.len() > 1 {
+        return Err("Found several matching proposals, expected one".to_string());
+    }
+    let proposal_info = proposal_info.get(0).unwrap();
+    let proposal_id = proposal_info.id.unwrap().id;
+    let proposal_creation_time_seconds = proposal_info.proposal_timestamp_seconds;
+    Ok((proposal_id, proposal_creation_time_seconds))
 }

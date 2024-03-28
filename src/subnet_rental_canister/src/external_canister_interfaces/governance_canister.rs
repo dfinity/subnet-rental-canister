@@ -4,7 +4,7 @@ use candid::{self, CandidType, Deserialize, Principal};
 
 pub static GOVERNANCE_CANISTER_PRINCIPAL_STR: &str = "rrkah-fqaaa-aaaaa-aaaaq-cai";
 
-#[derive(CandidType, Debug, Deserialize)]
+#[derive(CandidType, Copy, Clone, Debug, Deserialize)]
 pub struct NeuronId {
     pub id: u64,
 }
