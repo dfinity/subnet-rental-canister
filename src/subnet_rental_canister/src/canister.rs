@@ -238,23 +238,6 @@ pub async fn accept_rental_agreement(
     )
     .unwrap(); // TODO: recover from error OR fail early in proposal
 
-    //     let rental_agreement_creation_date = ic_cdk::api::time();
-
-    //     // Create rental agreement and corresponding billing record.
-    //     let rental_agreement = RentalAgreement {
-    //         user: user.into(),
-    //         subnet_id: subnet_id.into(),
-    //         principals: principals_to_whitelist,
-    //         creation_date: rental_agreement_creation_date,
-    //     };
-    //     let billing_record = BillingRecord {
-    //         covered_until: rental_agreement_creation_date
-    //             + days_to_nanos(rental_conditions.initial_rental_period_days),
-    //         cycles_balance: actual_cycles,
-    //         last_burned: rental_agreement_creation_date,
-    //     };
-    //     // Persist new rental agreement and billing record and create event.
-    //     create_rental_agreement(subnet_id.into(), rental_agreement, billing_record);
     Ok(())
 }
 
