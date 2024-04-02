@@ -1,4 +1,7 @@
+use std::time::Duration;
+
 use candid::Principal;
+use ic_cdk::api::call::call_with_payment128;
 use ic_ledger_types::{
     transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
     DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
@@ -148,10 +151,11 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(time: u64) -> Result<f64, Exc
         quote_asset: xdr_asset,
         base_asset: icp_asset,
     };
-    let response = ic_cdk::call::<_, (GetExchangeRateResult,)>(
+    let response = ic_cdk::call_with_payment128::<_, (GetExchangeRateResult,)>(
         Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
         "get_exchange_rate",
         (request,),
+        10_000_000_000,
     )
     .await
     // chance of synchronous errors is small on NNS subnet
@@ -226,4 +230,20 @@ pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
     let proposal_id = proposal_info.id.unwrap().id;
     let proposal_creation_time_seconds = proposal_info.proposal_timestamp_seconds;
     Ok((proposal_id, proposal_creation_time_seconds))
+}
+
+// Since we might need to call a future several times, we need to pass a future generator.
+pub async fn call_with_retry<Fut, R, E>(f: impl Fn() -> Fut) -> Result<R, E>
+where
+    Fut: std::future::Future<Output = Result<R, E>>,
+{
+    let mut attempts = 3;
+    loop {
+        attempts -= 1;
+        let result: Result<R, E> = f().await;
+        if result.is_ok() || attempts <= 0 {
+            return result;
+        }
+        std::thread::sleep(Duration::from_millis(330));
+    }
 }

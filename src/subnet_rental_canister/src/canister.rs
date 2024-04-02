@@ -1,7 +1,8 @@
 use crate::canister_state::{create_rental_request, get_rental_conditions, iter_rental_conditions};
 use crate::external_calls::{
-    convert_icp_to_cycles, get_exchange_rate_icp_per_xdr_at_time, notify_top_up, transfer_to_cmc,
-    transfer_to_src_main, whitelist_principals,
+    call_with_retry, convert_icp_to_cycles, get_current_proposal_info,
+    get_exchange_rate_icp_per_xdr_at_time, notify_top_up, transfer_to_cmc, transfer_to_src_main,
+    whitelist_principals,
 };
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
@@ -181,7 +182,7 @@ fn post_upgrade() {
 
 // TODO: Argument will be provided by governance canister after validation
 #[update]
-pub async fn accept_rental_agreement(
+pub async fn execute_rental_request_proposal(
     SubnetRentalProposalPayload {
         user,
         rental_condition_type: rental_condition_id,
@@ -190,8 +191,12 @@ pub async fn accept_rental_agreement(
     verify_caller_is_governance()?;
 
     // Query proposal creation time and proposal_id from governance canister
-    let proposal_creation_time: u64 = 0; // TODO
-    let initial_proposal_id: u64 = 0; // TODO
+    let proposal_creation_time: u64 = 0;
+    let initial_proposal_id: u64 = 0;
+    // let res = call_with_retry(get_current_proposal_info).await;
+    // let Ok((proposal_creation_time, initial_proposal_id)) = res else {
+    //     return Err(ExecuteProposalError::CallGovernanceFailed);
+    // };
 
     // unwrap safety:
     // the rental_condition_type key must have a value in the rental conditions map at compile time.
