@@ -30,7 +30,8 @@ pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
         },),
     )
     .await
-    .expect("Failed to call CMC"); // TODO: handle error
+    // chance of synchronous errors is small on NNS subnet
+    .expect("Failed to call CMC");
 }
 
 pub async fn delist_principal(_subnet_id: candid::Principal, user: &Principal) {
@@ -47,7 +48,8 @@ pub async fn delist_principal(_subnet_id: candid::Principal, user: &Principal) {
         },),
     )
     .await
-    .expect("Failed to call CMC"); // TODO: handle error
+    // chance of synchronous errors is small on NNS subnet
+    .expect("Failed to call CMC");
 }
 
 pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
@@ -84,7 +86,8 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
         },
     )
     .await
-    .expect("Failed to call ledger canister") // TODO: handle error
+    // chance of synchronous errors is small on NNS subnet
+    .expect("Failed to call ledger canister")
 }
 
 /// Transfer ICP from user-derived subaccount to SRC default subaccount
@@ -104,7 +107,7 @@ pub async fn transfer_to_src_main(
         },
     )
     .await
-    // expect safety: chance of synchronous errors on NNS is small
+    // chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ledger canister")
 }
 
@@ -121,7 +124,8 @@ pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
         (),
     )
     .await
-    .expect("Failed to call CMC") // TODO: handle error
+    // chance of synchronous errors is small on NNS subnet
+    .expect("Failed to call CMC")
     .0;
 
     xdr_permyriad_per_icp
@@ -150,6 +154,7 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(time: u64) -> Result<f64, Exc
         (request,),
     )
     .await
+    // chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ExchangeRateCanister");
     match response.0 {
         GetExchangeRateResult::Ok(ExchangeRate {
@@ -208,6 +213,7 @@ pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
             (request,),
         )
         .await
+        // chance of synchronous errors is small on NNS subnet
         .expect("Failed to call GovernanceCanister")
         .0;
     // with the correct, unique topic and the correct status, there should be exactly one result:
