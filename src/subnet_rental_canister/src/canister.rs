@@ -1,4 +1,6 @@
-use crate::canister_state::{create_rental_request, get_rental_conditions, iter_rental_conditions};
+use crate::canister_state::{
+    self, create_rental_request, get_rental_conditions, iter_rental_conditions,
+};
 use crate::external_calls::{
     call_with_retry, convert_icp_to_cycles, get_current_proposal_info,
     get_exchange_rate_icp_per_xdr_at_time, notify_top_up, transfer_to_cmc, transfer_to_src_main,
@@ -9,11 +11,12 @@ use crate::{
     TRILLION,
 };
 use crate::{ExecuteProposalError, SubnetRentalProposalPayload, BILLION};
+use candid::Principal;
 use chrono::{DateTime, Timelike};
-use ic_cdk::{init, post_upgrade};
+use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
 use ic_ledger_types::{
-    AccountIdentifier, Tokens, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
+    AccountIdentifier, Subaccount, Tokens, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
     MAINNET_GOVERNANCE_CANISTER_ID,
 };
 
@@ -120,10 +123,10 @@ fn post_upgrade() {
 
 ////////// QUERY METHODS //////////
 
-// #[query]
-// pub fn list_rental_conditions() -> Vec<(Principal, RentalConditions)> {
-//     RENTAL_CONDITIONS.with(|map| map.borrow().iter().collect())
-// }
+#[query]
+pub fn list_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
+    iter_rental_conditions()
+}
 
 // #[query]
 // pub fn list_rental_agreements() -> Vec<RentalAgreement> {

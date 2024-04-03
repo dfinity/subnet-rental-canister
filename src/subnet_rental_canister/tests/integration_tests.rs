@@ -1,7 +1,8 @@
 use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
 use ic_ledger_types::{
-    AccountBalanceArgs, AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferResult,
+    DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
+    MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
@@ -15,7 +16,7 @@ use subnet_rental_canister::{
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
-    E8S,
+    RentalConditionId, RentalConditions, E8S,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -26,7 +27,7 @@ const SRC_ID: Principal =
     Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
 const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const USER_1: Principal = Principal::from_slice(b"user1");
-const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(3_700 * E8S);
+const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000_000 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
 
@@ -114,6 +115,54 @@ fn setup() -> (PocketIc, Principal) {
 fn dummy() {
     setup();
 }
+
+#[test]
+fn test_initial_proposal() {
+    let (pic, src_principal) = setup();
+
+    let user_principal = USER_1;
+
+    let res = query::<Vec<(RentalConditionId, RentalConditions)>>(
+        &pic,
+        SRC_ID,
+        "list_rental_conditions",
+        encode_one(()).unwrap(),
+    );
+    let (
+        _,
+        RentalConditions {
+            description: _,
+            subnet_id: _,
+            daily_cost_cycles,
+            initial_rental_period_days,
+            billing_period_days,
+        },
+    ) = res[0];
+    // assuming rate of 13
+    let amount_icp = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128) * 13;
+
+    // user transfers some ICP
+    let transfer_args = TransferArgs {
+        memo: Memo(0),
+        amount: Tokens::from_e8s((amount_icp / E8S as u128) as u64),
+        fee: DEFAULT_FEE,
+        from_subaccount: None,
+        to: AccountIdentifier::new(&src_principal, &Subaccount::from(user_principal)),
+        created_at_time: None,
+    };
+
+    let _res = update::<TransferResult>(
+        &pic,
+        MAINNET_LEDGER_CANISTER_ID,
+        Some(user_principal),
+        "transfer",
+        encode_one(transfer_args).unwrap(),
+    )
+    .unwrap();
+
+    // transfer(MAINNET_LEDGER_CANISTER_ID, transfer_args).await;
+}
+
 // #[test]
 // fn _test_authorization() {
 //     // This test is incomplete because with PocketIC, we cannot create negative whitelist tests.
@@ -388,7 +437,7 @@ fn dummy() {
 //     .unwrap()
 // }
 
-fn _query<T: for<'a> Deserialize<'a> + candid::CandidType>(
+fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     pic: &PocketIc,
     canister_id: Principal,
     method: &str,
@@ -408,7 +457,7 @@ fn _query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn _update<T: CandidType + for<'a> Deserialize<'a>>(
+fn update<T: CandidType + for<'a> Deserialize<'a>>(
     pic: &PocketIc,
     canister_id: Principal,
     sender: Option<Principal>,
@@ -430,7 +479,7 @@ fn _update<T: CandidType + for<'a> Deserialize<'a>>(
 }
 
 fn _check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
-    _query(
+    query(
         pic,
         MAINNET_LEDGER_CANISTER_ID,
         "account_balance",
