@@ -1970,3 +1970,14 @@ dependencies = [
  "cfg-if",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "xrc_mock"
+version = "0.1.0"
+dependencies = [
+ "candid",
+ "hex",
+ "ic-cdk 0.13.1",
+ "serde",
+ "serde_bytes",
+]
