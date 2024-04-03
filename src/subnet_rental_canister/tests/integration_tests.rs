@@ -11,6 +11,7 @@ use std::{
     fs,
 };
 use subnet_rental_canister::{
+    external_canister_interfaces::exchange_rate_canister::EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
@@ -20,6 +21,7 @@ use subnet_rental_canister::{
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
+const XRC_WASM: &str = "./tests/exchange-rate-canister.wasm.gz";
 const SRC_ID: Principal =
     Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
 const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
@@ -48,6 +50,14 @@ fn install_cmc(pic: &PocketIc) {
         encode_args((Some(init_arg),)).unwrap(),
         None,
     );
+}
+
+fn install_xrc(pic: &PocketIc) {
+    let xrc_principal = Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap();
+    pic.create_canister_with_id(None, None, xrc_principal)
+        .unwrap();
+    let xrc_wasm = fs::read(XRC_WASM).expect("Failed to read XRC wasm");
+    pic.install_canister(xrc_principal, xrc_wasm, vec![], None);
 }
 
 fn install_ledger(pic: &PocketIc) {
@@ -82,10 +92,15 @@ fn install_ledger(pic: &PocketIc) {
 }
 
 fn setup() -> (PocketIc, Principal) {
-    let pic = PocketIcBuilder::new().with_nns_subnet().build();
+    let pic = PocketIcBuilder::new()
+        .with_nns_subnet()
+        // needed for XRC
+        .with_ii_subnet()
+        .build();
 
     install_ledger(&pic);
     install_cmc(&pic);
+    install_xrc(&pic);
 
     // Install subnet rental canister.
     let subnet_rental_canister = pic.create_canister_with_id(None, None, SRC_ID).unwrap();
