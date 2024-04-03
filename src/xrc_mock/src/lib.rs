@@ -1,20 +1,41 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-
 use ic_cdk::update;
 
 #[update]
-pub fn get_exchange_rate(request: GetExchangeRateRequest) {
+pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResult {
     let GetExchangeRateRequest {
         timestamp,
         quote_asset,
         base_asset,
     } = request;
 
-    // 1712102400 = 2024-04-03-00:00:00 UTC
-    let available_rates: HashMap<u64, (u64, u64)> =
-        HashMap::from_iter(vec![(1712102400, (3_503_823_284, 9))].into_iter());
+    let timestamp = if let Some(timestamp) = timestamp {
+        timestamp
+    } else {
+        let ts = ic_cdk::api::time();
+        ts - ts % 86400
+    };
+
+    // for now, hardcode result
+    let metadata = ExchangeRateMetadata {
+        decimals: 9,
+        forex_timestamp: None,
+        quote_asset_num_received_rates: 0,
+        base_asset_num_received_rates: 0,
+        base_asset_num_queried_sources: 0,
+        standard_deviation: 0,
+        quote_asset_num_queried_sources: 0,
+    };
+
+    let exchange_rate = ExchangeRate {
+        metadata,
+        rate: 12_503_823_284,
+        timestamp,
+        quote_asset,
+        base_asset,
+    };
+    GetExchangeRateResult::Ok(exchange_rate)
 }
 
 // ============================================================================

@@ -66,6 +66,8 @@ pub struct SubnetRentalProposalPayload {
     pub user: Principal,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_type: RentalConditionId,
+    pub proposal_id: u64,
+    pub proposal_creation_time: u64,
 }
 
 /// Successful proposal execution leads to a RentalRequest.

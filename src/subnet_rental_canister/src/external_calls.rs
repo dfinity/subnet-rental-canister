@@ -151,7 +151,7 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(time: u64) -> Result<f64, Exc
         quote_asset: xdr_asset,
         base_asset: icp_asset,
     };
-    let response = ic_cdk::call_with_payment128::<_, (GetExchangeRateResult,)>(
+    let response = ic_cdk::api::call::call_with_payment128::<_, (GetExchangeRateResult,)>(
         Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
         "get_exchange_rate",
         (request,),

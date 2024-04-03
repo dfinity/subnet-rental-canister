@@ -21,3 +21,4 @@ chrono = "0.4.35"
 
 [dev-dependencies]
 pocket-ic = "2.2.0"
+rand = "0.8.5"

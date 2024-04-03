@@ -186,17 +186,11 @@ pub async fn execute_rental_request_proposal(
     SubnetRentalProposalPayload {
         user,
         rental_condition_type: rental_condition_id,
+        proposal_id,
+        proposal_creation_time,
     }: SubnetRentalProposalPayload,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
-
-    // Query proposal creation time and proposal_id from governance canister
-    let proposal_creation_time: u64 = 0;
-    let initial_proposal_id: u64 = 0;
-    // let res = call_with_retry(get_current_proposal_info).await;
-    // let Ok((proposal_creation_time, initial_proposal_id)) = res else {
-    //     return Err(ExecuteProposalError::CallGovernanceFailed);
-    // };
 
     // unwrap safety:
     // the rental_condition_type key must have a value in the rental conditions map at compile time.
@@ -363,15 +357,5 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 }
 
 fn round_to_previous_midnight(time: u64) -> u64 {
-    // unwrap safety: incoming time is the IC's system time.
-    // Setting hour, minute, seconds and nanosecond to 0 cannot lead to
-    // an invalid date.
-    let time = DateTime::from_timestamp((time / BILLION) as i64, (time % BILLION) as u32).unwrap();
-    let res = time
-        .with_hour(0)
-        .and_then(|x| x.with_minute(0))
-        .and_then(|x| x.with_second(0))
-        .and_then(|x| x.with_nanosecond(0))
-        .unwrap();
-    res.timestamp_nanos_opt().unwrap() as u64
+    time - time % 86400
 }
