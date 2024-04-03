@@ -207,35 +207,42 @@ pub async fn execute_rental_request_proposal(
     // Attempt to transfer enough ICP to cover the initial rental period.
     let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time);
-    // TODO: how to handle failures? if the exchange rate at the time is unknown, we have to move back a minute.
-    //      wrap in retry loop?
-    //      and keep success timestamp for next query
-    let exchange_rate_icp_per_xdr = get_exchange_rate_icp_per_xdr_at_time(exchange_rate_query_time)
-        .await
-        .unwrap();
+    let res =
+        call_with_retry(|| get_exchange_rate_icp_per_xdr_at_time(exchange_rate_query_time)).await;
+    let Ok(exchange_rate_icp_per_xdr) = res else {
+        println!("Fatal: Failed to get exchange rate");
+        return Err(ExecuteProposalError::CallXRCFailed(res.unwrap_err()));
+    };
+
     // trillion / e8 = 10_000
     let e8s = (needed_cycles as f64 * exchange_rate_icp_per_xdr) as u64 / 10_000;
     let needed_icp = Tokens::from_e8s(e8s);
 
-    // subaccount that the user pays to:
-    match transfer_to_src_main(user.into(), needed_icp).await {
-        Ok(_) => {}
-        Err(TransferError::InsufficientFunds { balance }) => {}
-        Err(e) => {}
-    }
+    // transfer from user-derived subaccount to SRC main
+    let res = call_with_retry(|| transfer_to_src_main(user.into(), needed_icp)).await;
+    let Ok(_) = res else {
+        println!("Fatal: Failed to transfer ICP to SRC main account");
+        return Err(ExecuteProposalError::TransferUserToSrcError(
+            res.unwrap_err(),
+        ));
+    };
+    // TODO: persist transferred amount
 
     // lock 10% by converting to cycles
     let lock_amount_icp = Tokens::from_e8s(e8s / 10);
 
     let locked_cycles = convert_icp_to_cycles(lock_amount_icp).await.unwrap();
 
-    create_rental_request(
-        user,
-        locked_cycles,
-        initial_proposal_id,
-        rental_condition_id,
-    )
-    .unwrap(); // TODO: recover from error OR fail early in proposal
+    // TODO: recover from error OR fail early in proposal
+    create_rental_request(user, locked_cycles, proposal_id, rental_condition_id).unwrap();
+
+    // Either proceed with existing subnet_id, or start polling for future subnet creation.
+    if let Some(subnet_id) = subnet_id {
+        println!("Reusing existing subnet {:?}", subnet_id);
+        // TODO: Create rental agreement
+    } else {
+        // TODO: Start polling
+    }
 
     Ok(())
 }

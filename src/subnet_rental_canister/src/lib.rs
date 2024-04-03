@@ -1,4 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
+use external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use external_types::NotifyError;
 // use ic_cdk::println;
 
@@ -140,6 +141,7 @@ impl Storable for RentalAgreement {
 #[derive(CandidType, Debug, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
+    CallXRCFailed(ExchangeRateError),
     SubnetAlreadyRented,
     UnauthorizedCaller,
     InsufficientFunds,
