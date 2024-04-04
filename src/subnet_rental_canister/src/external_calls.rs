@@ -20,7 +20,7 @@ use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
     SetAuthorizedSubnetworkListArgs,
 };
-use crate::MEMO_TOP_UP_CANISTER;
+use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
 // use ic_cdk::println;
 
 pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
@@ -174,25 +174,21 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(time: u64) -> Result<f64, Exc
     }
 }
 
-pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, String> {
+pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecuteProposalError> {
     // Transfer the ICP from the SRC to the CMC. The second fee is for the notify top-up.
     let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE).await;
     let Ok(block_index) = transfer_to_cmc_result else {
-        let err = transfer_to_cmc_result.unwrap_err();
-        println!("Transfer from SRC to CMC failed: {:?}", err);
-        // TODO: event
-        // return Err(ExecuteProposalError::TransferSrcToCmcError(err));
-        return Err(String::new());
+        let e = transfer_to_cmc_result.unwrap_err();
+        println!("Transfer from SRC to CMC failed: {:?}", e);
+        return Err(ExecuteProposalError::TransferSrcToCmcError(e));
     };
 
     // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
     let notify_top_up_result = notify_top_up(block_index).await;
     let Ok(actual_cycles) = notify_top_up_result else {
-        let err = notify_top_up_result.unwrap_err();
-        println!("Notify top-up failed: {:?}", err);
-        // TODO: event
-        // return Err(ExecuteProposalError::NotifyTopUpError(err));
-        return Err(String::new());
+        let e = notify_top_up_result.unwrap_err();
+        println!("Notify top-up failed: {:?}", e);
+        return Err(ExecuteProposalError::NotifyTopUpError(e));
     };
     Ok(actual_cycles)
 }
