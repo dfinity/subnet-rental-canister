@@ -1,7 +1,4 @@
-use std::time::Duration;
-
 use candid::Principal;
-use ic_cdk::api::call::call_with_payment128;
 use ic_ledger_types::{
     transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
     DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
@@ -14,7 +11,7 @@ use crate::external_canister_interfaces::exchange_rate_canister::{
 };
 
 use crate::external_canister_interfaces::governance_canister::{
-    ListProposalInfo, ListProposalInfoResponse, ProposalInfo, GOVERNANCE_CANISTER_PRINCIPAL_STR,
+    ListProposalInfo, ListProposalInfoResponse, GOVERNANCE_CANISTER_PRINCIPAL_STR,
 };
 use crate::external_types::{
     IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
@@ -216,7 +213,7 @@ pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
         .expect("Failed to call GovernanceCanister")
         .0;
     // with the correct, unique topic and the correct status, there should be exactly one result:
-    if proposal_info.len() < 1 {
+    if proposal_info.is_empty() {
         return Err("Found no active proposals, expected one".to_string());
     } else if proposal_info.len() > 1 {
         return Err("Found several matching proposals, expected one".to_string());

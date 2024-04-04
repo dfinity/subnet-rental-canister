@@ -1,5 +1,6 @@
 // Exchange rate canister https://dashboard.internetcomputer.org/canister/rrkah-fqaaa-aaaaa-aaaaq-cai
 #![allow(dead_code)]
+#![allow(clippy::large_enum_variant)]
 use candid::{self, CandidType, Deserialize, Principal};
 
 pub static GOVERNANCE_CANISTER_PRINCIPAL_STR: &str = "rrkah-fqaaa-aaaaa-aaaaq-cai";

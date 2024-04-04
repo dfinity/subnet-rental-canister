@@ -1,24 +1,19 @@
 use crate::canister_state::{
-    self, create_rental_request, get_rental_conditions, get_rental_request,
-    insert_rental_condition, iter_rental_conditions,
+    create_rental_request, get_rental_conditions, get_rental_request, insert_rental_condition,
+    iter_rental_conditions,
 };
 use crate::external_calls::{
-    call_with_retry, convert_icp_to_cycles, get_current_proposal_info,
-    get_exchange_rate_xdr_per_icp_at_time, notify_top_up, transfer_to_cmc, transfer_to_src_main,
-    whitelist_principals,
+    call_with_retry, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
+    transfer_to_src_main,
 };
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
 };
-use crate::{ExecuteProposalError, SubnetRentalProposalPayload, BILLION};
-use candid::Principal;
+use crate::{ExecuteProposalError, SubnetRentalProposalPayload};
 use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
-use ic_ledger_types::{
-    AccountIdentifier, Subaccount, Tokens, TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT,
-    MAINNET_GOVERNANCE_CANISTER_ID,
-};
+use ic_ledger_types::{Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANISTER_ID};
 
 ////////// CANISTER METHODS //////////
 
@@ -39,7 +34,7 @@ fn init() {
     )];
     for (k, v) in initial_conditions.iter() {
         println!("Created initial rental condition {:?}: {:?}", k, v);
-        insert_rental_condition(k.clone(), v.clone());
+        insert_rental_condition(*k, v.clone());
         persist_event(
             EventType::RentalConditionsChanged {
                 rental_condition_id: *k,

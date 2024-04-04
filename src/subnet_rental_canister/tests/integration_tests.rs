@@ -15,7 +15,7 @@ use std::{
 use subnet_rental_canister::{
     external_canister_interfaces::{
         exchange_rate_canister::EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
-        governance_canister::{self, GOVERNANCE_CANISTER_PRINCIPAL_STR},
+        governance_canister::GOVERNANCE_CANISTER_PRINCIPAL_STR,
     },
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
@@ -178,7 +178,7 @@ fn test_initial_proposal() {
         proposal_id: 999,
         proposal_creation_time: now,
     };
-    let _res = update::<Result<(), ExecuteProposalError>>(
+    update::<Result<(), ExecuteProposalError>>(
         &pic,
         src_principal,
         Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
@@ -506,7 +506,7 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
+fn _check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
     query(
         pic,
         MAINNET_LEDGER_CANISTER_ID,
