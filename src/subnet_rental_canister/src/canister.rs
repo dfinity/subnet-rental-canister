@@ -1,16 +1,18 @@
 use crate::canister_state::{
-    create_rental_request, get_rental_conditions, get_rental_request, insert_rental_condition,
-    iter_rental_conditions,
+    self, create_rental_request, get_rental_conditions, get_rental_request,
+    insert_rental_condition, iter_rental_conditions, iter_rental_requests,
 };
 use crate::external_calls::{
     call_with_retry, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
     transfer_to_src_main,
 };
+use crate::history::Event;
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
 };
-use crate::{ExecuteProposalError, SubnetRentalProposalPayload};
+use crate::{ExecuteProposalError, RentalRequest, SubnetRentalProposalPayload};
+use candid::Principal;
 use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
 use ic_ledger_types::{Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANISTER_ID};
@@ -124,14 +126,21 @@ pub fn list_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
     iter_rental_conditions()
 }
 
+#[query]
+pub fn list_rental_requests() -> Vec<(Principal, RentalRequest)> {
+    iter_rental_requests()
+}
+
+#[query]
+pub fn get_history(user: Option<Principal>) -> Vec<Event> {
+    let mut res = canister_state::get_history(user);
+    res.sort_by_key(|event| event.date());
+    res
+}
+
 // #[query]
 // pub fn list_rental_agreements() -> Vec<RentalAgreement> {
 //     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
-// }
-
-// #[query]
-// pub fn list_billing_records() -> Vec<(Principal, BillingRecord)> {
-//     BILLING_RECORDS.with(|map| map.borrow().iter().collect())
 // }
 
 // #[query]

@@ -77,6 +77,10 @@ pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
     })
 }
 
+pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
+    HISTORY.with_borrow(|map| map.get(&principal).map(|h| h.events).unwrap_or_default())
+}
+
 /// Create a RentalRequest with the current time as create_date, insert into canister state
 /// and persist the corresponding event.
 pub fn create_rental_request(

@@ -20,6 +20,7 @@ use subnet_rental_canister::{
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
+    history::Event,
     ExecuteProposalError, RentalConditionId, RentalConditions, SubnetRentalProposalPayload, E8S,
 };
 
@@ -186,6 +187,24 @@ fn test_initial_proposal() {
         payload,
     )
     .unwrap();
+
+    // assert state is as expected
+    let src_history = query::<Vec<Event>>(
+        &pic,
+        src_principal,
+        None,
+        "get_history",
+        None::<Option<Principal>>,
+    );
+    let user_history = query::<Vec<Event>>(
+        &pic,
+        src_principal,
+        None,
+        "get_history",
+        Some(user_principal),
+    );
+    assert!(src_history.len() == 1);
+    assert!(user_history.len() == 2);
 }
 
 // #[test]

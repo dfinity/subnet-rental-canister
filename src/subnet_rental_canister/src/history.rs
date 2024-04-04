@@ -37,6 +37,16 @@ pub struct Event {
     date: u64,
 }
 
+impl Event {
+    pub fn event(&self) -> EventType {
+        self.event.clone()
+    }
+
+    pub fn date(&self) -> u64 {
+        self.date
+    }
+}
+
 impl From<EventType> for Event {
     fn from(value: EventType) -> Self {
         Event {
