@@ -21,7 +21,8 @@ use subnet_rental_canister::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     history::Event,
-    ExecuteProposalError, RentalConditionId, RentalConditions, SubnetRentalProposalPayload, E8S,
+    ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
+    SubnetRentalProposalPayload, E8S,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -203,8 +204,31 @@ fn test_initial_proposal() {
         "get_history",
         Some(user_principal),
     );
+    // think of a better test than length
     assert!(src_history.len() == 1);
     assert!(user_history.len() == 2);
+
+    let rental_requests = query::<Vec<(Principal, RentalRequest)>>(
+        &pic,
+        src_principal,
+        None,
+        "list_rental_requests",
+        (),
+    );
+    assert!(rental_requests.len() == 1);
+    let (
+        p,
+        RentalRequest {
+            user,
+            locked_amount_cycles: _,
+            initial_proposal_id: _,
+            creation_date: _,
+            rental_condition_id,
+        },
+    ) = rental_requests[0];
+    assert!(p == user_principal);
+    assert!(user == user_principal);
+    assert!(rental_condition_id == RentalConditionId::App13CH);
 }
 
 // #[test]

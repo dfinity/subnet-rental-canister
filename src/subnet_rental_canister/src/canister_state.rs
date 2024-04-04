@@ -95,7 +95,7 @@ pub fn create_rental_request(
         locked_amount_cycles,
         initial_proposal_id,
         creation_date: now,
-        rental_condition_type: rental_condition_id,
+        rental_condition_id,
     };
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {

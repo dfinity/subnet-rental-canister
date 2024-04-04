@@ -85,7 +85,7 @@ pub struct RentalRequest {
     pub creation_date: u64,
     // ===== Some fields from the proposal payload for the rental agreement =====
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionId,
+    pub rental_condition_id: RentalConditionId,
 }
 
 impl Storable for RentalRequest {
