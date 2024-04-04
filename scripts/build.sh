@@ -11,4 +11,5 @@ cp target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm subnet_rent
 
 cargo rustc -p xrc_mock --crate-type=cdylib --target wasm32-unknown-unknown --release
 cp target/wasm32-unknown-unknown/release/xrc_mock.wasm src/subnet_rental_canister/tests/exchange-rate-canister.wasm
+rm src/subnet_rental_canister/tests/exchange-rate-canister.wasm.gz
 gzip src/subnet_rental_canister/tests/exchange-rate-canister.wasm 

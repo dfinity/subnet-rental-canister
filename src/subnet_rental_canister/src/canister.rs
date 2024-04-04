@@ -1,5 +1,6 @@
 use crate::canister_state::{
-    self, create_rental_request, get_rental_conditions, iter_rental_conditions,
+    self, create_rental_request, get_rental_conditions, insert_rental_condition,
+    iter_rental_conditions,
 };
 use crate::external_calls::{
     call_with_retry, convert_icp_to_cycles, get_current_proposal_info,
@@ -38,6 +39,7 @@ fn init() {
     )];
     for (k, v) in initial_conditions.iter() {
         println!("Created initial rental condition {:?}: {:?}", k, v);
+        insert_rental_condition(k.clone(), v.clone());
         persist_event(
             EventType::RentalConditionsChanged {
                 rental_condition_id: *k,

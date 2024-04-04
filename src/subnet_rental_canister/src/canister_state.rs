@@ -45,6 +45,10 @@ pub fn get_rental_conditions(key: RentalConditionId) -> Option<RentalConditions>
     RENTAL_CONDITIONS.with_borrow(|map| map.get(&key).cloned())
 }
 
+pub fn insert_rental_condition(key: RentalConditionId, value: RentalConditions) {
+    RENTAL_CONDITIONS.with_borrow_mut(|map| map.insert(key, value));
+}
+
 pub fn iter_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
     RENTAL_CONDITIONS.with_borrow(|map| map.iter().map(|(k, v)| (*k, v.clone())).collect())
 }

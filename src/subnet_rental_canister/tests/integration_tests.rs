@@ -156,7 +156,7 @@ fn test_initial_proposal() {
         MAINNET_LEDGER_CANISTER_ID,
         Some(user_principal),
         "transfer",
-        encode_one(transfer_args).unwrap(),
+        transfer_args,
     )
     .unwrap();
 
@@ -443,16 +443,17 @@ fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     method: &str,
     args: impl CandidType,
 ) -> T {
-    let WasmResult::Reply(res) = pic
+    let res = pic
         .query_call(
             canister_id,
             Principal::anonymous(),
             method,
             encode_one(args).unwrap(),
         )
-        .unwrap()
-    else {
-        panic!("Expected Reply");
+        .unwrap();
+    let res = match res {
+        WasmResult::Reply(res) => res,
+        WasmResult::Reject(message) => panic!("Query expected Reply, got Reject: \n{}", message),
     };
     decode_one::<T>(&res).unwrap()
 }
@@ -464,16 +465,17 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     method: &str,
     args: impl CandidType,
 ) -> T {
-    let WasmResult::Reply(res) = pic
+    let res = pic
         .update_call(
             canister_id,
             sender.unwrap_or(Principal::anonymous()),
             method,
             encode_one(args).unwrap(),
         )
-        .unwrap()
-    else {
-        panic!("Expected Reply");
+        .unwrap();
+    let res = match res {
+        WasmResult::Reply(res) => res,
+        WasmResult::Reject(message) => panic!("Update expected Reply, got Reject: \n{}", message),
     };
     decode_one::<T>(&res).unwrap()
 }
