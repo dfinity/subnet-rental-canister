@@ -31,7 +31,7 @@ const SRC_ID: Principal =
     Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
 const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const USER_1: Principal = Principal::from_slice(b"user1");
-const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000_000 * E8S);
+const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000_000_000 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
 

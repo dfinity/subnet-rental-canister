@@ -251,8 +251,8 @@ pub async fn execute_rental_request_proposal(
 
     // transfer from user-derived subaccount to SRC main
     let res = call_with_retry(|| transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE)).await;
-    let Ok(_) = res else {
-        println!("Fatal: Failed to transfer ICP to SRC main account");
+    let Ok(_block_index) = res else {
+        println!("Fatal: Failed to transfer enough ICP to SRC main account");
         let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
         persist_event(
             EventType::RentalRequestFailed {
@@ -264,10 +264,21 @@ pub async fn execute_rental_request_proposal(
         );
         return Err(e);
     };
-    // TODO: persist transferred amount
+    println!(
+        "SRC Successfully transferred {} ICP (plus fee) from {:?} to the SRC main account.",
+        needed_icp - DEFAULT_FEE,
+        Subaccount::from(user)
+    );
+    persist_event(
+        EventType::TransferSuccess {
+            amount: needed_icp - DEFAULT_FEE,
+        },
+        Some(user),
+    );
 
     // lock 10% by converting to cycles
     let lock_amount_icp = Tokens::from_e8s(e8s / 10);
+    println!("SRC will lock {} ICP.", lock_amount_icp);
 
     let res = convert_icp_to_cycles(lock_amount_icp).await;
     let Ok(locked_cycles) = res else {
@@ -283,6 +294,7 @@ pub async fn execute_rental_request_proposal(
         );
         return Err(e);
     };
+    println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
 
     // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
     create_rental_request(user, locked_cycles, proposal_id, rental_condition_id).unwrap();

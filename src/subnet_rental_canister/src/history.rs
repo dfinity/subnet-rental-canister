@@ -83,6 +83,10 @@ pub enum EventType {
         subnet_creation_proposal_id: Option<u64>,
         rental_condition_type: RentalConditionId,
     },
+    /// A successful transfer from the SRC/user subaccount to the SRC main account.
+    TransferSuccess {
+        amount: Tokens,
+    },
     PaymentSuccess {
         amount: Tokens,
         cycles: u128,
