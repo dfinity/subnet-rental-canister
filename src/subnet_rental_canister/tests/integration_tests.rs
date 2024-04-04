@@ -10,13 +10,17 @@ use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
+    time::UNIX_EPOCH,
 };
 use subnet_rental_canister::{
-    external_canister_interfaces::exchange_rate_canister::EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
+    external_canister_interfaces::{
+        exchange_rate_canister::EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
+        governance_canister::{self, GOVERNANCE_CANISTER_PRINCIPAL_STR},
+    },
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
-    RentalConditionId, RentalConditions, E8S,
+    ExecuteProposalError, RentalConditionId, RentalConditions, SubnetRentalProposalPayload, E8S,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -107,7 +111,7 @@ fn setup() -> (PocketIc, Principal) {
     let subnet_rental_canister = pic.create_canister_with_id(None, None, SRC_ID).unwrap();
     let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
-
+    pic.add_cycles(subnet_rental_canister, 1_000 * 1_000_000_000_000);
     (pic, subnet_rental_canister)
 }
 
@@ -125,6 +129,7 @@ fn test_initial_proposal() {
     let res = query::<Vec<(RentalConditionId, RentalConditions)>>(
         &pic,
         SRC_ID,
+        None,
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
@@ -160,7 +165,24 @@ fn test_initial_proposal() {
     )
     .unwrap();
 
-    // transfer(MAINNET_LEDGER_CANISTER_ID, transfer_args).await;
+    // create proposal
+    let now = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_type: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: now,
+    };
+    let res = update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload,
+    );
 }
 
 // #[test]
@@ -440,13 +462,14 @@ fn test_initial_proposal() {
 fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     pic: &PocketIc,
     canister_id: Principal,
+    sender: Option<Principal>,
     method: &str,
     args: impl CandidType,
 ) -> T {
     let res = pic
         .query_call(
             canister_id,
-            Principal::anonymous(),
+            sender.unwrap_or(Principal::anonymous()),
             method,
             encode_one(args).unwrap(),
         )
@@ -480,10 +503,11 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn _check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
+fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
     query(
         pic,
         MAINNET_LEDGER_CANISTER_ID,
+        Some(owner),
         "account_balance",
         AccountBalanceArgs {
             account: AccountIdentifier::new(&owner, &subaccount),

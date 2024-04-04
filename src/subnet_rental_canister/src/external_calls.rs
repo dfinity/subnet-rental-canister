@@ -244,6 +244,5 @@ where
         if result.is_ok() || attempts <= 0 {
             return result;
         }
-        std::thread::sleep(Duration::from_millis(330));
     }
 }
