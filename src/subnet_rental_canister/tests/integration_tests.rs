@@ -243,41 +243,6 @@ fn test_initial_proposal() {
 }
 
 // #[test]
-// fn _test_authorization() {
-//     // This test is incomplete because with PocketIC, we cannot create negative whitelist tests.
-//     let pic = PocketIcBuilder::new()
-//         .with_nns_subnet()
-//         .with_application_subnet()
-//         .with_application_subnet()
-//         .build();
-//     let _subnet_nns = pic.topology().get_nns().unwrap();
-//     let subnet_1 = pic.topology().get_app_subnets()[0];
-//     let _subnet_2 = pic.topology().get_app_subnets()[1];
-
-//     install_cmc(&pic);
-//     let user1 = Principal::from_slice(b"user1");
-//     let _user2 = Principal::from_slice(b"user2");
-
-//     #[derive(candid::CandidType)]
-//     struct Arg {
-//         pub who: Option<candid::Principal>,
-//         pub subnets: Vec<candid::Principal>,
-//     }
-//     let arg = Arg {
-//         who: Some(user1),
-//         subnets: vec![subnet_1],
-//     };
-
-//     pic.update_call(
-//         MAINNET_CYCLES_MINTING_CANISTER_ID,
-//         MAINNET_GOVERNANCE_CANISTER_ID,
-//         "set_authorized_subnetwork_list",
-//         encode_one(arg).unwrap(),
-//     )
-//     .unwrap();
-// }
-
-// #[test]
 // fn test_proposal_rejected_if_already_rented() {
 //     let (pic, canister_id) = setup();
 
@@ -325,37 +290,6 @@ fn test_initial_proposal() {
 // }
 
 // #[test]
-// fn test_proposal_rejected_if_icrc2_approval_too_low() {
-//     let (pic, canister_id) = setup();
-
-//     let _block_index_approve = icrc2_approve(&pic, USER_1, 2 * E8S);
-
-//     // User 1 has approved too little funds.
-//     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
-//     let WasmResult::Reply(res) = wasm_res else {
-//         panic!("Expected a reply");
-//     };
-//     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-//     assert!(matches!(
-//         res,
-//         Err(ExecuteProposalError::TransferUserToSrcError(
-//             TransferFromError::InsufficientAllowance { .. }
-//         ))
-//     ));
-// }
-
-// #[test]
-// fn test_history() {
-//     let (pic, canister_id) = setup();
-//     let _wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
-//     let subnet = Principal::from_text(SUBNET_FOR_RENT).unwrap();
-
-//     let events: Option<Vec<Event>> = query(&pic, canister_id, "get_history", subnet);
-//     assert!(events.is_some());
-//     assert_eq!(events.unwrap().len(), 2);
-// }
-
-// #[test]
 // fn test_burning() {
 //     let (pic, canister_id) = setup();
 //     let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
@@ -380,31 +314,26 @@ fn test_initial_proposal() {
 //     assert!(balance_2 < balance_1);
 // }
 
-// #[test]
-// fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
-//     let (pic, canister_id) = setup();
-
-//     let arg = SubnetRentalProposalPayload {
-//         subnet_id: Principal::from_text(SUBNET_FOR_RENT).unwrap(),
-//         user: USER_1,
-//         principals: vec![USER_1],
-//         proposal_creation_time: 0,
-//     };
-
-//     let WasmResult::Reply(res) = pic
-//         .update_call(
-//             canister_id,
-//             Principal::anonymous(),
-//             "accept_rental_agreement",
-//             encode_one(arg.clone()).unwrap(),
-//         )
-//         .unwrap()
-//     else {
-//         panic!("Expected a reply");
-//     };
-//     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-//     assert!(matches!(res, Err(ExecuteProposalError::UnauthorizedCaller)));
-// }
+#[test]
+fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
+    let (pic, src_principal) = setup();
+    let user_principal = USER_1;
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_type: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: 999,
+    };
+    let res = update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        None,
+        "execute_rental_request_proposal",
+        payload,
+    );
+    assert!(res.is_err());
+    assert!(res.unwrap_err() == ExecuteProposalError::UnauthorizedCaller);
+}
 
 // fn accept_test_rental_agreement(
 //     pic: &PocketIc,
