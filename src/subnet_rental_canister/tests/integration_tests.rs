@@ -140,22 +140,24 @@ fn test_initial_proposal() {
             subnet_id: _,
             daily_cost_cycles,
             initial_rental_period_days,
-            billing_period_days,
+            billing_period_days: _,
         },
     ) = res[0];
-    // assuming rate of 13
-    let amount_icp = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128) * 13;
+    // same calculation as in SRC; assuming an exchange rate
+    let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
+    let exchange_rate_icp_per_xdr = 12.6;
+    let e8s = (needed_cycles as f64 * exchange_rate_icp_per_xdr) as u64 / 10_000;
+    let needed_icp = Tokens::from_e8s(e8s);
 
-    // user transfers some ICP
+    // user transfers some ICP to SRC
     let transfer_args = TransferArgs {
         memo: Memo(0),
-        amount: Tokens::from_e8s((amount_icp / E8S as u128) as u64),
+        amount: needed_icp,
         fee: DEFAULT_FEE,
         from_subaccount: None,
         to: AccountIdentifier::new(&src_principal, &Subaccount::from(user_principal)),
         created_at_time: None,
     };
-
     let _res = update::<TransferResult>(
         &pic,
         MAINNET_LEDGER_CANISTER_ID,
@@ -176,13 +178,14 @@ fn test_initial_proposal() {
         proposal_id: 999,
         proposal_creation_time: now,
     };
-    let res = update::<Result<(), ExecuteProposalError>>(
+    let _res = update::<Result<(), ExecuteProposalError>>(
         &pic,
         src_principal,
         Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
         "execute_rental_request_proposal",
         payload,
-    );
+    )
+    .unwrap();
 }
 
 // #[test]

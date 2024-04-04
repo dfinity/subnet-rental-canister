@@ -4,7 +4,7 @@ use crate::canister_state::{
 };
 use crate::external_calls::{
     call_with_retry, convert_icp_to_cycles, get_current_proposal_info,
-    get_exchange_rate_icp_per_xdr_at_time, notify_top_up, transfer_to_cmc, transfer_to_src_main,
+    get_exchange_rate_xdr_per_icp_at_time, notify_top_up, transfer_to_cmc, transfer_to_src_main,
     whitelist_principals,
 };
 use crate::{
@@ -212,18 +212,22 @@ pub async fn execute_rental_request_proposal(
     let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time);
     let res =
-        call_with_retry(|| get_exchange_rate_icp_per_xdr_at_time(exchange_rate_query_time)).await;
-    let Ok(exchange_rate_icp_per_xdr) = res else {
+        call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time)).await;
+    let Ok(exchange_rate_xdr_per_icp) = res else {
         println!("Fatal: Failed to get exchange rate");
         return Err(ExecuteProposalError::CallXRCFailed(res.unwrap_err()));
     };
 
     // trillion / e8 = 10_000
-    let e8s = (needed_cycles as f64 * exchange_rate_icp_per_xdr) as u64 / 10_000;
+    let e8s = (needed_cycles as f64 / exchange_rate_xdr_per_icp) as u64 / 10_000;
     let needed_icp = Tokens::from_e8s(e8s);
+    println!(
+        "SRC requires {} cycles or {} ICP, according to exchange rate {}",
+        needed_cycles, needed_icp, exchange_rate_xdr_per_icp
+    );
 
     // transfer from user-derived subaccount to SRC main
-    let res = call_with_retry(|| transfer_to_src_main(user.into(), needed_icp)).await;
+    let res = call_with_retry(|| transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE)).await;
     let Ok(_) = res else {
         println!("Fatal: Failed to transfer ICP to SRC main account");
         return Err(ExecuteProposalError::TransferUserToSrcError(
