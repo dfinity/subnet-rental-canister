@@ -12,7 +12,6 @@ use crate::{
 };
 use crate::{ExecuteProposalError, SubnetRentalProposalPayload, BILLION};
 use candid::Principal;
-use chrono::{DateTime, Timelike};
 use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
 use ic_ledger_types::{
