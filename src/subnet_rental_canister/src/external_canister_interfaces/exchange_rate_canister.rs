@@ -43,7 +43,7 @@ pub struct ExchangeRate {
     pub base_asset: Asset,
 }
 
-#[derive(CandidType, Clone, Deserialize, Debug)]
+#[derive(CandidType, Clone, PartialEq, Deserialize, Debug)]
 pub enum ExchangeRateError {
     AnonymousPrincipalNotAllowed,
     CryptoQuoteAssetNotFound,

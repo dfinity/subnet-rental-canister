@@ -138,7 +138,7 @@ impl Storable for RentalAgreement {
     }
 }
 
-#[derive(CandidType, Debug, Clone, Deserialize)]
+#[derive(CandidType, Debug, PartialEq, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
     CallXRCFailed(ExchangeRateError),

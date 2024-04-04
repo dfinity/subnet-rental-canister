@@ -185,9 +185,20 @@ fn test_initial_proposal() {
         src_principal,
         Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
         "execute_rental_request_proposal",
-        payload,
+        payload.clone(),
     )
     .unwrap();
+
+    // it should only work the first time for the same user
+    let res = update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload,
+    );
+    assert!(res.is_err());
+    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequesting);
 
     // assert state is as expected
     let src_history = query::<Vec<Event>>(
@@ -206,7 +217,7 @@ fn test_initial_proposal() {
     );
     // think of a better test than length
     assert!(src_history.len() == 1);
-    assert!(user_history.len() == 2);
+    assert!(user_history.len() == 3);
 
     let rental_requests = query::<Vec<(Principal, RentalRequest)>>(
         &pic,
@@ -264,93 +275,6 @@ fn test_initial_proposal() {
 //         encode_one(arg).unwrap(),
 //     )
 //     .unwrap();
-// }
-
-// #[test]
-// fn test_list_rental_conditions() {
-//     let (pic, canister_id) = setup();
-
-//     let WasmResult::Reply(res) = pic
-//         .query_call(
-//             canister_id,
-//             Principal::anonymous(),
-//             "list_rental_conditions",
-//             encode_one(()).unwrap(),
-//         )
-//         .unwrap()
-//     else {
-//         panic!("Expected a reply")
-//     };
-
-//     let conditions = decode_one::<Vec<(Principal, RentalConditions)>>(&res).unwrap();
-//     assert!(!conditions.is_empty());
-// }
-
-// #[test]
-// fn test_proposal_accept() {
-//     let (pic, canister_id) = setup();
-
-//     let time_now = pic
-//         .get_time()
-//         .duration_since(UNIX_EPOCH)
-//         .unwrap()
-//         .as_nanos();
-
-//     // User approves a sufficient amount of ICP.
-//     let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
-
-//     // Proposal is accepted and the governance canister calls accept_rental_agreement.
-//     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
-//     let WasmResult::Reply(res) = wasm_res else {
-//         panic!("Expected a reply");
-//     };
-//     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-
-//     // The proposal is executed successfully.
-//     assert!(res.is_ok());
-
-//     // The user's balance is reduced by the rental fee and one transaction fee.
-//     let user_balance = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
-//     let historical_exchange_rate_cycles_per_e8s = 1_000_000; // this is what the CMC returns atm
-//     assert_eq!(
-//         user_balance,
-//         USER_1_INITIAL_BALANCE
-//             - DEFAULT_FEE // icrc-2 approval fee
-//             - Tokens::from_e8s(historical_exchange_rate_cycles_per_e8s * 183 * 2_000) // 2_000 XDR for 183 days
-//     );
-
-//     // The rental account is stored in the canister state.
-//     let billing_records: Vec<(Principal, BillingRecord)> =
-//         query(&pic, canister_id, "list_billing_records", ());
-
-//     assert_eq!(billing_records.len(), 1);
-//     assert_eq!(billing_records[0].0.to_string(), SUBNET_FOR_RENT);
-//     assert_eq!(
-//         billing_records[0].1.cycles_balance,
-//         2_000 * TRILLION * 183
-//             - (2 * DEFAULT_FEE.e8s() as u128 * historical_exchange_rate_cycles_per_e8s as u128) // two transaction fees
-//     );
-//     assert_eq!(
-//         billing_records[0].1.covered_until,
-//         (time_now + 183 * 24 * 60 * 60 * 1_000_000_000) as u64
-//     );
-
-//     // The rental agreement is stored in the canister state.
-//     let rental_agreements: Vec<RentalAgreement> =
-//         query(&pic, canister_id, "list_rental_agreements", ());
-
-//     assert_eq!(rental_agreements.len(), 1);
-//     assert_eq!(rental_agreements[0].user.0, USER_1);
-//     assert_eq!(
-//         rental_agreements[0].subnet_id.0.to_string(),
-//         SUBNET_FOR_RENT
-//     );
-//     assert!(rental_agreements[0]
-//         .principals
-//         .iter()
-//         .map(|p| p.0.to_string())
-//         .collect_vec()
-//         .contains(&USER_1.to_string()));
 // }
 
 // #[test]
