@@ -66,7 +66,7 @@ pub struct SubnetRentalProposalPayload {
     // The tenant, who makes the payments
     pub user: Principal,
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionId,
+    pub rental_condition_id: RentalConditionId,
     pub proposal_id: u64,
     pub proposal_creation_time: u64,
 }
@@ -144,6 +144,7 @@ pub enum ExecuteProposalError {
     CallXRCFailed(ExchangeRateError),
     UserAlreadyRequestingSubnetRental,
     SubnetAlreadyRented,
+    SubnetAlreadyRequested,
     UnauthorizedCaller,
     InsufficientFunds,
     TransferUserToSrcError(TransferError),

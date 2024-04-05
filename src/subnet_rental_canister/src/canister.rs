@@ -1,6 +1,6 @@
 use crate::canister_state::{
-    self, create_rental_request, get_rental_conditions, get_rental_request,
-    insert_rental_condition, iter_rental_conditions, iter_rental_requests,
+    self, create_rental_request, get_rental_agreement, get_rental_conditions, get_rental_request,
+    insert_rental_condition, iter_rental_conditions, iter_rental_requests, CallerGuard,
 };
 use crate::external_calls::{
     call_with_retry, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
@@ -188,34 +188,43 @@ pub fn get_history(user: Option<Principal>) -> Vec<Event> {
 //     Ok(())
 // }
 
-// TODO: Argument will be provided by governance canister after validation
 #[update]
 pub async fn execute_rental_request_proposal(
     SubnetRentalProposalPayload {
         user,
-        rental_condition_type: rental_condition_id,
+        rental_condition_id,
         proposal_id,
         proposal_creation_time,
     }: SubnetRentalProposalPayload,
 ) -> Result<(), ExecuteProposalError> {
-    verify_caller_is_governance()?;
-
-    // Fail if user has an existing rental request going on
-    if get_rental_request(&user).is_some() {
-        println!("Fatal: User already has an open SubnetRentalRequest waiting for completion.");
+    /// This function makes sense locally only because EventType::RentalRequestFailed is fixed.
+    fn with_error(
+        user: Principal,
+        proposal_id: u64,
+        e: ExecuteProposalError,
+    ) -> Result<(), ExecuteProposalError> {
         persist_event(
             EventType::RentalRequestFailed {
                 user,
                 proposal_id,
-                reason: ExecuteProposalError::UserAlreadyRequestingSubnetRental,
+                reason: e.clone(),
             },
             Some(user),
         );
-        return Err(ExecuteProposalError::UserAlreadyRequestingSubnetRental);
+        Err(e)
+    }
+    verify_caller_is_governance()?;
+
+    let _guard = CallerGuard::new(user, "rental_request").unwrap();
+    // Fail if user has an existing rental request going on
+    if get_rental_request(&user).is_some() {
+        println!("Fatal: User already has an open SubnetRentalRequest waiting for completion.");
+        let e = ExecuteProposalError::UserAlreadyRequestingSubnetRental;
+        return with_error(user, proposal_id, e);
     }
 
     // unwrap safety:
-    // The rental_condition_type key must have a value in the rental conditions map at compile time.
+    // The rental_condition_id key must have a value in the rental conditions map at compile time.
     // TODO: unit test
     let RentalConditions {
         description: _,
@@ -224,6 +233,24 @@ pub async fn execute_rental_request_proposal(
         initial_rental_period_days,
         billing_period_days: _,
     } = get_rental_conditions(rental_condition_id).expect("Fatal: Rental conditions not found");
+
+    // Fail if the provided subnet is already being rented:
+    match subnet_id {
+        None => {}
+        Some(subnet_id) => {
+            if get_rental_agreement(&subnet_id).is_some() {
+                let e = ExecuteProposalError::SubnetAlreadyRented;
+                return with_error(user, proposal_id, e);
+            }
+        }
+    }
+    // Fail if the provided rental_condition_id (i.e., subnet) is already part of a pending rental request:
+    for (_, rental_request) in iter_rental_requests().iter() {
+        if rental_request.rental_condition_id == rental_condition_id {
+            let e = ExecuteProposalError::SubnetAlreadyRequested;
+            return with_error(user, proposal_id, e);
+        }
+    }
 
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
@@ -234,15 +261,7 @@ pub async fn execute_rental_request_proposal(
     let Ok(exchange_rate_xdr_per_icp) = res else {
         println!("Fatal: Failed to get exchange rate");
         let e = ExecuteProposalError::CallXRCFailed(res.unwrap_err());
-        persist_event(
-            EventType::RentalRequestFailed {
-                user,
-                proposal_id,
-                reason: e.clone(),
-            },
-            Some(user),
-        );
-        return Err(e);
+        return with_error(user, proposal_id, e);
     };
 
     // trillion / e8 = 10_000
@@ -261,15 +280,7 @@ pub async fn execute_rental_request_proposal(
     let Ok(block_index) = res else {
         println!("Fatal: Failed to transfer enough ICP to SRC main account");
         let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
-        persist_event(
-            EventType::RentalRequestFailed {
-                user,
-                proposal_id,
-                reason: e.clone(),
-            },
-            Some(user),
-        );
-        return Err(e);
+        return with_error(user, proposal_id, e);
     };
     println!(
         "SRC Successfully transferred {} ICP (plus fee) from {:?} to the SRC main account.",
@@ -292,15 +303,7 @@ pub async fn execute_rental_request_proposal(
     let Ok(locked_cycles) = res else {
         println!("Fatal: Failed to convert ICP to cycles");
         let e = res.unwrap_err();
-        persist_event(
-            EventType::RentalRequestFailed {
-                user,
-                proposal_id,
-                reason: e.clone(),
-            },
-            Some(user),
-        );
-        return Err(e);
+        return with_error(user, proposal_id, e);
     };
     println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
 

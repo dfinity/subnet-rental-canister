@@ -176,7 +176,7 @@ fn test_initial_proposal() {
         .as_nanos() as u64;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
-        rental_condition_type: RentalConditionId::App13CH,
+        rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
         proposal_creation_time: now,
     };
@@ -320,7 +320,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
     let user_principal = USER_1;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
-        rental_condition_type: RentalConditionId::App13CH,
+        rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
         proposal_creation_time: 999,
     };

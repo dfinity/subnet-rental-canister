@@ -84,14 +84,14 @@ pub enum EventType {
         user: Principal,
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
-        rental_condition_type: RentalConditionId,
+        rental_condition_id: RentalConditionId,
     },
     // TODO: How to even get this?
     RentalAgreementTerminated {
         user: Principal,
         initial_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
-        rental_condition_type: RentalConditionId,
+        rental_condition_id: RentalConditionId,
     },
     /// A successful transfer from the SRC/user subaccount to the SRC main account.
     TransferSuccess {

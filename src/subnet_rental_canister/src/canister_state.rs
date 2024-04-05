@@ -13,12 +13,17 @@ use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     DefaultMemoryImpl, StableBTreeMap,
 };
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::RefCell,
+    collections::{BTreeSet, HashMap},
+};
 
 thread_local! {
 
     static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionId, RentalConditions>> =
         RefCell::new(HashMap::new());
+
+    static LOCKS: RefCell<Locks> = RefCell::new(Locks{ids: BTreeSet::new()});
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -40,6 +45,39 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
 }
+
+struct Locks {
+    pub ids: BTreeSet<(Principal, &'static str)>,
+}
+
+/// A way to acquire locks for a principal before entering a critical section.
+/// The str is simply a cheap tag in case different types of locks are needed
+/// for the same principal.
+pub struct CallerGuard {
+    id: (Principal, &'static str),
+}
+
+impl CallerGuard {
+    pub fn new(principal: Principal, tag: &'static str) -> Result<Self, ()> {
+        let id = (principal, tag);
+        LOCKS.with_borrow_mut(|locks| {
+            let held_locks = &mut locks.ids;
+            if held_locks.contains(&id) {
+                return Err(());
+            }
+            held_locks.insert(id);
+            Ok(Self { id })
+        })
+    }
+}
+
+impl Drop for CallerGuard {
+    fn drop(&mut self) {
+        LOCKS.with_borrow_mut(|locks| locks.ids.remove(&self.id));
+    }
+}
+
+// ====================================================================================================================
 
 pub fn get_rental_conditions(key: RentalConditionId) -> Option<RentalConditions> {
     RENTAL_CONDITIONS.with_borrow(|map| map.get(&key).cloned())
@@ -162,7 +200,7 @@ pub fn create_rental_agreement(
                     user,
                     initial_proposal_id,
                     subnet_creation_proposal_id,
-                    rental_condition_type: rental_condition_id,
+                    rental_condition_id,
                 },
                 Some(subnet_id),
             );
