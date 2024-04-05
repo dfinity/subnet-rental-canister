@@ -1,7 +1,14 @@
 use ic_cdk::update;
 
+pub const XRC_REQUEST_CYCLES_COST: u128 = 1_000_000_000;
+
 #[update]
 pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResult {
+    let payment = ic_cdk::api::call::msg_cycles_accept128(XRC_REQUEST_CYCLES_COST);
+    if payment < XRC_REQUEST_CYCLES_COST {
+        return GetExchangeRateResult::Err(ExchangeRateError::NotEnoughCycles);
+    }
+
     let GetExchangeRateRequest {
         timestamp,
         quote_asset,
