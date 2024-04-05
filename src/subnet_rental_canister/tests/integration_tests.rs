@@ -198,7 +198,7 @@ fn test_initial_proposal() {
         payload,
     );
     assert!(res.is_err());
-    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequesting);
+    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequestingSubnetRental);
 
     // assert state is as expected
     let src_history = query::<Vec<Event>>(
@@ -331,7 +331,6 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         "execute_rental_request_proposal",
         payload,
     );
-    assert!(res.is_err());
     assert!(res.unwrap_err() == ExecuteProposalError::UnauthorizedCaller);
 }
 

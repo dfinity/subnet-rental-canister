@@ -53,7 +53,7 @@ fn init() {
 fn post_upgrade() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 
-    // persist all rental conditions in the history
+    // Persist all rental conditions in the history
     for (k, v) in iter_rental_conditions().iter() {
         println!("Loaded rental condition {:?}: {:?}", k, v);
         persist_event(
@@ -207,15 +207,15 @@ pub async fn execute_rental_request_proposal(
             EventType::RentalRequestFailed {
                 user,
                 proposal_id,
-                reason: ExecuteProposalError::UserAlreadyRequesting,
+                reason: ExecuteProposalError::UserAlreadyRequestingSubnetRental,
             },
             Some(user),
         );
-        return Err(ExecuteProposalError::UserAlreadyRequesting);
+        return Err(ExecuteProposalError::UserAlreadyRequestingSubnetRental);
     }
 
     // unwrap safety:
-    // the rental_condition_type key must have a value in the rental conditions map at compile time.
+    // The rental_condition_type key must have a value in the rental conditions map at compile time.
     // TODO: unit test
     let RentalConditions {
         description: _,
@@ -253,9 +253,12 @@ pub async fn execute_rental_request_proposal(
         needed_cycles, needed_icp, exchange_rate_xdr_per_icp
     );
 
-    // transfer from user-derived subaccount to SRC main
-    let res = call_with_retry(|| transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE)).await;
-    let Ok(_block_index) = res else {
+    // Transfer from user-derived subaccount to SRC main. The proposal id is used as the Memo.
+    let res = call_with_retry(|| {
+        transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id)
+    })
+    .await;
+    let Ok(block_index) = res else {
         println!("Fatal: Failed to transfer enough ICP to SRC main account");
         let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
         persist_event(
@@ -276,11 +279,12 @@ pub async fn execute_rental_request_proposal(
     persist_event(
         EventType::TransferSuccess {
             amount: needed_icp - DEFAULT_FEE,
+            block_index,
         },
         Some(user),
     );
 
-    // lock 10% by converting to cycles
+    // Lock 10% by converting to cycles
     let lock_amount_icp = Tokens::from_e8s(e8s / 10);
     println!("SRC will lock {} ICP.", lock_amount_icp);
 

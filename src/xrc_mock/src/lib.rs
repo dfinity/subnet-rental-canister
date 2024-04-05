@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use ic_cdk::update;
 
 #[update]

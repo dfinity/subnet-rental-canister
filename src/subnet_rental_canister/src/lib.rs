@@ -142,7 +142,7 @@ impl Storable for RentalAgreement {
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
     CallXRCFailed(ExchangeRateError),
-    UserAlreadyRequesting,
+    UserAlreadyRequestingSubnetRental,
     SubnetAlreadyRented,
     UnauthorizedCaller,
     InsufficientFunds,

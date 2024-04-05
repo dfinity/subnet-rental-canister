@@ -94,6 +94,7 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
 pub async fn transfer_to_src_main(
     source: Subaccount,
     amount: Tokens,
+    proposal_id: u64,
 ) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
@@ -102,8 +103,9 @@ pub async fn transfer_to_src_main(
             fee: DEFAULT_FEE,
             from_subaccount: Some(source),
             amount,
-            memo: Memo(0),
-            created_at_time: None, // TODO: set for deduplication
+            // deduplication
+            memo: Memo(proposal_id),
+            created_at_time: None,
         },
     )
     .await
@@ -173,7 +175,8 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(time: u64) -> Result<f64, Exc
 
 pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecuteProposalError> {
     // Transfer the ICP from the SRC to the CMC. The second fee is for the notify top-up.
-    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE).await;
+    let transfer_to_cmc_result =
+        call_with_retry(|| transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE)).await;
     let Ok(block_index) = transfer_to_cmc_result else {
         let e = transfer_to_cmc_result.unwrap_err();
         println!("Transfer from SRC to CMC failed: {:?}", e);
@@ -181,7 +184,7 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecutePropos
     };
 
     // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
-    let notify_top_up_result = notify_top_up(block_index).await;
+    let notify_top_up_result = call_with_retry(|| notify_top_up(block_index)).await;
     let Ok(actual_cycles) = notify_top_up_result else {
         let e = notify_top_up_result.unwrap_err();
         println!("Notify top-up failed: {:?}", e);
@@ -190,8 +193,9 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecutePropos
     Ok(actual_cycles)
 }
 
-/// Get the proposal id and the proposal creation time in seconds.
-pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
+/// Used for polling for the subnet creation proposal.
+pub async fn get_create_subnet_proposal() -> Result<(), String> {
+    // TODO
     let request = ListProposalInfo {
         include_reward_status: vec![],
         omit_large_fields: Some(true),
@@ -202,7 +206,7 @@ pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
         // We only want ProposalStatus::Adopted = 3
         include_status: vec![3],
     };
-    let ListProposalInfoResponse { proposal_info } =
+    let ListProposalInfoResponse { proposal_info: _ } =
         ic_cdk::call::<_, (ListProposalInfoResponse,)>(
             Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap(),
             "list_proposals",
@@ -212,16 +216,7 @@ pub async fn get_current_proposal_info() -> Result<(u64, u64), String> {
         // chance of synchronous errors is small on NNS subnet
         .expect("Failed to call GovernanceCanister")
         .0;
-    // with the correct, unique topic and the correct status, there should be exactly one result:
-    if proposal_info.is_empty() {
-        return Err("Found no active proposals, expected one".to_string());
-    } else if proposal_info.len() > 1 {
-        return Err("Found several matching proposals, expected one".to_string());
-    }
-    let proposal_info = proposal_info.get(0).unwrap();
-    let proposal_id = proposal_info.id.unwrap().id;
-    let proposal_creation_time_seconds = proposal_info.proposal_timestamp_seconds;
-    Ok((proposal_id, proposal_creation_time_seconds))
+    todo!()
 }
 
 // Since we might need to call a future several times, we need to pass a future generator.
@@ -229,11 +224,12 @@ pub async fn call_with_retry<Fut, R, E>(f: impl Fn() -> Fut) -> Result<R, E>
 where
     Fut: std::future::Future<Output = Result<R, E>>,
 {
-    let mut attempts = 3;
+    let attempts = 3;
+    let mut counter = 0;
     loop {
-        attempts -= 1;
+        counter += 1;
         let result: Result<R, E> = f().await;
-        if result.is_ok() || attempts <= 0 {
+        if result.is_ok() || counter >= attempts {
             return result;
         }
     }

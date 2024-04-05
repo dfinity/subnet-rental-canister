@@ -96,6 +96,7 @@ pub enum EventType {
     /// A successful transfer from the SRC/user subaccount to the SRC main account.
     TransferSuccess {
         amount: Tokens,
+        block_index: u64,
     },
     PaymentSuccess {
         amount: Tokens,
