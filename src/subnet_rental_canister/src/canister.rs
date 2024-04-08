@@ -152,7 +152,7 @@ pub fn get_history(user: Option<Principal>) -> Vec<Event> {
 //     })
 // }
 
-/// Calculate the prince of a subnet in ICP according to the current exchange rate.
+/// Calculate the price of a subnet in ICP according to the current exchange rate.
 #[query]
 pub fn get_current_price(id: RentalConditionId) -> Tokens {
     Tokens::from_e8s(0)
@@ -261,7 +261,9 @@ pub async fn execute_rental_request_proposal(
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
     let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
-    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time);
+    // the XRC canister has a resolution of seconds, the SRC in nanos.
+    let exchange_rate_query_time =
+        round_to_previous_midnight(proposal_creation_time) / 1_000_000_000;
     let res =
         call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time)).await;
     let Ok(exchange_rate_xdr_per_icp) = res else {

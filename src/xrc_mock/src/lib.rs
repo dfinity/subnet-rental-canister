@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap};
 
-use ic_cdk::update;
+use ic_cdk::{println, update};
 
 pub const XRC_REQUEST_CYCLES_COST: u128 = 1_000_000_000;
 
@@ -10,10 +10,10 @@ thread_local! {
 
 /// Set test data: [(time in seconds since epoch, (rate, decimals))]
 #[update]
-pub fn _set_exchange_rate_data(data: Vec<(u64, (u64, u64))>) {
+pub fn set_exchange_rate_data(data: Vec<(u64, (u64, u64))>) {
     DATA.with_borrow_mut(|map| {
         for (k, v) in data.into_iter() {
-            map.insert(k, v);
+            map.insert((k / 60) * 60, v);
         }
     })
 }
@@ -36,6 +36,11 @@ pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResu
 
     let Some((rate, decimals)) = DATA.with_borrow(|map| map.get(&timestamp).map(|x| x.clone()))
     else {
+        println!("requested timestamp: {}", timestamp);
+        println!(
+            "known times: {:?}",
+            DATA.with_borrow(|map| map.clone().into_iter())
+        );
         return GetExchangeRateResult::Err(ExchangeRateError::ForexInvalidTimestamp);
     };
 

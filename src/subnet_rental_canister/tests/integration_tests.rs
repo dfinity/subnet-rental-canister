@@ -169,11 +169,19 @@ fn test_initial_proposal() {
     )
     .unwrap();
 
+    // set an exchange rate for the current time
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let arg: Vec<(u64, (u64, u64))> = vec![(now, (12_503_823_284, 9))];
+    update::<()>(
+        &pic,
+        Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
+        None,
+        "set_exchange_rate_data",
+        arg,
+    );
+
     // create proposal
-    let now = std::time::SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as u64;
+    let now = now * 1_000_000_000;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
