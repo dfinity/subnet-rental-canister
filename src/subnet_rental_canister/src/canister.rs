@@ -183,25 +183,28 @@ async fn calculate_subnet_price(
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
 ) -> Result<Tokens, ExchangeRateError> {
-    // 2^128 > 10^38
-    // current rate < 10^11
-    //
-
     // call exchange rate canister
     let res = call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(time_secs)).await;
     let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
         println!("Fatal: Failed to get exchange rate");
         return Err(res.unwrap_err());
     };
-    // cost per initial period < 200_000 TC = 2 * 10^17
-    let needed_cycles = daily_cost_cycles * initial_rental_period_days as u128;
-    let e8s = needed_cycles as u128 * u128::pow(10, decimals)
-        / scaled_exchange_rate_xdr_per_icp as u128
-        / 10_000;
+    // 10_000 = trillion / 1e8
+    let needed_cycles = daily_cost_cycles.checked_mul(initial_rental_period_days as u128);
+    let e8s = needed_cycles
+        .and_then(|x| x.checked_mul(u128::pow(10, decimals)))
+        .and_then(|x| x.checked_div(scaled_exchange_rate_xdr_per_icp as u128))
+        .and_then(|x| x.checked_div(10_000));
+    let Some(e8s) = e8s else {
+        return Err(ExchangeRateError::Other {
+            code: 0,
+            description: format!("Failed to calculate ICP/XDR exchange rate: daily_cost_cycles: {}, initial_rent_period_days: {}, scaled_rate: {}, decimals: {}", daily_cost_cycles, initial_rental_period_days, scaled_exchange_rate_xdr_per_icp, decimals),
+        });
+    };
     let tokens = Tokens::from_e8s(e8s as u64);
     println!(
         "SRC requires {} cycles or {} ICP, according to exchange rate {}",
-        needed_cycles,
+        needed_cycles.unwrap(), // safe because we err out above
         tokens,
         scaled_exchange_rate_xdr_per_icp as f64 / u64::pow(10, decimals) as f64
     );
