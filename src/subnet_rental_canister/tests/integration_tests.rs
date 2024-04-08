@@ -171,7 +171,8 @@ fn test_initial_proposal() {
 
     // set an exchange rate for the current time
     let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let arg: Vec<(u64, (u64, u64))> = vec![(now, (12_503_823_284, 9))];
+    let midnight = now - now % 86400;
+    let arg: Vec<(u64, (u64, u64))> = vec![(midnight, (12_503_823_284, 9))];
     update::<()>(
         &pic,
         Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
