@@ -44,6 +44,12 @@ thread_local! {
     static HISTORY: RefCell<StableBTreeMap<Option<Principal>, History, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
+    // Memory region 3
+    // Cache for ICP/XDR exchange rates.
+    // The keys are timestamps in seconds since epoch (rounded to midnight).
+    // The values are (rate, decimal) where the rate is scaled by 10^decimals.
+    static RATES: RefCell<StableBTreeMap<u64, (u64, u32), VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
 }
 
 struct Locks {
@@ -105,6 +111,14 @@ pub fn get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
 
 pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
     RENTAL_AGREEMENTS.with_borrow(|map| map.iter().collect())
+}
+
+pub fn get_cached_rate(time: u64) -> Option<(u64, u32)> {
+    RATES.with_borrow(|map| map.get(&time))
+}
+
+pub fn cache_rate(time: u64, rate: u64, decimals: u32) {
+    RATES.with_borrow_mut(|map| map.insert(time, (rate, decimals)));
 }
 
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {

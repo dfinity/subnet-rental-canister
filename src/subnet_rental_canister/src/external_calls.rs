@@ -5,6 +5,7 @@ use ic_ledger_types::{
     MAINNET_LEDGER_CANISTER_ID,
 };
 
+use crate::canister_state::{cache_rate, get_cached_rate};
 use crate::external_canister_interfaces::exchange_rate_canister::{
     Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
     GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
@@ -13,10 +14,7 @@ use crate::external_canister_interfaces::exchange_rate_canister::{
 use crate::external_canister_interfaces::governance_canister::{
     ListProposalInfo, ListProposalInfoResponse, GOVERNANCE_CANISTER_PRINCIPAL_STR,
 };
-use crate::external_types::{
-    IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
-    SetAuthorizedSubnetworkListArgs,
-};
+use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
 // use ic_cdk::println;
 
@@ -30,7 +28,7 @@ pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
         },),
     )
     .await
-    // chance of synchronous errors is small on NNS subnet
+    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call CMC");
 }
 
@@ -48,7 +46,7 @@ pub async fn delist_principal(_subnet_id: candid::Principal, user: &Principal) {
         },),
     )
     .await
-    // chance of synchronous errors is small on NNS subnet
+    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call CMC");
 }
 
@@ -86,7 +84,7 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
         },
     )
     .await
-    // chance of synchronous errors is small on NNS subnet
+    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ledger canister")
 }
 
@@ -109,46 +107,30 @@ pub async fn transfer_to_src_main(
         },
     )
     .await
-    // chance of synchronous errors is small on NNS subnet
+    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ledger canister")
 }
 
-pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
-    let IcpXdrConversionRateResponse {
-        data: IcpXdrConversionRate {
-            xdr_permyriad_per_icp,
-            ..
-        },
-        ..
-    } = ic_cdk::call::<_, (IcpXdrConversionRateResponse,)>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "get_icp_xdr_conversion_rate",
-        (),
-    )
-    .await
-    // chance of synchronous errors is small on NNS subnet
-    .expect("Failed to call CMC")
-    .0;
-
-    xdr_permyriad_per_icp
-}
-
-/// Query the XDR/ICP exchange rate at the given time. Returns (rate, decimals), where the rate
-/// is scaled by 10^decimals
+/// Query the XDR/ICP exchange rate at the given time in seconds since epoch.
+/// Returns (rate, decimals), where the rate is scaled by 10^decimals.
 pub async fn get_exchange_rate_xdr_per_icp_at_time(
-    time: u64,
+    time_secs_since_epoch: u64,
 ) -> Result<(u64, u32), ExchangeRateError> {
+    // The SRC keeps a cache of exchange rates
+    if let Some(tup) = get_cached_rate(time_secs_since_epoch) {
+        return Ok(tup);
+    }
     let icp_asset = Asset {
         class: AssetClass::Cryptocurrency,
         symbol: String::from("ICP"),
     };
     let xdr_asset = Asset {
         class: AssetClass::FiatCurrency,
-        // the computed "CXDR" symbol is more likely to have a value than XDR.
+        // The computed "CXDR" symbol is more likely to have a value than XDR.
         symbol: String::from("CXDR"),
     };
     let request = GetExchangeRateRequest {
-        timestamp: Some(time),
+        timestamp: Some(time_secs_since_epoch),
         quote_asset: xdr_asset,
         base_asset: icp_asset,
     };
@@ -159,14 +141,17 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(
         10_000_000_000,
     )
     .await
-    // chance of synchronous errors is small on NNS subnet
+    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ExchangeRateCanister");
     match response.0 {
         GetExchangeRateResult::Ok(ExchangeRate {
             metadata: ExchangeRateMetadata { decimals, .. },
             rate,
             ..
-        }) => Ok((rate, decimals)),
+        }) => {
+            cache_rate(time_secs_since_epoch, rate, decimals);
+            Ok((rate, decimals))
+        }
         GetExchangeRateResult::Err(e) => Err(e),
     }
 }
@@ -211,7 +196,7 @@ pub async fn get_create_subnet_proposal() -> Result<(), String> {
             (request,),
         )
         .await
-        // chance of synchronous errors is small on NNS subnet
+        // The chance of synchronous errors is small on NNS subnet
         .expect("Failed to call GovernanceCanister")
         .0;
     todo!()

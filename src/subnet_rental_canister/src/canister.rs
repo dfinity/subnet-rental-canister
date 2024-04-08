@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::canister_state::{
     self, create_rental_request, get_rental_agreement, get_rental_conditions, get_rental_request,
     insert_rental_condition, iter_rental_conditions, iter_rental_requests, CallerGuard,
@@ -12,7 +14,7 @@ use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
 };
-use crate::{ExecuteProposalError, RentalRequest, SubnetRentalProposalPayload};
+use crate::{ExecuteProposalError, RentalRequest, SubnetRentalProposalPayload, BILLION};
 use candid::Principal;
 use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
@@ -23,6 +25,15 @@ use ic_ledger_types::{Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANIST
 #[init]
 fn init() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
+
+    // Timer to populate the exchange rate cache.
+    ic_cdk_timers::set_timer_interval(Duration::from_secs(86400), || {
+        ic_cdk::spawn(async {
+            let now_secs = ic_cdk::api::time() / BILLION;
+            let prev_midnight = round_to_previous_midnight(now_secs);
+            let _res = get_exchange_rate_xdr_per_icp_at_time(prev_midnight).await;
+        })
+    });
 
     // Persist initial rental conditions in history.
     let initial_conditions = [(
@@ -156,9 +167,9 @@ pub fn get_history(user: Option<Principal>) -> Vec<Event> {
 //     })
 // }
 
-/// Calculate the price of a subnet in ICP according to the current exchange rate.
+/// Calculate the price of a subnet in ICP according to the exchange rate at the previous UTC midnight.
 #[query]
-pub async fn get_current_price(id: RentalConditionId) -> Result<Tokens, String> {
+pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     let Some(RentalConditions {
         description: _,
         subnet_id: _,
@@ -169,8 +180,10 @@ pub async fn get_current_price(id: RentalConditionId) -> Result<Tokens, String> 
     else {
         return Err("RentalConditionId not found".to_string());
     };
-    let now = ic_cdk::api::time() / 1_000_000_000;
-    let res = calculate_subnet_price(now, daily_cost_cycles, initial_rental_period_days).await;
+    let now_secs = ic_cdk::api::time() / BILLION;
+    let prev_midnight = round_to_previous_midnight(now_secs);
+    let res =
+        calculate_subnet_price(prev_midnight, daily_cost_cycles, initial_rental_period_days).await;
     match res {
         Ok(tokens) => Ok(tokens),
         Err(e) => Err(format!("Failed to calculate price: {:?}", e)),
@@ -183,13 +196,13 @@ async fn calculate_subnet_price(
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
 ) -> Result<Tokens, ExchangeRateError> {
-    // call exchange rate canister
+    // Call exchange rate canister.
     let res = call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(time_secs)).await;
     let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
         println!("Fatal: Failed to get exchange rate");
         return Err(res.unwrap_err());
     };
-    // 10_000 = trillion / 1e8
+    // Factor of 10_000 = trillion / 1e8.
     let needed_cycles = daily_cost_cycles.checked_mul(initial_rental_period_days as u128);
     let e8s = needed_cycles
         .and_then(|x| x.checked_mul(u128::pow(10, decimals)))
@@ -204,7 +217,7 @@ async fn calculate_subnet_price(
     let tokens = Tokens::from_e8s(e8s as u64);
     println!(
         "SRC requires {} cycles or {} ICP, according to exchange rate {}",
-        needed_cycles.unwrap(), // safe because we err out above
+        needed_cycles.unwrap(), // Safe because we err out above.
         tokens,
         scaled_exchange_rate_xdr_per_icp as f64 / u64::pow(10, decimals) as f64
     );
@@ -494,6 +507,6 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
     Ok(())
 }
 
-fn round_to_previous_midnight(time: u64) -> u64 {
-    time - time % 86400
+fn round_to_previous_midnight(time_secs: u64) -> u64 {
+    time_secs - time_secs % 86400
 }
