@@ -23,7 +23,7 @@ thread_local! {
     static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionId, RentalConditions>> =
         RefCell::new(HashMap::new());
 
-    static LOCKS: RefCell<Locks> = RefCell::new(Locks{ids: BTreeSet::new()});
+    static LOCKS: RefCell<Locks> = const {RefCell::new(Locks{ids: BTreeSet::new()}) };
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));

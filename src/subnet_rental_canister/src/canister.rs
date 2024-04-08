@@ -25,7 +25,7 @@ fn init() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 
     // Persist initial rental conditions in history.
-    let initial_conditions = vec![(
+    let initial_conditions = [(
         RentalConditionId::App13CH,
         RentalConditions {
             description: "All nodes must be in Switzerland.".to_string(),
