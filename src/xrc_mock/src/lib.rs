@@ -1,6 +1,22 @@
+use std::{cell::RefCell, collections::HashMap};
+
 use ic_cdk::update;
 
 pub const XRC_REQUEST_CYCLES_COST: u128 = 1_000_000_000;
+
+thread_local! {
+    static DATA: RefCell<HashMap<u64, (u64, u64)>> = RefCell::new(HashMap::new());
+}
+
+/// Set test data: [(time in seconds since epoch, (rate, decimals))]
+#[update]
+pub fn _set_exchange_rate_data(data: Vec<(u64, (u64, u64))>) {
+    DATA.with_borrow_mut(|map| {
+        for (k, v) in data.into_iter() {
+            map.insert(k, v);
+        }
+    })
+}
 
 #[update]
 pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResult {
@@ -15,16 +31,16 @@ pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResu
         base_asset,
     } = request;
 
-    let timestamp = if let Some(timestamp) = timestamp {
-        timestamp
-    } else {
-        let ts = ic_cdk::api::time();
-        ts - ts % 86400
+    let timestamp =
+        (timestamp.unwrap_or_else(|| (ic_cdk::api::time().saturating_sub(30))) / 60) * 60;
+
+    let Some((rate, decimals)) = DATA.with_borrow(|map| map.get(&timestamp).map(|x| x.clone()))
+    else {
+        return GetExchangeRateResult::Err(ExchangeRateError::ForexInvalidTimestamp);
     };
 
-    // for now, hardcode result
     let metadata = ExchangeRateMetadata {
-        decimals: 9,
+        decimals: decimals as u32,
         forex_timestamp: None,
         quote_asset_num_received_rates: 0,
         base_asset_num_received_rates: 0,
@@ -35,7 +51,7 @@ pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResu
 
     let exchange_rate = ExchangeRate {
         metadata,
-        rate: 12_503_823_284,
+        rate,
         timestamp,
         quote_asset,
         base_asset,

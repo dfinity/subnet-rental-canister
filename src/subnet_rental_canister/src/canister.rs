@@ -152,6 +152,12 @@ pub fn get_history(user: Option<Principal>) -> Vec<Event> {
 //     })
 // }
 
+/// Calculate the prince of a subnet in ICP according to the current exchange rate.
+#[query]
+pub fn get_current_price(id: RentalConditionId) -> Tokens {
+    Tokens::from_e8s(0)
+}
+
 ////////// UPDATE METHODS //////////
 
 // #[update]
