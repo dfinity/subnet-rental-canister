@@ -1,18 +1,14 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use external_types::NotifyError;
-// use ic_cdk::println;
-
 use ic_ledger_types::{Memo, TransferError};
 use ic_stable_structures::{storable::Bound, Storable};
-
 use std::borrow::Cow;
 
 pub mod canister;
 pub mod canister_state;
 pub mod external_calls;
 pub mod external_canister_interfaces;
-
 pub mod external_types;
 pub mod history;
 
