@@ -128,8 +128,11 @@ pub fn list_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
 }
 
 #[query]
-pub fn list_rental_requests() -> Vec<(Principal, RentalRequest)> {
+pub fn list_rental_requests() -> Vec<RentalRequest> {
     iter_rental_requests()
+        .into_iter()
+        .map(|(_k, v)| v)
+        .collect()
 }
 
 #[query]
