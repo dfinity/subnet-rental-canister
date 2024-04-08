@@ -6,6 +6,7 @@ use crate::external_calls::{
     call_with_retry, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
     transfer_to_src_main,
 };
+use crate::external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use crate::history::Event;
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
@@ -154,8 +155,45 @@ pub fn get_history(user: Option<Principal>) -> Vec<Event> {
 
 /// Calculate the price of a subnet in ICP according to the current exchange rate.
 #[query]
-pub fn get_current_price(id: RentalConditionId) -> Tokens {
-    Tokens::from_e8s(0)
+pub async fn get_current_price(id: RentalConditionId) -> Result<Tokens, String> {
+    let Some(RentalConditions {
+        description: _,
+        subnet_id: _,
+        daily_cost_cycles,
+        initial_rental_period_days,
+        billing_period_days: _,
+    }) = get_rental_conditions(id)
+    else {
+        return Err("RentalConditionId not found".to_string());
+    };
+    let now = ic_cdk::api::time() / 1_000_000_000;
+    let res = calculate_subnet_price(now, daily_cost_cycles, initial_rental_period_days).await;
+    match res {
+        Ok(tokens) => Ok(tokens),
+        Err(e) => Err(format!("Failed to calculate price: {:?}", e)),
+    }
+}
+
+// Used both for public endpoint and proposal execution
+async fn calculate_subnet_price(
+    time_secs: u64,
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+) -> Result<Tokens, ExchangeRateError> {
+    // call exchange rate canister
+    let res = call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(time_secs)).await;
+    let Ok(exchange_rate_xdr_per_icp) = res else {
+        println!("Fatal: Failed to get exchange rate");
+        return Err(res.unwrap_err());
+    };
+    let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
+    let e8s = (needed_cycles as f64 / exchange_rate_xdr_per_icp) as u64 / 10_000;
+    let tokens = Tokens::from_e8s(e8s);
+    println!(
+        "SRC requires {} cycles or {} ICP, according to exchange rate {}",
+        needed_cycles, tokens, exchange_rate_xdr_per_icp
+    );
+    Ok(tokens)
 }
 
 ////////// UPDATE METHODS //////////
@@ -260,25 +298,21 @@ pub async fn execute_rental_request_proposal(
 
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
-    let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
     // the XRC canister has a resolution of seconds, the SRC in nanos.
     let exchange_rate_query_time =
         round_to_previous_midnight(proposal_creation_time) / 1_000_000_000;
-    let res =
-        call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time)).await;
-    let Ok(exchange_rate_xdr_per_icp) = res else {
+
+    let res = calculate_subnet_price(
+        exchange_rate_query_time,
+        daily_cost_cycles,
+        initial_rental_period_days,
+    )
+    .await;
+    let Ok(needed_icp) = res else {
         println!("Fatal: Failed to get exchange rate");
         let e = ExecuteProposalError::CallXRCFailed(res.unwrap_err());
         return with_error(user, proposal_id, e);
     };
-
-    // trillion / e8 = 10_000
-    let e8s = (needed_cycles as f64 / exchange_rate_xdr_per_icp) as u64 / 10_000;
-    let needed_icp = Tokens::from_e8s(e8s);
-    println!(
-        "SRC requires {} cycles or {} ICP, according to exchange rate {}",
-        needed_cycles, needed_icp, exchange_rate_xdr_per_icp
-    );
 
     // Transfer from user-derived subaccount to SRC main. The proposal id is used as the Memo.
     let res = call_with_retry(|| {
@@ -304,7 +338,7 @@ pub async fn execute_rental_request_proposal(
     );
 
     // Lock 10% by converting to cycles
-    let lock_amount_icp = Tokens::from_e8s(e8s / 10);
+    let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
     println!("SRC will lock {} ICP.", lock_amount_icp);
 
     let res = convert_icp_to_cycles(lock_amount_icp).await;
