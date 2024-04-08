@@ -183,18 +183,27 @@ async fn calculate_subnet_price(
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
 ) -> Result<Tokens, ExchangeRateError> {
+    // 2^128 > 10^38
+    // current rate < 10^11
+    //
+
     // call exchange rate canister
     let res = call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(time_secs)).await;
-    let Ok(exchange_rate_xdr_per_icp) = res else {
+    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
         println!("Fatal: Failed to get exchange rate");
         return Err(res.unwrap_err());
     };
-    let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
-    let e8s = (needed_cycles as f64 / exchange_rate_xdr_per_icp) as u64 / 10_000;
-    let tokens = Tokens::from_e8s(e8s);
+    // cost per initial period < 200_000 TC = 2 * 10^17
+    let needed_cycles = daily_cost_cycles * initial_rental_period_days as u128;
+    let e8s = needed_cycles as u128 * u128::pow(10, decimals)
+        / scaled_exchange_rate_xdr_per_icp as u128
+        / 10_000;
+    let tokens = Tokens::from_e8s(e8s as u64);
     println!(
         "SRC requires {} cycles or {} ICP, according to exchange rate {}",
-        needed_cycles, tokens, exchange_rate_xdr_per_icp
+        needed_cycles,
+        tokens,
+        scaled_exchange_rate_xdr_per_icp as f64 / u64::pow(10, decimals) as f64
     );
     Ok(tokens)
 }

@@ -133,8 +133,11 @@ pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
     xdr_permyriad_per_icp
 }
 
-/// Query the XDR/ICP exchange rate at the given time
-pub async fn get_exchange_rate_xdr_per_icp_at_time(time: u64) -> Result<f64, ExchangeRateError> {
+/// Query the XDR/ICP exchange rate at the given time. Returns (rate, decimals), where the rate
+/// is scaled by 10^decimals
+pub async fn get_exchange_rate_xdr_per_icp_at_time(
+    time: u64,
+) -> Result<(u64, u32), ExchangeRateError> {
     let icp_asset = Asset {
         class: AssetClass::Cryptocurrency,
         symbol: String::from("ICP"),
@@ -163,12 +166,7 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(time: u64) -> Result<f64, Exc
             metadata: ExchangeRateMetadata { decimals, .. },
             rate,
             ..
-        }) => {
-            // The rate is a scaled integer. The scaling factor is 10^decimals.
-            let scale = u64::pow(10, decimals);
-            let res = rate as f64 / scale as f64;
-            Ok(res)
-        }
+        }) => Ok((rate, decimals)),
         GetExchangeRateResult::Err(e) => Err(e),
     }
 }
