@@ -147,8 +147,8 @@ pub fn list_rental_requests() -> Vec<RentalRequest> {
 }
 
 #[query]
-pub fn get_history(user: Option<Principal>) -> Vec<Event> {
-    let mut res = canister_state::get_history(user);
+pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
+    let mut res = canister_state::get_history(principal);
     res.sort_by_key(|event| event.date());
     res
 }
@@ -156,15 +156,6 @@ pub fn get_history(user: Option<Principal>) -> Vec<Event> {
 // #[query]
 // pub fn list_rental_agreements() -> Vec<RentalAgreement> {
 //     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
-// }
-
-// #[query]
-// pub fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
-//     HISTORY.with(|map| {
-//         map.borrow()
-//             .get(&subnet.into())
-//             .map(|history| history.events)
-//     })
 // }
 
 /// Calculate the price of a subnet in ICP according to the exchange rate at the previous UTC midnight.
@@ -225,40 +216,6 @@ async fn calculate_subnet_price(
 }
 
 ////////// UPDATE METHODS //////////
-
-// #[update]
-// pub async fn terminate_rental_agreement(
-//     RentalTerminationProposal { subnet_id }: RentalTerminationProposal,
-// ) -> Result<(), ExecuteProposalError> {
-//     // delist all principals from whitelists
-//     // remove all entries in this canister
-//     // persist in history
-//     verify_caller_is_governance()?;
-//     if let Some(RentalAgreement {
-//         user,
-//         subnet_id: _subnet_id,
-//         principals,
-//         creation_date: _creation_date,
-//     }) = RENTAL_AGREEMENTS.with(|map| map.borrow_mut().get(&subnet_id.into()))
-//     {
-//         delist_principals(
-//             subnet_id,
-//             &principals
-//                 .into_iter()
-//                 .chain(std::iter::once(user))
-//                 .unique()
-//                 .map(|p| p)
-//                 .collect(),
-//         )
-//         .await;
-//         // TODO: possibly degrade subnet if not degraded yet
-//         delete_rental_agreement(subnet_id.into());
-//     } else {
-//         println!("Error: Termination proposal contains a subnet_id that is not in an active rental agreement: {}", subnet_id);
-//         return Err(ExecuteProposalError::SubnetNotRented);
-//     }
-//     Ok(())
-// }
 
 #[update]
 pub async fn execute_rental_request_proposal(

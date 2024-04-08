@@ -16,7 +16,7 @@ use crate::external_canister_interfaces::governance_canister::{
 };
 use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
-// use ic_cdk::println;
+use ic_cdk::println;
 
 pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
     ic_cdk::call::<_, ()>(
@@ -25,24 +25,6 @@ pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
         (SetAuthorizedSubnetworkListArgs {
             who: Some(*user),
             subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
-        },),
-    )
-    .await
-    // The chance of synchronous errors is small on NNS subnet
-    .expect("Failed to call CMC");
-}
-
-pub async fn delist_principal(_subnet_id: candid::Principal, user: &Principal) {
-    // TODO: if we allow multiple subnets per user:
-    // first read the current list,
-    // remove this subnet from the list and then
-    // re-whitelist the principal for the remaining list
-    ic_cdk::call::<_, ()>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "set_authorized_subnetwork_list",
-        (SetAuthorizedSubnetworkListArgs {
-            who: Some(*user),
-            subnets: vec![],
         },),
     )
     .await
@@ -60,7 +42,8 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
         },),
     )
     .await
-    .expect("Failed to call CMC") // TODO: handle error
+    // The chance of synchronous errors is small on NNS subnet
+    .expect("Failed to call CMC")
     .0
     // TODO: In the canister logs, the CMC claims that the burning of ICPs failed, but the cycles are minted anyway.
     // It states that the "transfer fee should be 0.00010000 Token", but that fee is hardcoded to
@@ -202,7 +185,7 @@ pub async fn get_create_subnet_proposal() -> Result<(), String> {
     todo!()
 }
 
-// Since we might need to call a future several times, we need to pass a future generator.
+// Since we might need to repeat a call several times, we need to pass a future generator, not a future.
 pub async fn call_with_retry<Fut, R, E>(f: impl Fn() -> Fut) -> Result<R, E>
 where
     Fut: std::future::Future<Output = Result<R, E>>,

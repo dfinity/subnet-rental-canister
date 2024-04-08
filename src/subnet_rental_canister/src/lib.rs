@@ -15,7 +15,6 @@ pub mod external_canister_interfaces;
 
 pub mod external_types;
 pub mod history;
-mod http_request;
 
 pub const BILLION: u64 = 1_000_000_000;
 pub const TRILLION: u128 = 1_000_000_000_000;

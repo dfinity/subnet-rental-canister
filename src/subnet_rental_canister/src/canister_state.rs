@@ -222,32 +222,3 @@ pub fn create_rental_agreement(
         }
     })
 }
-
-// Rental agreements have an associated BillingAccount, which must be removed at the same time.
-// TODO: only call this if agreement exists...
-// fn delete_rental_agreement(subnet_id: Principal) {
-//     let rental_agreement =
-//         RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
-//     // let billing_record = BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
-//     persist_event(
-//         EventType::Terminated {
-//             rental_agreement,
-//             // billing_record,
-//         },
-//         subnet_id,
-//     );
-// }
-
-// Pass one of the global StableBTreeMaps and a function that transforms a value.
-// pub fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
-// where
-//     K: Storable + Ord + Clone,
-//     V: Storable,
-//     M: Memory,
-// {
-//     let keys: Vec<K> = map.borrow().iter().map(|(k, _v)| k).collect();
-//     for key in keys {
-//         let value = map.borrow().get(&key).unwrap();
-//         map.borrow_mut().insert(key.clone(), f(key, value));
-//     }
-// }
