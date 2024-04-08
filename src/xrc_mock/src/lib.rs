@@ -34,8 +34,7 @@ pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResu
     let timestamp =
         (timestamp.unwrap_or_else(|| (ic_cdk::api::time().saturating_sub(30))) / 60) * 60;
 
-    let Some((rate, decimals)) = DATA.with_borrow(|map| map.get(&timestamp).map(|x| x.clone()))
-    else {
+    let Some((rate, decimals)) = DATA.with_borrow(|map| map.get(&timestamp).copied()) else {
         println!("requested timestamp: {}", timestamp);
         println!(
             "known times: {:?}",

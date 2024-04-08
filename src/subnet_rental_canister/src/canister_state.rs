@@ -58,12 +58,12 @@ pub struct CallerGuard {
 }
 
 impl CallerGuard {
-    pub fn new(principal: Principal, tag: &'static str) -> Result<Self, ()> {
+    pub fn new(principal: Principal, tag: &'static str) -> Result<Self, String> {
         let id = (principal, tag);
         LOCKS.with_borrow_mut(|locks| {
             let held_locks = &mut locks.ids;
             if held_locks.contains(&id) {
-                return Err(());
+                return Err("Failed to acquire lock".to_string());
             }
             held_locks.insert(id);
             Ok(Self { id })
