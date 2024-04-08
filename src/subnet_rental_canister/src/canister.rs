@@ -190,7 +190,7 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     }
 }
 
-// Used both for public endpoint and proposal execution
+// Used both for public endpoint 'get_todays_price' and proposal execution.
 async fn calculate_subnet_price(
     time_secs: u64,
     daily_cost_cycles: u128,
@@ -327,8 +327,7 @@ pub async fn execute_rental_request_proposal(
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
     // the XRC canister has a resolution of seconds, the SRC in nanos.
-    let exchange_rate_query_time =
-        round_to_previous_midnight(proposal_creation_time) / 1_000_000_000;
+    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time / BILLION);
 
     let res = calculate_subnet_price(
         exchange_rate_query_time,
