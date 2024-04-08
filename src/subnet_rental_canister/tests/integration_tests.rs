@@ -205,7 +205,6 @@ fn test_initial_proposal() {
         "execute_rental_request_proposal",
         payload,
     );
-    assert!(res.is_err());
     assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequestingSubnetRental);
 
     // assert state is as expected
@@ -224,8 +223,8 @@ fn test_initial_proposal() {
         Some(user_principal),
     );
     // think of a better test than length
-    assert!(src_history.len() == 1);
-    assert!(user_history.len() == 3);
+    assert_eq!(src_history.len(), 1);
+    assert_eq!(user_history.len(), 3);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
@@ -237,8 +236,8 @@ fn test_initial_proposal() {
         creation_date: _,
         rental_condition_id,
     } = rental_requests[0];
-    assert!(user == user_principal);
-    assert!(rental_condition_id == RentalConditionId::App13CH);
+    assert_eq!(user, user_principal);
+    assert_eq!(rental_condition_id, RentalConditionId::App13CH);
 }
 
 // #[test]
@@ -330,7 +329,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         "execute_rental_request_proposal",
         payload,
     );
-    assert!(res.unwrap_err() == ExecuteProposalError::UnauthorizedCaller);
+    assert_eq!(res.unwrap_err(), ExecuteProposalError::UnauthorizedCaller);
 }
 
 // fn accept_test_rental_agreement(
