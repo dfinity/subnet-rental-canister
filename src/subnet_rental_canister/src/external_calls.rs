@@ -12,7 +12,8 @@ use crate::external_canister_interfaces::exchange_rate_canister::{
 };
 
 use crate::external_canister_interfaces::governance_canister::{
-    ListProposalInfo, ListProposalInfoResponse, ProposalInfo, GOVERNANCE_CANISTER_PRINCIPAL_STR,
+    Action, ExecuteNnsFunction, ListProposalInfo, ListProposalInfoResponse, ProposalInfo,
+    GOVERNANCE_CANISTER_PRINCIPAL_STR,
 };
 use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
@@ -189,8 +190,10 @@ fn match_create_subnet_proposal(
     let proposal = proposal_info.proposal?;
     let action = proposal.action?;
     match action {
-        Action::ExecuteNnsFunction(ExecuteNnsFunction),
-
+        Action::ExecuteNnsFunction(ExecuteNnsFunction {
+            nns_function,
+            payload,
+        }) => None,
+        _ => None,
     }
-    None
 }
