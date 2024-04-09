@@ -28,7 +28,6 @@ pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
         },),
     )
     .await
-    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call CMC");
 }
 
@@ -42,7 +41,6 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
         },),
     )
     .await
-    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call CMC")
     .0
     // TODO: In the canister logs, the CMC claims that the burning of ICPs failed, but the cycles are minted anyway.
@@ -67,7 +65,6 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
         },
     )
     .await
-    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ledger canister")
 }
 
@@ -90,7 +87,6 @@ pub async fn transfer_to_src_main(
         },
     )
     .await
-    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ledger canister")
 }
 
@@ -125,7 +121,6 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(
         10_000_000_000,
     )
     .await
-    // The chance of synchronous errors is small on NNS subnet
     .expect("Failed to call ExchangeRateCanister");
     match response.0 {
         GetExchangeRateResult::Ok(ExchangeRate {
@@ -142,8 +137,7 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(
 
 pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecuteProposalError> {
     // Transfer the ICP from the SRC to the CMC. The second fee is for the notify top-up.
-    let transfer_to_cmc_result =
-        call_with_retry(|| transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE)).await;
+    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE).await;
     let Ok(block_index) = transfer_to_cmc_result else {
         let e = transfer_to_cmc_result.unwrap_err();
         println!("Transfer from SRC to CMC failed: {:?}", e);
@@ -151,7 +145,7 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecutePropos
     };
 
     // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
-    let notify_top_up_result = call_with_retry(|| notify_top_up(block_index)).await;
+    let notify_top_up_result = notify_top_up(block_index).await;
     let Ok(actual_cycles) = notify_top_up_result else {
         let e = notify_top_up_result.unwrap_err();
         println!("Notify top-up failed: {:?}", e);
@@ -180,24 +174,7 @@ pub async fn get_create_subnet_proposal() -> Result<(), String> {
             (request,),
         )
         .await
-        // The chance of synchronous errors is small on NNS subnet
         .expect("Failed to call GovernanceCanister")
         .0;
     todo!()
-}
-
-// Since we might need to repeat a call several times, we need to pass a future generator, not a future.
-pub async fn call_with_retry<Fut, R, E>(f: impl Fn() -> Fut) -> Result<R, E>
-where
-    Fut: std::future::Future<Output = Result<R, E>>,
-{
-    let attempts = 3;
-    let mut counter = 0;
-    loop {
-        counter += 1;
-        let result: Result<R, E> = f().await;
-        if result.is_ok() || counter >= attempts {
-            return result;
-        }
-    }
 }

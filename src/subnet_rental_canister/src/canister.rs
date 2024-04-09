@@ -5,8 +5,7 @@ use crate::canister_state::{
     insert_rental_condition, iter_rental_conditions, iter_rental_requests, CallerGuard,
 };
 use crate::external_calls::{
-    call_with_retry, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
-    transfer_to_src_main,
+    convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, transfer_to_src_main,
 };
 use crate::external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use crate::history::Event;
@@ -183,7 +182,7 @@ async fn calculate_subnet_price(
     initial_rental_period_days: u64,
 ) -> Result<Tokens, ExchangeRateError> {
     // Call exchange rate canister.
-    let res = call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(time_secs)).await;
+    let res = get_exchange_rate_xdr_per_icp_at_time(time_secs).await;
     let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
         println!("Fatal: Failed to get exchange rate");
         return Err(res.unwrap_err());
@@ -297,10 +296,7 @@ pub async fn execute_rental_request_proposal(
     };
 
     // Transfer from user-derived subaccount to SRC main. The proposal id is used as the Memo.
-    let res = call_with_retry(|| {
-        transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id)
-    })
-    .await;
+    let res = transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id).await;
     let Ok(block_index) = res else {
         println!("Fatal: Failed to transfer enough ICP to SRC main account");
         let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
