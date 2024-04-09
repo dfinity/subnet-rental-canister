@@ -186,7 +186,20 @@ pub async fn get_create_subnet_proposal() -> Result<(), String> {
     Ok(())
 }
 
-fn match_create_subnet_proposal(proposal_info: ProposalInfo) -> () {}
+/// Check if the given proposalinfo is a CreateSubnet proposal we are interested in.
+/// Returns the subnet_id of the newly created subnet.
+fn match_create_subnet_proposal(
+    initial_proposal_id: u64,
+    proposal_info: ProposalInfo,
+) -> Option<Principal> {
+    let proposal = proposal_info.proposal?;
+    let action = proposal.action?;
+    match action {
+        Action::ExecuteNnsFunction(ExecuteNnsFunction),
+
+    }
+    None
+}
 
 // Since we might need to repeat a call several times, we need to pass a future generator, not a future.
 pub async fn call_with_retry<Fut, R, E>(f: impl Fn() -> Fut) -> Result<R, E>
