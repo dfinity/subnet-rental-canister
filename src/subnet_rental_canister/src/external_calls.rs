@@ -12,7 +12,7 @@ use crate::external_canister_interfaces::exchange_rate_canister::{
 };
 
 use crate::external_canister_interfaces::governance_canister::{
-    ListProposalInfo, ListProposalInfoResponse, GOVERNANCE_CANISTER_PRINCIPAL_STR,
+    ListProposalInfo, ListProposalInfoResponse, ProposalInfo, GOVERNANCE_CANISTER_PRINCIPAL_STR,
 };
 use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
@@ -161,18 +161,18 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecutePropos
 
 /// Used for polling for the subnet creation proposal.
 pub async fn get_create_subnet_proposal() -> Result<(), String> {
-    // TODO
     let request = ListProposalInfo {
         include_reward_status: vec![],
         omit_large_fields: Some(true),
         before_proposal: None,
         limit: 100,
-        exclude_topic: vec![],
+        // We only want SubnetManagement = 7
+        exclude_topic: vec![0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15],
         include_all_manage_neuron_proposals: Some(true),
-        // We only want ProposalStatus::Adopted = 3
-        include_status: vec![3],
+        // We only want ProposalStatus::Executed = 4 (Failed 5, Rejected 2)
+        include_status: vec![4],
     };
-    let ListProposalInfoResponse { proposal_info: _ } =
+    let ListProposalInfoResponse { proposal_info } =
         ic_cdk::call::<_, (ListProposalInfoResponse,)>(
             Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap(),
             "list_proposals",
@@ -182,8 +182,11 @@ pub async fn get_create_subnet_proposal() -> Result<(), String> {
         // The chance of synchronous errors is small on NNS subnet
         .expect("Failed to call GovernanceCanister")
         .0;
-    todo!()
+
+    Ok(())
 }
+
+fn match_create_subnet_proposal(proposal_info: ProposalInfo) -> () {}
 
 // Since we might need to repeat a call several times, we need to pass a future generator, not a future.
 pub async fn call_with_retry<Fut, R, E>(f: impl Fn() -> Fut) -> Result<R, E>
