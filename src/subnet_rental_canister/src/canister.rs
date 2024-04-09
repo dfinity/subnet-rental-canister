@@ -5,8 +5,7 @@ use crate::canister_state::{
     insert_rental_condition, iter_rental_conditions, iter_rental_requests, CallerGuard,
 };
 use crate::external_calls::{
-    call_with_retry, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
-    transfer_to_src_main,
+    convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, transfer_to_src_main,
 };
 use crate::external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use crate::history::Event;
@@ -35,29 +34,7 @@ fn init() {
         })
     });
 
-    // Persist initial rental conditions in history.
-    let initial_conditions = [(
-        RentalConditionId::App13CH,
-        RentalConditions {
-            description: "All nodes must be in Switzerland.".to_string(),
-            subnet_id: None,
-            daily_cost_cycles: 835 * TRILLION,
-            initial_rental_period_days: 180,
-            billing_period_days: 30,
-        },
-    )];
-    for (k, v) in initial_conditions.iter() {
-        println!("Created initial rental condition {:?}: {:?}", k, v);
-        insert_rental_condition(*k, v.clone());
-        persist_event(
-            EventType::RentalConditionsChanged {
-                rental_condition_id: *k,
-                rental_conditions: Some(v.clone()),
-            },
-            // Associate events that might belong to no subnet with None.
-            None,
-        );
-    }
+    set_initial_conditions();
     println!("Subnet rental canister initialized");
 }
 
@@ -65,18 +42,7 @@ fn init() {
 fn post_upgrade() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 
-    // Persist all rental conditions in the history
-    for (k, v) in iter_rental_conditions().iter() {
-        println!("Loaded rental condition {:?}: {:?}", k, v);
-        persist_event(
-            EventType::RentalConditionsChanged {
-                rental_condition_id: *k,
-                rental_conditions: Some(v.clone()),
-            },
-            // Associate events that might belong to no subnet with None.
-            None,
-        );
-    }
+    set_initial_conditions();
 }
 
 // #[heartbeat]
@@ -131,6 +97,32 @@ fn post_upgrade() {
 // });
 // }
 
+/// Persist initial rental conditions in global map and history.
+fn set_initial_conditions() {
+    let initial_conditions = [(
+        RentalConditionId::App13CH,
+        RentalConditions {
+            description: "All nodes must be in Switzerland.".to_string(),
+            subnet_id: None,
+            daily_cost_cycles: 835 * TRILLION,
+            initial_rental_period_days: 180,
+            billing_period_days: 30,
+        },
+    )];
+    for (k, v) in initial_conditions.iter() {
+        println!("Created initial rental condition {:?}: {:?}", k, v);
+        insert_rental_condition(*k, v.clone());
+        persist_event(
+            EventType::RentalConditionsChanged {
+                rental_condition_id: *k,
+                rental_conditions: Some(v.clone()),
+            },
+            // Associate events that might belong to no subnet with None.
+            None,
+        );
+    }
+}
+
 ////////// QUERY METHODS //////////
 
 #[query]
@@ -158,8 +150,10 @@ pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
 //     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
 // }
 
+////////// UPDATE METHODS //////////
+
 /// Calculate the price of a subnet in ICP according to the exchange rate at the previous UTC midnight.
-#[query]
+#[update]
 pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     let Some(RentalConditions {
         description: _,
@@ -188,12 +182,17 @@ async fn calculate_subnet_price(
     initial_rental_period_days: u64,
 ) -> Result<Tokens, ExchangeRateError> {
     // Call exchange rate canister.
-    let res = call_with_retry(|| get_exchange_rate_xdr_per_icp_at_time(time_secs)).await;
+    let res = get_exchange_rate_xdr_per_icp_at_time(time_secs).await;
     let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
         println!("Fatal: Failed to get exchange rate");
         return Err(res.unwrap_err());
     };
-    // Factor of 10_000 = trillion / 1e8.
+
+    // ICP needed = cycles needed / cycles_per_icp
+    //            = cycles needed / (scaled_rate / 10^decimals)
+    //            = cycles needed * 10^decimals / scaled_rate
+    // Factor of 10_000 = trillion / 1e8 to go from trillion cycles (XDR) to 10^-8 ICP (e8s).
+    // The divisions are performed at the end so that accuracy is lost at the very end (if at all).
     let needed_cycles = daily_cost_cycles.checked_mul(initial_rental_period_days as u128);
     let e8s = needed_cycles
         .and_then(|x| x.checked_mul(u128::pow(10, decimals)))
@@ -214,8 +213,6 @@ async fn calculate_subnet_price(
     );
     Ok(tokens)
 }
-
-////////// UPDATE METHODS //////////
 
 #[update]
 pub async fn execute_rental_request_proposal(
@@ -299,10 +296,7 @@ pub async fn execute_rental_request_proposal(
     };
 
     // Transfer from user-derived subaccount to SRC main. The proposal id is used as the Memo.
-    let res = call_with_retry(|| {
-        transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id)
-    })
-    .await;
+    let res = transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id).await;
     let Ok(block_index) = res else {
         println!("Fatal: Failed to transfer enough ICP to SRC main account");
         let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
