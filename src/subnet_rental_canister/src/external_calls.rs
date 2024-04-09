@@ -96,6 +96,7 @@ pub async fn transfer_to_src_main(
 
 /// Query the XDR/ICP exchange rate at the given time in seconds since epoch.
 /// Returns (rate, decimals), where the rate is scaled by 10^decimals.
+/// This function attempts to read from the global RATES cache and updates it.
 pub async fn get_exchange_rate_xdr_per_icp_at_time(
     time_secs_since_epoch: u64,
 ) -> Result<(u64, u32), ExchangeRateError> {
