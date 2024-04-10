@@ -156,18 +156,18 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecutePropos
 
 /// Used for polling for the subnet creation proposal.
 pub async fn get_create_subnet_proposal() -> Result<(), String> {
-    // TODO
     let request = ListProposalInfo {
         include_reward_status: vec![],
         omit_large_fields: Some(true),
         before_proposal: None,
         limit: 100,
-        exclude_topic: vec![],
+        // We only want SubnetManagement = 7
+        exclude_topic: vec![0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15],
         include_all_manage_neuron_proposals: Some(true),
-        // We only want ProposalStatus::Adopted = 3
-        include_status: vec![3],
+        // We only want ProposalStatus::Executed = 4 (Failed 5, Rejected 2)
+        include_status: vec![4],
     };
-    let ListProposalInfoResponse { proposal_info: _ } =
+    let ListProposalInfoResponse { proposal_info } =
         ic_cdk::call::<_, (ListProposalInfoResponse,)>(
             Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap(),
             "list_proposals",
@@ -176,5 +176,23 @@ pub async fn get_create_subnet_proposal() -> Result<(), String> {
         .await
         .expect("Failed to call GovernanceCanister")
         .0;
-    todo!()
+
+    Ok(())
+}
+
+/// Check if the given proposalinfo is a CreateSubnet proposal we are interested in.
+/// Returns the subnet_id of the newly created subnet.
+fn match_create_subnet_proposal(
+    initial_proposal_id: u64,
+    proposal_info: ProposalInfo,
+) -> Option<Principal> {
+    let proposal = proposal_info.proposal?;
+    let action = proposal.action?;
+    match action {
+        Action::ExecuteNnsFunction(ExecuteNnsFunction {
+            nns_function,
+            payload,
+        }) => None,
+        _ => None,
+    }
 }
