@@ -1,5 +1,4 @@
 // Exchange rate canister https://dashboard.internetcomputer.org/canister/uf6dk-hyaaa-aaaaq-qaaaq-cai
-#![allow(dead_code)]
 use candid::{self, CandidType, Deserialize};
 
 pub static EXCHANGE_RATE_CANISTER_PRINCIPAL_STR: &str = "uf6dk-hyaaa-aaaaq-qaaaq-cai";
