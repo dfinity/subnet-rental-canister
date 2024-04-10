@@ -367,6 +367,14 @@ pub async fn execute_rental_request_proposal(
     Ok(())
 }
 
+/// Returns the block index of the refund transaction.
+#[update]
+pub fn refund() -> Result<u64, String> {
+    let caller = ic_cdk::caller();
+    // does the caller have an active rental request?
+    Ok(0)
+}
+
 // Technically an update method, but called via canister timers.
 // pub async fn billing() {
 //     let exchange_rate_cycles_per_e8s = get_current_avg_exchange_rate_cycles_per_e8s().await;
