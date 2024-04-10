@@ -146,11 +146,15 @@ fn test_initial_proposal() {
         },
     ) = res[0];
     // same calculation as in SRC; assuming an exchange rate
-    let needed_cycles = daily_cost_cycles.saturating_mul(initial_rental_period_days as u128);
-    let exchange_rate_icp_per_xdr = 12.6;
-    let e8s = (needed_cycles as f64 * exchange_rate_icp_per_xdr) as u64 / 10_000;
-    let needed_icp = Tokens::from_e8s(e8s);
-
+    let exchange_rate_icp_per_xdr: u64 = 12_000_000_000;
+    let decimals = 9;
+    let needed_cycles = daily_cost_cycles.checked_mul(initial_rental_period_days as u128);
+    let e8s = needed_cycles
+        .and_then(|x| x.checked_mul(u128::pow(10, decimals)))
+        .and_then(|x| x.checked_div(exchange_rate_icp_per_xdr as u128))
+        .and_then(|x| x.checked_div(10_000))
+        .unwrap();
+    let needed_icp = Tokens::from_e8s(e8s as u64);
     // user transfers some ICP to SRC
     let transfer_args = TransferArgs {
         memo: Memo(0),
