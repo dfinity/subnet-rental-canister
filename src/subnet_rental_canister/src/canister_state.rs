@@ -9,6 +9,7 @@ use crate::{
     Principal, RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
 };
 use ic_cdk::println;
+use ic_ledger_types::Tokens;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     DefaultMemoryImpl, StableBTreeMap,
@@ -137,6 +138,7 @@ pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
 /// and persist the corresponding event.
 pub fn create_rental_request(
     user: Principal,
+    refundable_icp: Tokens,
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
     rental_condition_id: RentalConditionId,
@@ -144,6 +146,7 @@ pub fn create_rental_request(
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
         user,
+        refundable_icp,
         locked_amount_cycles,
         initial_proposal_id,
         creation_date: now,

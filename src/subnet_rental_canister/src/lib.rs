@@ -1,7 +1,7 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
 use external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use external_types::NotifyError;
-use ic_ledger_types::{Memo, TransferError};
+use ic_ledger_types::{Memo, Tokens, TransferError};
 use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
 
@@ -70,6 +70,8 @@ pub struct SubnetRentalProposalPayload {
 #[derive(Clone, CandidType, Debug, Deserialize)]
 pub struct RentalRequest {
     pub user: Principal,
+    /// The amount of ICP in SRC's main account which remain refundable.
+    pub refundable_icp: Tokens,
     /// The amount of cycles that are no longer refundable.
     pub locked_amount_cycles: u128,
     /// The initial proposal id will be mentioned in the subnet

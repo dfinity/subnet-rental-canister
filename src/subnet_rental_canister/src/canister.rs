@@ -4,7 +4,7 @@ use crate::canister_state::{
     CallerGuard,
 };
 use crate::external_calls::{
-    convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, transfer_to_src_main,
+    convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, refund_user, transfer_to_src_main,
 };
 use crate::history::Event;
 use crate::{
@@ -328,21 +328,22 @@ pub async fn execute_rental_request_proposal(
         let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
         return with_error(user, proposal_id, e);
     };
+    let transferred_icp = needed_icp - DEFAULT_FEE;
     println!(
         "SRC Successfully transferred {} ICP (plus fee) from {:?} to the SRC main account.",
-        needed_icp - DEFAULT_FEE,
+        transferred_icp,
         Subaccount::from(user)
     );
     persist_event(
         EventType::TransferSuccess {
-            amount: needed_icp - DEFAULT_FEE,
+            amount: transferred_icp,
             block_index,
         },
         Some(user),
     );
 
     // Lock 10% by converting to cycles
-    let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
+    let lock_amount_icp = Tokens::from_e8s(transferred_icp.e8s() / 10);
     println!("SRC will lock {} ICP.", lock_amount_icp);
 
     let res = convert_icp_to_cycles(lock_amount_icp).await;
@@ -353,8 +354,16 @@ pub async fn execute_rental_request_proposal(
     };
     println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
 
+    let refundable_icp = transferred_icp - lock_amount_icp;
     // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
-    create_rental_request(user, locked_cycles, proposal_id, rental_condition_id).unwrap();
+    create_rental_request(
+        user,
+        refundable_icp,
+        locked_cycles,
+        proposal_id,
+        rental_condition_id,
+    )
+    .unwrap();
 
     // Either proceed with existing subnet_id, or start polling for future subnet creation.
     if let Some(subnet_id) = subnet_id {
@@ -369,10 +378,56 @@ pub async fn execute_rental_request_proposal(
 
 /// Returns the block index of the refund transaction.
 #[update]
-pub fn refund() -> Result<u64, String> {
+pub async fn refund() -> Result<u64, String> {
     let caller = ic_cdk::caller();
     // does the caller have an active rental request?
-    Ok(0)
+    match get_rental_request(&caller) {
+        None => Err("Caller does not have an open rental request.".to_string()),
+        Some(RentalRequest {
+            user,
+            refundable_icp,
+            locked_amount_cycles,
+            initial_proposal_id: _,
+            creation_date: _,
+            rental_condition_id: _,
+        }) => {
+            println!("Refund requested for user principal {:?}", &caller);
+            // Before removing the rental request, acquire a lock on it, so that the
+            // polling process cannot concurrently convert the request into a rental agreement.
+            // TODO: is that really a possibility? Are the messages not strictly ordered?
+            // -> I think not, if we have inter-canister calls and await points in both.
+            let guard_res = CallerGuard::new(Principal::anonymous(), "rental_request");
+            if guard_res.is_err() {
+                return Err("Failed to acquire lock. Try again.".to_string());
+            }
+
+            // Refund the remaining ICP on the SRC main subaccount to the user.
+            let res = refund_user(user, refundable_icp).await;
+            let Ok(block_id) = res else {
+                return Err(format!(
+                    "Failed to refund {} ICP to {:?}: {:?}",
+                    refundable_icp - DEFAULT_FEE,
+                    user,
+                    res.unwrap_err()
+                ));
+            };
+            println!(
+                "SRC refunded {} ICP to {}, block_id: {}",
+                refundable_icp - DEFAULT_FEE,
+                user,
+                block_id
+            );
+            ic_cdk::api::cycles_burn(locked_amount_cycles / 10 * 9);
+            println!(
+                "SRC burned {} locked cycles after refunding.",
+                locked_amount_cycles
+            );
+
+            // Delete rental request and stop polling process.
+
+            Ok(block_id)
+        }
+    }
 }
 
 // Technically an update method, but called via canister timers.

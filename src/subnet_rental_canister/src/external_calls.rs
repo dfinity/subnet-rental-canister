@@ -90,6 +90,22 @@ pub async fn transfer_to_src_main(
     .expect("Failed to call ledger canister")
 }
 
+pub async fn refund_user(user_principal: Principal, amount: Tokens) -> Result<u64, TransferError> {
+    transfer(
+        MAINNET_LEDGER_CANISTER_ID,
+        TransferArgs {
+            to: AccountIdentifier::new(&user_principal, &DEFAULT_SUBACCOUNT),
+            fee: DEFAULT_FEE,
+            from_subaccount: None,
+            amount,
+            memo: Memo(amount.e8s()),
+            created_at_time: None,
+        },
+    )
+    .await
+    .expect("Failed to call ledger canister")
+}
+
 /// Query the XDR/ICP exchange rate at the given time in seconds since epoch.
 /// Returns (rate, decimals), where the rate is scaled by 10^decimals.
 /// This function attempts to read from the global RATES cache and updates it.
