@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::canister_state::{
     self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
     get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
@@ -26,15 +24,6 @@ use ic_ledger_types::{Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANIST
 #[init]
 fn init() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
-
-    // Timer to populate the exchange rate cache.
-    ic_cdk_timers::set_timer_interval(Duration::from_secs(86400), || {
-        ic_cdk::spawn(async {
-            let now_secs = ic_cdk::api::time() / BILLION;
-            let prev_midnight = round_to_previous_midnight(now_secs);
-            let _res = get_exchange_rate_xdr_per_icp_at_time(prev_midnight).await;
-        })
-    });
 
     set_initial_conditions();
     println!("Subnet rental canister initialized");
