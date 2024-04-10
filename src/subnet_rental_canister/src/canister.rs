@@ -1,10 +1,23 @@
-use crate::canister_state::iter_rental_conditions;
+use crate::canister_state::{
+    self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
+    get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
+    CallerGuard,
+};
+use crate::external_calls::{
+    convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, transfer_to_src_main,
+};
+use crate::history::Event;
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
 };
-use ic_cdk::println;
-use ic_cdk::{init, post_upgrade};
+use crate::{
+    ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
+};
+use candid::Principal;
+use ic_cdk::{init, post_upgrade, query};
+use ic_cdk::{println, update};
+use ic_ledger_types::{Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANISTER_ID};
 
 ////////// CANISTER METHODS //////////
 
@@ -12,46 +25,15 @@ use ic_cdk::{init, post_upgrade};
 fn init() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
 
-    // Persist initial rental conditions in history.
-    let initial_conditions = vec![(
-        RentalConditionId::App13CH,
-        RentalConditions {
-            description: "All nodes must be in Switzerland.".to_string(),
-            subnet_id: None,
-            daily_cost_cycles: 835 * TRILLION,
-            initial_rental_period_days: 180,
-            billing_period_days: 30,
-        },
-    )];
-    for (k, v) in initial_conditions.iter() {
-        println!("Created initial rental condition {:?}: {:?}", k, v);
-        persist_event(
-            EventType::RentalConditionsChanged {
-                rental_condition_id: *k,
-                rental_conditions: Some(v.clone()),
-            },
-            // Associate events that might belong to no subnet with None.
-            None,
-        );
-    }
+    set_initial_conditions();
     println!("Subnet rental canister initialized");
 }
 
 #[post_upgrade]
 fn post_upgrade() {
     // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
-    // persist all rental conditions in the history
-    for (k, v) in iter_rental_conditions().iter() {
-        println!("Loaded rental condition {:?}: {:?}", k, v);
-        persist_event(
-            EventType::RentalConditionsChanged {
-                rental_condition_id: *k,
-                rental_conditions: Some(v.clone()),
-            },
-            // Associate events that might belong to no subnet with None.
-            None,
-        );
-    }
+
+    set_initial_conditions();
 }
 
 // #[heartbeat]
@@ -106,183 +88,284 @@ fn post_upgrade() {
 // });
 // }
 
+/// Persist initial rental conditions in global map and history.
+fn set_initial_conditions() {
+    let initial_conditions = [(
+        RentalConditionId::App13CH,
+        RentalConditions {
+            description: "All nodes must be in Switzerland.".to_string(),
+            subnet_id: None,
+            daily_cost_cycles: 835 * TRILLION,
+            initial_rental_period_days: 180,
+            billing_period_days: 30,
+        },
+    )];
+    for (k, v) in initial_conditions.iter() {
+        println!("Created initial rental condition {:?}: {:?}", k, v);
+        insert_rental_condition(*k, v.clone());
+        persist_event(
+            EventType::RentalConditionsChanged {
+                rental_condition_id: *k,
+                rental_conditions: Some(v.clone()),
+            },
+            // Associate events that might belong to no subnet with None.
+            None,
+        );
+    }
+}
+
 ////////// QUERY METHODS //////////
 
-// #[query]
-// pub fn list_rental_conditions() -> Vec<(Principal, RentalConditions)> {
-//     RENTAL_CONDITIONS.with(|map| map.borrow().iter().collect())
-// }
+#[query]
+pub fn list_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
+    iter_rental_conditions()
+}
+
+#[query]
+pub fn list_rental_requests() -> Vec<RentalRequest> {
+    iter_rental_requests()
+        .into_iter()
+        .map(|(_k, v)| v)
+        .collect()
+}
+
+#[query]
+pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
+    let mut res = canister_state::get_history(principal);
+    res.sort_by_key(|event| event.date());
+    res
+}
 
 // #[query]
 // pub fn list_rental_agreements() -> Vec<RentalAgreement> {
 //     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
 // }
 
-// #[query]
-// pub fn list_billing_records() -> Vec<(Principal, BillingRecord)> {
-//     BILLING_RECORDS.with(|map| map.borrow().iter().collect())
-// }
-
-// #[query]
-// pub fn get_history(subnet: candid::Principal) -> Option<Vec<Event>> {
-//     HISTORY.with(|map| {
-//         map.borrow()
-//             .get(&subnet.into())
-//             .map(|history| history.events)
-//     })
-// }
-
 ////////// UPDATE METHODS //////////
 
-// #[update]
-// pub async fn terminate_rental_agreement(
-//     RentalTerminationProposal { subnet_id }: RentalTerminationProposal,
-// ) -> Result<(), ExecuteProposalError> {
-//     // delist all principals from whitelists
-//     // remove all entries in this canister
-//     // persist in history
-//     verify_caller_is_governance()?;
-//     if let Some(RentalAgreement {
-//         user,
-//         subnet_id: _subnet_id,
-//         principals,
-//         creation_date: _creation_date,
-//     }) = RENTAL_AGREEMENTS.with(|map| map.borrow_mut().get(&subnet_id.into()))
-//     {
-//         delist_principals(
-//             subnet_id,
-//             &principals
-//                 .into_iter()
-//                 .chain(std::iter::once(user))
-//                 .unique()
-//                 .map(|p| p)
-//                 .collect(),
-//         )
-//         .await;
-//         // TODO: possibly degrade subnet if not degraded yet
-//         delete_rental_agreement(subnet_id.into());
-//     } else {
-//         println!("Error: Termination proposal contains a subnet_id that is not in an active rental agreement: {}", subnet_id);
-//         return Err(ExecuteProposalError::SubnetNotRented);
-//     }
-//     Ok(())
-// }
+/// Calculate the price of a subnet in ICP according to the exchange rate at the previous UTC midnight.
+#[update]
+pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
+    let Some(RentalConditions {
+        description: _,
+        subnet_id: _,
+        daily_cost_cycles,
+        initial_rental_period_days,
+        billing_period_days: _,
+    }) = get_rental_conditions(id)
+    else {
+        return Err("RentalConditionId not found".to_string());
+    };
+    let now_secs = ic_cdk::api::time() / BILLION;
+    let prev_midnight = round_to_previous_midnight(now_secs);
+    // Consult cache:
+    let (scaled_exchange_rate_xdr_per_icp, decimals) = if let Some(tup) =
+        get_cached_rate(prev_midnight)
+    {
+        tup
+    } else {
+        // Cache miss; only call the XRC if nobody else is currently making this call.
+        let guard_res = CallerGuard::new(Principal::anonymous(), "XRC");
+        if guard_res.is_err() {
+            return Err(
+                "Failed to acquire lock on calling exchange rate canister. Try again.".to_string(),
+            );
+        }
+        // Call exchange rate canister.
+        let res = get_exchange_rate_xdr_per_icp_at_time(prev_midnight).await;
+        let Ok(tup) = res else {
+            return Err(format!(
+                "Failed to call the exchange rate canister: {:?}",
+                res.unwrap_err()
+            ));
+        };
+        drop(guard_res);
+        tup
+    };
 
-// TODO: Argument will be provided by governance canister after validation
-// #[update]
-// pub async fn accept_rental_agreement(
-//     SubnetRentalProposalPayload {
-//         subnet_id,
-//         user,
-//         principals,
-//         proposal_creation_time,
-//     }: SubnetRentalProposalPayload,
-// ) -> Result<(), ExecuteProposalError> {
-//     verify_caller_is_governance()?;
+    let res = calculate_subnet_price(
+        daily_cost_cycles,
+        initial_rental_period_days,
+        scaled_exchange_rate_xdr_per_icp,
+        decimals,
+    );
+    match res {
+        Ok(tokens) => Ok(tokens),
+        Err(e) => Err(format!("Failed to calculate price: {:?}", e)),
+    }
+}
 
-//     // Is the desired subnet up for rent?
-//     let Some(rental_conditions) = RENTAL_CONDITIONS.with(|map| map.borrow().get(&subnet_id.into()))
-//     else {
-//         return Err(ExecuteProposalError::SubnetNotRentable);
-//     };
+// Used both for public endpoint 'get_todays_price' and proposal execution.
+fn calculate_subnet_price(
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+    scaled_exchange_rate_xdr_per_icp: u64,
+    decimals: u32,
+) -> Result<Tokens, ExecuteProposalError> {
+    // ICP needed = cycles needed / cycles_per_icp
+    //            = cycles needed / (scaled_rate_xdr_per_icp / 10^decimals)
+    //            = cycles needed / ((scaled_rate_cycles_per_e8s * 10^4) / 10^decimals)
+    //            = cycles needed * 10^decimals / scaled_rate
+    // Factor of 10_000 = trillion / 1e8 to go from trillion cycles (XDR) to 10^-8 ICP (e8s).
+    // The divisions are performed at the end so that accuracy is lost at the very end (if at all).
+    let needed_cycles = daily_cost_cycles.checked_mul(initial_rental_period_days as u128);
+    let e8s = needed_cycles
+        .and_then(|x| x.checked_mul(u128::pow(10, decimals)))
+        .and_then(|x| x.checked_div(scaled_exchange_rate_xdr_per_icp as u128))
+        .and_then(|x| x.checked_div(10_000));
+    let Some(e8s) = e8s else {
+        return Err(ExecuteProposalError::PriceCalculationError(
+            PriceCalculationData {
+                daily_cost_cycles,
+                initial_rental_period_days,
+                scaled_exchange_rate_xdr_per_icp,
+                decimals,
+            },
+        ));
+    };
+    let tokens = Tokens::from_e8s(e8s as u64);
+    println!(
+        "SRC requires {} cycles or {} ICP, according to exchange rate {}",
+        needed_cycles.unwrap(), // Safe because we err out above.
+        tokens,
+        scaled_exchange_rate_xdr_per_icp as f64 / u64::pow(10, decimals) as f64
+    );
+    Ok(tokens)
+}
 
-//     // Is the desired subnet already being rented?
-//     if RENTAL_AGREEMENTS.with(|map| map.borrow().contains_key(&subnet_id.into())) {
-//         println!(
-//             "Subnet {} is already in an active rental agreement",
-//             &subnet_id
-//         );
-//         let err = ExecuteProposalError::SubnetAlreadyRented;
-//         persist_event(
-//             EventType::Failed {
-//                 user: user.into(),
-//                 reason: err.clone(),
-//             },
-//             subnet_id,
-//         );
-//         return Err(err);
-//     }
+#[update]
+pub async fn execute_rental_request_proposal(
+    SubnetRentalProposalPayload {
+        user,
+        rental_condition_id,
+        proposal_id,
+        proposal_creation_time,
+    }: SubnetRentalProposalPayload,
+) -> Result<(), ExecuteProposalError> {
+    /// This function makes sense locally only because EventType::RentalRequestFailed is fixed.
+    fn with_error(
+        user: Principal,
+        proposal_id: u64,
+        e: ExecuteProposalError,
+    ) -> Result<(), ExecuteProposalError> {
+        persist_event(
+            EventType::RentalRequestFailed {
+                user,
+                proposal_id,
+                reason: e.clone(),
+            },
+            Some(user),
+        );
+        Err(e)
+    }
+    verify_caller_is_governance()?;
 
-//     let principals_to_whitelist = principals
-//         .into_iter()
-//         .chain(std::iter::once(user))
-//         .unique()
-//         .map(|p| p.into())
-//         .collect();
+    let _guard = CallerGuard::new(user, "rental_request").unwrap();
+    // Fail if user has an existing rental request going on
+    if get_rental_request(&user).is_some() {
+        println!("Fatal: User already has an open SubnetRentalRequest waiting for completion.");
+        let e = ExecuteProposalError::UserAlreadyRequestingSubnetRental;
+        return with_error(user, proposal_id, e);
+    }
 
-//     // Attempt to transfer enough ICP to cover the initial rental period.
-//     let needed_cycles = rental_conditions
-//         .daily_cost_cycles
-//         .saturating_mul(rental_conditions.initial_rental_period_days as u128);
-//     let exchange_rate =
-//         get_historical_avg_exchange_rate_cycles_per_e8s(proposal_creation_time).await; // TODO: might need rounding
-//     let needed_icp = Tokens::from_e8s((needed_cycles.saturating_div(exchange_rate as u128)) as u64);
+    // unwrap safety:
+    // The rental_condition_id key must have a value in the rental conditions map at compile time.
+    // TODO: unit test
+    let RentalConditions {
+        description: _,
+        subnet_id,
+        daily_cost_cycles,
+        initial_rental_period_days,
+        billing_period_days: _,
+    } = get_rental_conditions(rental_condition_id).expect("Fatal: Rental conditions not found");
 
-//     // Use ICRC2 to transfer ICP from the user to the SRC.
-//     let transfer_to_src_result = icrc2_transfer_to_src(user, needed_icp - DEFAULT_FEE).await;
-//     if let Err(err) = transfer_to_src_result {
-//         println!("Transfer from user to SRC failed: {:?}", err);
-//         persist_event(
-//             EventType::Failed {
-//                 user: user.into(),
-//                 reason: ExecuteProposalError::TransferUserToSrcError(err.clone()),
-//             },
-//             subnet_id,
-//         );
-//         return Err(ExecuteProposalError::TransferUserToSrcError(err));
-//     }
+    // Fail if the provided subnet is already being rented:
+    match subnet_id {
+        None => {}
+        Some(subnet_id) => {
+            if get_rental_agreement(&subnet_id).is_some() {
+                let e = ExecuteProposalError::SubnetAlreadyRented;
+                return with_error(user, proposal_id, e);
+            }
+        }
+    }
+    // Fail if the provided rental_condition_id (i.e., subnet) is already part of a pending rental request:
+    for (_, rental_request) in iter_rental_requests().iter() {
+        if rental_request.rental_condition_id == rental_condition_id {
+            let e = ExecuteProposalError::SubnetAlreadyRequested;
+            return with_error(user, proposal_id, e);
+        }
+    }
 
-//     // Whitelist principals for subnet.
-//     whitelist_principals(subnet_id, &principals_to_whitelist).await;
-//     let rental_agreement_creation_date = ic_cdk::api::time();
+    // ------------------------------------------------------------------
+    // Attempt to transfer enough ICP to cover the initial rental period.
+    // the XRC canister has a resolution of seconds, the SRC in nanos.
+    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time / BILLION);
 
-//     // Transfer the ICP from the SRC to the CMC.
-//     let transfer_to_cmc_result = transfer_to_cmc(needed_icp - DEFAULT_FEE - DEFAULT_FEE).await;
-//     let Ok(block_index) = transfer_to_cmc_result else {
-//         let err = transfer_to_cmc_result.unwrap_err();
-//         println!("Transfer from SRC to CMC failed: {:?}", err);
-//         persist_event(
-//             EventType::Failed {
-//                 user: user.into(),
-//                 reason: ExecuteProposalError::TransferSrcToCmcError(err.clone()),
-//             },
-//             subnet_id,
-//         );
-//         return Err(ExecuteProposalError::TransferSrcToCmcError(err));
-//     };
+    // Call exchange rate canister.
+    let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
+    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
+        let e = ExecuteProposalError::CallXRCFailed(res.unwrap_err());
+        return with_error(user, proposal_id, e);
+    };
 
-//     // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
-//     let notify_top_up_result = notify_top_up(block_index).await;
-//     let Ok(actual_cycles) = notify_top_up_result else {
-//         let err = notify_top_up_result.unwrap_err();
-//         println!("Notify top-up failed: {:?}", err);
-//         persist_event(
-//             EventType::Failed {
-//                 user: user.into(),
-//                 reason: ExecuteProposalError::NotifyTopUpError(err.clone()),
-//             },
-//             subnet_id,
-//         );
-//         return Err(ExecuteProposalError::NotifyTopUpError(err));
-//     };
+    let res = calculate_subnet_price(
+        daily_cost_cycles,
+        initial_rental_period_days,
+        scaled_exchange_rate_xdr_per_icp,
+        decimals,
+    );
+    let Ok(needed_icp) = res else {
+        println!("Fatal: Failed to get exchange rate");
+        let e = res.unwrap_err();
+        return with_error(user, proposal_id, e);
+    };
 
-//     // Create rental agreement and corresponding billing record.
-//     let rental_agreement = RentalAgreement {
-//         user: user.into(),
-//         subnet_id: subnet_id.into(),
-//         principals: principals_to_whitelist,
-//         creation_date: rental_agreement_creation_date,
-//     };
-//     let billing_record = BillingRecord {
-//         covered_until: rental_agreement_creation_date
-//             + days_to_nanos(rental_conditions.initial_rental_period_days),
-//         cycles_balance: actual_cycles,
-//         last_burned: rental_agreement_creation_date,
-//     };
-//     // Persist new rental agreement and billing record and create event.
-//     create_rental_agreement(subnet_id.into(), rental_agreement, billing_record);
-//     Ok(())
-// }
+    // Transfer from user-derived subaccount to SRC main. The proposal id is used as the Memo.
+    let res = transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id).await;
+    let Ok(block_index) = res else {
+        println!("Fatal: Failed to transfer enough ICP to SRC main account");
+        let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
+        return with_error(user, proposal_id, e);
+    };
+    println!(
+        "SRC Successfully transferred {} ICP (plus fee) from {:?} to the SRC main account.",
+        needed_icp - DEFAULT_FEE,
+        Subaccount::from(user)
+    );
+    persist_event(
+        EventType::TransferSuccess {
+            amount: needed_icp - DEFAULT_FEE,
+            block_index,
+        },
+        Some(user),
+    );
+
+    // Lock 10% by converting to cycles
+    let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
+    println!("SRC will lock {} ICP.", lock_amount_icp);
+
+    let res = convert_icp_to_cycles(lock_amount_icp).await;
+    let Ok(locked_cycles) = res else {
+        println!("Fatal: Failed to convert ICP to cycles");
+        let e = res.unwrap_err();
+        return with_error(user, proposal_id, e);
+    };
+    println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
+
+    // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
+    create_rental_request(user, locked_cycles, proposal_id, rental_condition_id).unwrap();
+
+    // Either proceed with existing subnet_id, or start polling for future subnet creation.
+    if let Some(subnet_id) = subnet_id {
+        println!("Reusing existing subnet {:?}", subnet_id);
+        // TODO: Create rental agreement
+    } else {
+        // TODO: Start polling
+    }
+
+    Ok(())
+}
 
 // Technically an update method, but called via canister timers.
 // pub async fn billing() {
@@ -388,3 +471,18 @@ fn post_upgrade() {
 //         }
 //     }
 // }
+
+// ============================================================================
+// Misc
+
+fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
+    if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
+        println!("Caller is not the governance canister");
+        return Err(ExecuteProposalError::UnauthorizedCaller);
+    }
+    Ok(())
+}
+
+fn round_to_previous_midnight(time_secs: u64) -> u64 {
+    time_secs - time_secs % 86400
+}

@@ -1,48 +1,34 @@
 use candid::Principal;
 use ic_ledger_types::{
-    transfer, AccountIdentifier, Subaccount, Tokens, TransferArgs, TransferError, DEFAULT_FEE,
-    MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
+    transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
+    DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
 };
 
-use crate::external_types::{
-    IcpXdrConversionRate, IcpXdrConversionRateResponse, NotifyError, NotifyTopUpArg,
-    SetAuthorizedSubnetworkListArgs,
+use crate::canister_state::{cache_rate, get_cached_rate};
+use crate::external_canister_interfaces::exchange_rate_canister::{
+    Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
+    GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
 };
-use crate::MEMO_TOP_UP_CANISTER;
-// use ic_cdk::println;
 
-pub async fn whitelist_principals(subnet_id: candid::Principal, principals: &Vec<Principal>) {
-    for user in principals {
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(*user),
-                subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
-            },),
-        )
-        .await
-        .expect("Failed to call CMC"); // TODO: handle error
-    }
-}
+use crate::external_canister_interfaces::governance_canister::{
+    ListProposalInfo, ListProposalInfoResponse, GOVERNANCE_CANISTER_PRINCIPAL_STR,
+};
+use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
+use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
+use ic_cdk::println;
 
-pub async fn delist_principals(_subnet_id: candid::Principal, principals: &Vec<candid::Principal>) {
-    // TODO: if we allow multiple subnets per user:
-    // first read the current list,
-    // remove this subnet from the list and then
-    // re-whitelist the principal for the remaining list
-    for user in principals {
-        ic_cdk::call::<_, ()>(
-            MAINNET_CYCLES_MINTING_CANISTER_ID,
-            "set_authorized_subnetwork_list",
-            (SetAuthorizedSubnetworkListArgs {
-                who: Some(*user),
-                subnets: vec![],
-            },),
-        )
-        .await
-        .expect("Failed to call CMC"); // TODO: handle error
-    }
+pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
+    ic_cdk::call::<_, ()>(
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        "set_authorized_subnetwork_list",
+        (SetAuthorizedSubnetworkListArgs {
+            who: Some(*user),
+            subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
+        },),
+    )
+    .await
+    .expect("Failed to call CMC");
 }
 
 pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
@@ -55,7 +41,7 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
         },),
     )
     .await
-    .expect("Failed to call CMC") // TODO: handle error
+    .expect("Failed to call CMC")
     .0
     // TODO: In the canister logs, the CMC claims that the burning of ICPs failed, but the cycles are minted anyway.
     // It states that the "transfer fee should be 0.00010000 Token", but that fee is hardcoded to
@@ -79,24 +65,116 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
         },
     )
     .await
-    .expect("Failed to call ledger canister") // TODO: handle error
+    .expect("Failed to call ledger canister")
 }
 
-pub async fn get_exchange_rate_cycles_per_e8s() -> u64 {
-    let IcpXdrConversionRateResponse {
-        data: IcpXdrConversionRate {
-            xdr_permyriad_per_icp,
-            ..
+/// Transfer ICP from user-derived subaccount to SRC default subaccount
+pub async fn transfer_to_src_main(
+    source: Subaccount,
+    amount: Tokens,
+    proposal_id: u64,
+) -> Result<u64, TransferError> {
+    transfer(
+        MAINNET_LEDGER_CANISTER_ID,
+        TransferArgs {
+            to: AccountIdentifier::new(&ic_cdk::id(), &DEFAULT_SUBACCOUNT),
+            fee: DEFAULT_FEE,
+            from_subaccount: Some(source),
+            amount,
+            // deduplication
+            memo: Memo(proposal_id),
+            created_at_time: None,
         },
-        ..
-    } = ic_cdk::call::<_, (IcpXdrConversionRateResponse,)>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "get_icp_xdr_conversion_rate",
-        (),
     )
     .await
-    .expect("Failed to call CMC") // TODO: handle error
-    .0;
+    .expect("Failed to call ledger canister")
+}
 
-    xdr_permyriad_per_icp
+/// Query the XDR/ICP exchange rate at the given time in seconds since epoch.
+/// Returns (rate, decimals), where the rate is scaled by 10^decimals.
+/// This function attempts to read from the global RATES cache and updates it.
+pub async fn get_exchange_rate_xdr_per_icp_at_time(
+    time_secs_since_epoch: u64,
+) -> Result<(u64, u32), ExchangeRateError> {
+    // The SRC keeps a cache of exchange rates
+    if let Some(tup) = get_cached_rate(time_secs_since_epoch) {
+        return Ok(tup);
+    }
+    let icp_asset = Asset {
+        class: AssetClass::Cryptocurrency,
+        symbol: String::from("ICP"),
+    };
+    let xdr_asset = Asset {
+        class: AssetClass::FiatCurrency,
+        // The computed "CXDR" symbol is more likely to have a value than XDR.
+        symbol: String::from("CXDR"),
+    };
+    let request = GetExchangeRateRequest {
+        timestamp: Some(time_secs_since_epoch),
+        quote_asset: xdr_asset,
+        base_asset: icp_asset,
+    };
+    let response = ic_cdk::api::call::call_with_payment128::<_, (GetExchangeRateResult,)>(
+        Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
+        "get_exchange_rate",
+        (request,),
+        10_000_000_000,
+    )
+    .await
+    .expect("Failed to call ExchangeRateCanister");
+    match response.0 {
+        GetExchangeRateResult::Ok(ExchangeRate {
+            metadata: ExchangeRateMetadata { decimals, .. },
+            rate,
+            ..
+        }) => {
+            cache_rate(time_secs_since_epoch, rate, decimals);
+            Ok((rate, decimals))
+        }
+        GetExchangeRateResult::Err(e) => Err(e),
+    }
+}
+
+pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecuteProposalError> {
+    // Transfer the ICP from the SRC to the CMC. The second fee is for the notify top-up.
+    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE).await;
+    let Ok(block_index) = transfer_to_cmc_result else {
+        let e = transfer_to_cmc_result.unwrap_err();
+        println!("Transfer from SRC to CMC failed: {:?}", e);
+        return Err(ExecuteProposalError::TransferSrcToCmcError(e));
+    };
+
+    // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
+    let notify_top_up_result = notify_top_up(block_index).await;
+    let Ok(actual_cycles) = notify_top_up_result else {
+        let e = notify_top_up_result.unwrap_err();
+        println!("Notify top-up failed: {:?}", e);
+        return Err(ExecuteProposalError::NotifyTopUpError(e));
+    };
+    Ok(actual_cycles)
+}
+
+/// Used for polling for the subnet creation proposal.
+pub async fn get_create_subnet_proposal() -> Result<(), String> {
+    // TODO
+    let request = ListProposalInfo {
+        include_reward_status: vec![],
+        omit_large_fields: Some(true),
+        before_proposal: None,
+        limit: 100,
+        exclude_topic: vec![],
+        include_all_manage_neuron_proposals: Some(true),
+        // We only want ProposalStatus::Adopted = 3
+        include_status: vec![3],
+    };
+    let ListProposalInfoResponse { proposal_info: _ } =
+        ic_cdk::call::<_, (ListProposalInfoResponse,)>(
+            Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap(),
+            "list_proposals",
+            (request,),
+        )
+        .await
+        .expect("Failed to call GovernanceCanister")
+        .0;
+    todo!()
 }

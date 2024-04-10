@@ -1,19 +1,18 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
+use external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use external_types::NotifyError;
-// use ic_cdk::println;
-
-use ic_ledger_types::{Memo, TransferError, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_ledger_types::{Memo, TransferError};
 use ic_stable_structures::{storable::Bound, Storable};
-
 use std::borrow::Cow;
 
 pub mod canister;
 pub mod canister_state;
 pub mod external_calls;
+pub mod external_canister_interfaces;
 pub mod external_types;
 pub mod history;
-mod http_request;
 
+pub const BILLION: u64 = 1_000_000_000;
 pub const TRILLION: u128 = 1_000_000_000_000;
 pub const E8S: u64 = 100_000_000;
 // const BILLING_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24);
@@ -62,7 +61,9 @@ pub struct SubnetRentalProposalPayload {
     // The tenant, who makes the payments
     pub user: Principal,
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionId,
+    pub rental_condition_id: RentalConditionId,
+    pub proposal_id: u64,
+    pub proposal_creation_time: u64,
 }
 
 /// Successful proposal execution leads to a RentalRequest.
@@ -79,7 +80,7 @@ pub struct RentalRequest {
     pub creation_date: u64,
     // ===== Some fields from the proposal payload for the rental agreement =====
     /// A key into the global RENTAL_CONDITIONS HashMap.
-    pub rental_condition_type: RentalConditionId,
+    pub rental_condition_id: RentalConditionId,
 }
 
 impl Storable for RentalRequest {
@@ -132,9 +133,14 @@ impl Storable for RentalAgreement {
     }
 }
 
-#[derive(CandidType, Debug, Clone, Deserialize)]
+#[derive(CandidType, Debug, PartialEq, Clone, Deserialize)]
 pub enum ExecuteProposalError {
+    CallGovernanceFailed,
+    CallXRCFailed(ExchangeRateError),
+    PriceCalculationError(PriceCalculationData),
+    UserAlreadyRequestingSubnetRental,
     SubnetAlreadyRented,
+    SubnetAlreadyRequested,
     UnauthorizedCaller,
     InsufficientFunds,
     TransferUserToSrcError(TransferError),
@@ -143,13 +149,10 @@ pub enum ExecuteProposalError {
     SubnetNotRented,
 }
 
-// ============================================================================
-// Misc
-
-fn _verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
-    if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
-        println!("Caller is not the governance canister");
-        return Err(ExecuteProposalError::UnauthorizedCaller);
-    }
-    Ok(())
+#[derive(CandidType, Debug, PartialEq, Clone, Deserialize)]
+pub struct PriceCalculationData {
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+    scaled_exchange_rate_xdr_per_icp: u64,
+    decimals: u32,
 }

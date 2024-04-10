@@ -1,5 +1,3 @@
 [workspace]
-members = [
-    "src/subnet_rental_canister",
-]
+members = ["src/subnet_rental_canister", "src/xrc_mock"]
 resolver = "2"

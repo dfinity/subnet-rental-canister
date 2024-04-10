@@ -13,12 +13,17 @@ use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     DefaultMemoryImpl, StableBTreeMap,
 };
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::RefCell,
+    collections::{BTreeSet, HashMap},
+};
 
 thread_local! {
 
     static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionId, RentalConditions>> =
         RefCell::new(HashMap::new());
+
+    static LOCKS: RefCell<Locks> = const {RefCell::new(Locks{ids: BTreeSet::new()}) };
 
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -39,10 +44,53 @@ thread_local! {
     static HISTORY: RefCell<StableBTreeMap<Option<Principal>, History, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
+    // Memory region 3
+    // Cache for ICP/XDR exchange rates.
+    // The keys are timestamps in seconds since epoch (rounded to midnight).
+    // The values are (rate, decimal) where the rate is scaled by 10^decimals.
+    static RATES: RefCell<StableBTreeMap<u64, (u64, u32), VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
 }
+
+struct Locks {
+    pub ids: BTreeSet<(Principal, &'static str)>,
+}
+
+/// A way to acquire locks for a principal before entering a critical section.
+/// The str is simply a cheap tag in case different types of locks are needed
+/// for the same principal.
+pub struct CallerGuard {
+    id: (Principal, &'static str),
+}
+
+impl CallerGuard {
+    pub fn new(principal: Principal, tag: &'static str) -> Result<Self, String> {
+        let id = (principal, tag);
+        LOCKS.with_borrow_mut(|locks| {
+            let held_locks = &mut locks.ids;
+            if held_locks.contains(&id) {
+                return Err("Failed to acquire lock".to_string());
+            }
+            held_locks.insert(id);
+            Ok(Self { id })
+        })
+    }
+}
+
+impl Drop for CallerGuard {
+    fn drop(&mut self) {
+        LOCKS.with_borrow_mut(|locks| locks.ids.remove(&self.id));
+    }
+}
+
+// ====================================================================================================================
 
 pub fn get_rental_conditions(key: RentalConditionId) -> Option<RentalConditions> {
     RENTAL_CONDITIONS.with_borrow(|map| map.get(&key).cloned())
+}
+
+pub fn insert_rental_condition(key: RentalConditionId, value: RentalConditions) {
+    RENTAL_CONDITIONS.with_borrow_mut(|map| map.insert(key, value));
 }
 
 pub fn iter_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
@@ -65,12 +113,24 @@ pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
     RENTAL_AGREEMENTS.with_borrow(|map| map.iter().collect())
 }
 
+pub fn get_cached_rate(time: u64) -> Option<(u64, u32)> {
+    RATES.with_borrow(|map| map.get(&time))
+}
+
+pub fn cache_rate(time: u64, rate: u64, decimals: u32) {
+    RATES.with_borrow_mut(|map| map.insert(time, (rate, decimals)));
+}
+
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
     HISTORY.with_borrow_mut(|map| {
         let mut history = map.get(&key).unwrap_or_default();
         history.events.push(event.into());
         map.insert(key, history);
     })
+}
+
+pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
+    HISTORY.with_borrow(|map| map.get(&principal).map(|h| h.events).unwrap_or_default())
 }
 
 /// Create a RentalRequest with the current time as create_date, insert into canister state
@@ -87,7 +147,7 @@ pub fn create_rental_request(
         locked_amount_cycles,
         initial_proposal_id,
         creation_date: now,
-        rental_condition_type: rental_condition_id,
+        rental_condition_id,
     };
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {
@@ -154,7 +214,7 @@ pub fn create_rental_agreement(
                     user,
                     initial_proposal_id,
                     subnet_creation_proposal_id,
-                    rental_condition_type: rental_condition_id,
+                    rental_condition_id,
                 },
                 Some(subnet_id),
             );
@@ -162,32 +222,3 @@ pub fn create_rental_agreement(
         }
     })
 }
-
-// Rental agreements have an associated BillingAccount, which must be removed at the same time.
-// TODO: only call this if agreement exists...
-// fn delete_rental_agreement(subnet_id: Principal) {
-//     let rental_agreement =
-//         RENTAL_AGREEMENTS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
-//     // let billing_record = BILLING_RECORDS.with(|map| map.borrow_mut().remove(&subnet_id).unwrap());
-//     persist_event(
-//         EventType::Terminated {
-//             rental_agreement,
-//             // billing_record,
-//         },
-//         subnet_id,
-//     );
-// }
-
-// Pass one of the global StableBTreeMaps and a function that transforms a value.
-// pub fn update_map<K, V, M>(map: &RefCell<StableBTreeMap<K, V, M>>, f: impl Fn(K, V) -> V)
-// where
-//     K: Storable + Ord + Clone,
-//     V: Storable,
-//     M: Memory,
-// {
-//     let keys: Vec<K> = map.borrow().iter().map(|(k, _v)| k).collect();
-//     for key in keys {
-//         let value = map.borrow().get(&key).unwrap();
-//         map.borrow_mut().insert(key.clone(), f(key, value));
-//     }
-// }
