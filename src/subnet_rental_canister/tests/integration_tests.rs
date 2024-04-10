@@ -41,7 +41,7 @@ fn install_cmc(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, MAINNET_CYCLES_MINTING_CANISTER_ID)
         .unwrap();
     let cmc_wasm = fs::read(CMC_WASM).expect("Could not find the patched CMC wasm");
-    let minter = AccountIdentifier::new(&MAINNET_CYCLES_MINTING_CANISTER_ID, &DEFAULT_SUBACCOUNT);
+    let minter = AccountIdentifier::new(&MAINNET_GOVERNANCE_CANISTER_ID, &DEFAULT_SUBACCOUNT);
     let init_arg = CmcInitPayload {
         governance_canister_id: Some(MAINNET_GOVERNANCE_CANISTER_ID),
         minting_account_id: minter.to_string(),
@@ -73,7 +73,7 @@ fn install_ledger(pic: &PocketIc) {
     let icp_ledger_canister_wasm = fs::read(LEDGER_WASM)
         .expect("Download the test wasm files with ./scripts/download_wasms.sh");
 
-    let minter = AccountIdentifier::new(&MAINNET_LEDGER_CANISTER_ID, &DEFAULT_SUBACCOUNT);
+    let minter = AccountIdentifier::new(&MAINNET_GOVERNANCE_CANISTER_ID, &DEFAULT_SUBACCOUNT);
     let user_1 = AccountIdentifier::new(&USER_1, &DEFAULT_SUBACCOUNT);
     let user_2 = AccountIdentifier::new(&USER_2, &DEFAULT_SUBACCOUNT);
 

@@ -1,19 +1,21 @@
 use std::time::Duration;
 
 use crate::canister_state::{
-    self, create_rental_request, get_rental_agreement, get_rental_conditions, get_rental_request,
-    insert_rental_condition, iter_rental_conditions, iter_rental_requests, CallerGuard,
+    self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
+    get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
+    CallerGuard,
 };
 use crate::external_calls::{
     convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, transfer_to_src_main,
 };
-use crate::external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
 use crate::history::Event;
 use crate::{
     canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
     TRILLION,
 };
-use crate::{ExecuteProposalError, RentalRequest, SubnetRentalProposalPayload, BILLION};
+use crate::{
+    ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
+};
 use candid::Principal;
 use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
@@ -167,8 +169,38 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     };
     let now_secs = ic_cdk::api::time() / BILLION;
     let prev_midnight = round_to_previous_midnight(now_secs);
-    let res =
-        calculate_subnet_price(prev_midnight, daily_cost_cycles, initial_rental_period_days).await;
+    // Consult cache:
+    let (scaled_exchange_rate_xdr_per_icp, decimals) = if let Some(tup) =
+        get_cached_rate(prev_midnight)
+    {
+        tup
+    } else {
+        // Cache miss; only call the XRC if nobody else is currently making this call.
+        let guard_res = CallerGuard::new(Principal::anonymous(), "XRC");
+        if guard_res.is_err() {
+            return Err(
+                "Failed to acquire lock on calling exchange rate canister. Try again.".to_string(),
+            );
+        }
+        // Call exchange rate canister.
+        let res = get_exchange_rate_xdr_per_icp_at_time(prev_midnight).await;
+        let Ok(tup) = res else {
+            return Err(format!(
+                "Failed to call the exchange rate canister: {:?}",
+                res.unwrap_err()
+            ));
+        };
+        drop(guard_res);
+        tup
+    };
+
+    let res = calculate_subnet_price(
+        daily_cost_cycles,
+        initial_rental_period_days,
+        scaled_exchange_rate_xdr_per_icp,
+        decimals,
+    )
+    .await;
     match res {
         Ok(tokens) => Ok(tokens),
         Err(e) => Err(format!("Failed to calculate price: {:?}", e)),
@@ -177,17 +209,11 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
 
 // Used both for public endpoint 'get_todays_price' and proposal execution.
 async fn calculate_subnet_price(
-    time_secs: u64,
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
-) -> Result<Tokens, ExchangeRateError> {
-    // Call exchange rate canister.
-    let res = get_exchange_rate_xdr_per_icp_at_time(time_secs).await;
-    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
-        println!("Fatal: Failed to get exchange rate");
-        return Err(res.unwrap_err());
-    };
-
+    scaled_exchange_rate_xdr_per_icp: u64,
+    decimals: u32,
+) -> Result<Tokens, ExecuteProposalError> {
     // ICP needed = cycles needed / cycles_per_icp
     //            = cycles needed / (scaled_rate / 10^decimals)
     //            = cycles needed * 10^decimals / scaled_rate
@@ -199,10 +225,14 @@ async fn calculate_subnet_price(
         .and_then(|x| x.checked_div(scaled_exchange_rate_xdr_per_icp as u128))
         .and_then(|x| x.checked_div(10_000));
     let Some(e8s) = e8s else {
-        return Err(ExchangeRateError::Other {
-            code: 0,
-            description: format!("Failed to calculate ICP/XDR exchange rate: daily_cost_cycles: {}, initial_rent_period_days: {}, scaled_rate: {}, decimals: {}", daily_cost_cycles, initial_rental_period_days, scaled_exchange_rate_xdr_per_icp, decimals),
-        });
+        return Err(ExecuteProposalError::PriceCalculationError(
+            PriceCalculationData {
+                daily_cost_cycles,
+                initial_rental_period_days,
+                scaled_exchange_rate_xdr_per_icp,
+                decimals,
+            },
+        ));
     };
     let tokens = Tokens::from_e8s(e8s as u64);
     println!(
@@ -283,15 +313,23 @@ pub async fn execute_rental_request_proposal(
     // the XRC canister has a resolution of seconds, the SRC in nanos.
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time / BILLION);
 
+    // Call exchange rate canister.
+    let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
+    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
+        let e = ExecuteProposalError::CallXRCFailed(res.unwrap_err());
+        return with_error(user, proposal_id, e);
+    };
+
     let res = calculate_subnet_price(
-        exchange_rate_query_time,
         daily_cost_cycles,
         initial_rental_period_days,
+        scaled_exchange_rate_xdr_per_icp,
+        decimals,
     )
     .await;
     let Ok(needed_icp) = res else {
         println!("Fatal: Failed to get exchange rate");
-        let e = ExecuteProposalError::CallXRCFailed(res.unwrap_err());
+        let e = res.unwrap_err();
         return with_error(user, proposal_id, e);
     };
 
