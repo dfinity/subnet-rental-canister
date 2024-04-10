@@ -5,12 +5,12 @@ use ic_cdk::{println, update};
 pub const XRC_REQUEST_CYCLES_COST: u128 = 1_000_000_000;
 
 thread_local! {
-    static DATA: RefCell<HashMap<u64, (u64, u64)>> = RefCell::new(HashMap::new());
+    static DATA: RefCell<HashMap<u64, (u64, u32)>> = RefCell::new(HashMap::new());
 }
 
 /// Set test data: [(time in seconds since epoch, (rate, decimals))]
 #[update]
-pub fn set_exchange_rate_data(data: Vec<(u64, (u64, u64))>) {
+pub fn set_exchange_rate_data(data: Vec<(u64, (u64, u32))>) {
     DATA.with_borrow_mut(|map| {
         for (k, v) in data.into_iter() {
             map.insert((k / 60) * 60, v);
@@ -44,7 +44,7 @@ pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResu
     };
 
     let metadata = ExchangeRateMetadata {
-        decimals: decimals as u32,
+        decimals,
         forex_timestamp: None,
         quote_asset_num_received_rates: 0,
         base_asset_num_received_rates: 0,

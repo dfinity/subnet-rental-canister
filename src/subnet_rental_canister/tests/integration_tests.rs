@@ -146,8 +146,7 @@ fn test_initial_proposal() {
         },
     ) = res[0];
     // same calculation as in SRC; assuming an exchange rate
-    let exchange_rate_icp_per_xdr: u64 = 12_000_000_000;
-    let decimals = 9;
+    let (exchange_rate_icp_per_xdr, decimals) = (12_503_823_284, 9);
     let needed_cycles = daily_cost_cycles.checked_mul(initial_rental_period_days as u128);
     let e8s = needed_cycles
         .and_then(|x| x.checked_mul(u128::pow(10, decimals)))
@@ -176,7 +175,7 @@ fn test_initial_proposal() {
     // set an exchange rate for the current time
     let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let midnight = now - now % 86400;
-    let arg: Vec<(u64, (u64, u64))> = vec![(midnight, (12_503_823_284, 9))];
+    let arg: Vec<(u64, (u64, u32))> = vec![(midnight, (exchange_rate_icp_per_xdr, decimals))];
     update::<()>(
         &pic,
         Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
