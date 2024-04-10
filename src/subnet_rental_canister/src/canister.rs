@@ -188,8 +188,7 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
         initial_rental_period_days,
         scaled_exchange_rate_xdr_per_icp,
         decimals,
-    )
-    .await;
+    );
     match res {
         Ok(tokens) => Ok(tokens),
         Err(e) => Err(format!("Failed to calculate price: {:?}", e)),
@@ -197,7 +196,7 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
 }
 
 // Used both for public endpoint 'get_todays_price' and proposal execution.
-async fn calculate_subnet_price(
+fn calculate_subnet_price(
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
     scaled_exchange_rate_xdr_per_icp: u64,
@@ -314,8 +313,7 @@ pub async fn execute_rental_request_proposal(
         initial_rental_period_days,
         scaled_exchange_rate_xdr_per_icp,
         decimals,
-    )
-    .await;
+    );
     let Ok(needed_icp) = res else {
         println!("Fatal: Failed to get exchange rate");
         let e = res.unwrap_err();
