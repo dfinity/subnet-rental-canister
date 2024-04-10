@@ -137,6 +137,7 @@ impl Storable for RentalAgreement {
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
     CallXRCFailed(ExchangeRateError),
+    PriceCalculationError(PriceCalculationData),
     UserAlreadyRequestingSubnetRental,
     SubnetAlreadyRented,
     SubnetAlreadyRequested,
@@ -146,4 +147,12 @@ pub enum ExecuteProposalError {
     TransferSrcToCmcError(TransferError),
     NotifyTopUpError(NotifyError),
     SubnetNotRented,
+}
+
+#[derive(CandidType, Debug, PartialEq, Clone, Deserialize)]
+pub struct PriceCalculationData {
+    daily_cost_cycles: u128,
+    initial_rental_period_days: u64,
+    scaled_exchange_rate_xdr_per_icp: u64,
+    decimals: u32,
 }
