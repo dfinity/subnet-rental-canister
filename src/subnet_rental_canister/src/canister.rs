@@ -203,7 +203,8 @@ fn calculate_subnet_price(
     decimals: u32,
 ) -> Result<Tokens, ExecuteProposalError> {
     // ICP needed = cycles needed / cycles_per_icp
-    //            = cycles needed / (scaled_rate / 10^decimals)
+    //            = cycles needed / (scaled_rate_xdr_per_icp / 10^decimals)
+    //            = cycles needed / ((scaled_rate_cycles_per_e8s * 10^4) / 10^decimals)
     //            = cycles needed * 10^decimals / scaled_rate
     // Factor of 10_000 = trillion / 1e8 to go from trillion cycles (XDR) to 10^-8 ICP (e8s).
     // The divisions are performed at the end so that accuracy is lost at the very end (if at all).
