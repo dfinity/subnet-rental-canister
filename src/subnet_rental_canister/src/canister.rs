@@ -389,17 +389,17 @@ pub async fn refund() -> Result<u64, String> {
     // does the caller have an active rental request?
     match remove_rental_request(&caller) {
         None => Err("Caller does not have an open rental request.".to_string()),
-        Some(rental_request) => {
-            println!("Refund requested for user principal {:?}", &caller);
-            let RentalRequest {
+        Some(
+            rental_request @ RentalRequest {
                 user,
                 refundable_icp,
                 locked_amount_cycles,
                 initial_proposal_id,
                 creation_date: _,
                 rental_condition_id: _,
-            } = rental_request;
-
+            },
+        ) => {
+            println!("Refund requested for user principal {:?}", &caller);
             // Refund the remaining ICP on the SRC main subaccount to the user.
             let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
             let Ok(block_id) = res else {
