@@ -387,7 +387,7 @@ pub async fn refund() -> Result<u64, String> {
             user,
             refundable_icp,
             locked_amount_cycles,
-            initial_proposal_id: _,
+            initial_proposal_id,
             creation_date: _,
             rental_condition_id: _,
         }) => {
@@ -396,13 +396,13 @@ pub async fn refund() -> Result<u64, String> {
             // polling process cannot concurrently convert the request into a rental agreement.
             // TODO: is that really a possibility? Are the messages not strictly ordered?
             // -> I think not, if we have inter-canister calls and await points in both.
-            let guard_res = CallerGuard::new(Principal::anonymous(), "rental_request");
+            let guard_res = CallerGuard::new(user, "rental_request");
             if guard_res.is_err() {
                 return Err("Failed to acquire lock. Try again.".to_string());
             }
 
             // Refund the remaining ICP on the SRC main subaccount to the user.
-            let res = refund_user(user, refundable_icp).await;
+            let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
             let Ok(block_id) = res else {
                 return Err(format!(
                     "Failed to refund {} ICP to {:?}: {:?}",
@@ -417,7 +417,7 @@ pub async fn refund() -> Result<u64, String> {
                 user,
                 block_id
             );
-            ic_cdk::api::cycles_burn(locked_amount_cycles / 10 * 9);
+            ic_cdk::api::cycles_burn(locked_amount_cycles);
             println!(
                 "SRC burned {} locked cycles after refunding.",
                 locked_amount_cycles
