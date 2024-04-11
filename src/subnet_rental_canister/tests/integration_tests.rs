@@ -193,6 +193,7 @@ fn test_initial_proposal() {
         proposal_id: 999,
         proposal_creation_time: now,
     };
+    // run proposal
     update::<Result<(), ExecuteProposalError>>(
         &pic,
         src_principal,
@@ -201,16 +202,6 @@ fn test_initial_proposal() {
         payload.clone(),
     )
     .unwrap();
-
-    // it must only work the first time for the same user
-    let res = update::<Result<(), ExecuteProposalError>>(
-        &pic,
-        src_principal,
-        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
-        "execute_rental_request_proposal",
-        payload,
-    );
-    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequestingSubnetRental);
 
     // assert state is as expected
     let src_history = query::<Vec<Event>>(
@@ -229,7 +220,7 @@ fn test_initial_proposal() {
     );
     // think of a better test than length
     assert_eq!(src_history.len(), 1);
-    assert_eq!(user_history.len(), 3);
+    assert_eq!(user_history.len(), 2);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
@@ -244,6 +235,57 @@ fn test_initial_proposal() {
     } = rental_requests[0];
     assert_eq!(user, user_principal);
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);
+
+    // get refund
+    let res = update::<Result<u64, String>>(&pic, src_principal, None, "refund", ());
+    // anonymous principal should fail
+    assert!(res.is_err());
+    let res =
+        update::<Result<u64, String>>(&pic, src_principal, Some(user_principal), "refund", ());
+    // anonymous principal should fail
+    assert!(res.is_ok());
+}
+
+#[test]
+fn test_duplicate_request_fails() {
+    let (pic, src_principal) = setup();
+
+    let user_principal = USER_1;
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+
+    // user performs preparations
+    prepare_proposal(&pic, src_principal, user_principal);
+
+    // user creates proposal
+    let now = now * 1_000_000_000;
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_id: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: now,
+    };
+    // run proposal
+    update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload.clone(),
+    )
+    .unwrap();
+
+    // it must only work the first time for the same user
+    let res = update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload,
+    );
+    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequestingSubnetRental);
 }
 
 // #[test]
