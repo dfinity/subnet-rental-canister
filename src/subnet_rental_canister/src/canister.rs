@@ -1,7 +1,7 @@
 use crate::canister_state::{
     self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
     get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
-    CallerGuard,
+    remove_rental_request, CallerGuard,
 };
 use crate::external_calls::{
     convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, refund_user, transfer_to_src_main,
@@ -381,21 +381,20 @@ pub async fn execute_rental_request_proposal(
 pub async fn refund() -> Result<u64, String> {
     let caller = ic_cdk::caller();
     // does the caller have an active rental request?
-    match get_rental_request(&caller) {
+    match remove_rental_request(&caller) {
         None => Err("Caller does not have an open rental request.".to_string()),
-        Some(RentalRequest {
-            user,
-            refundable_icp,
-            locked_amount_cycles,
-            initial_proposal_id,
-            creation_date: _,
-            rental_condition_id: _,
-        }) => {
+        Some(rental_request) => {
             println!("Refund requested for user principal {:?}", &caller);
+            let RentalRequest {
+                user,
+                refundable_icp,
+                locked_amount_cycles,
+                initial_proposal_id,
+                creation_date: _,
+                rental_condition_id: _,
+            } = rental_request;
             // Before removing the rental request, acquire a lock on it, so that the
             // polling process cannot concurrently convert the request into a rental agreement.
-            // TODO: is that really a possibility? Are the messages not strictly ordered?
-            // -> I think not, if we have inter-canister calls and await points in both.
             let guard_res = CallerGuard::new(user, "rental_request");
             if guard_res.is_err() {
                 return Err("Failed to acquire lock. Try again.".to_string());
@@ -423,7 +422,14 @@ pub async fn refund() -> Result<u64, String> {
                 locked_amount_cycles
             );
 
-            // Delete rental request and stop polling process.
+            // TODO: stop polling.. or polling simply stops when the rental request is no longer in the map.
+
+            persist_event(
+                EventType::RentalRequestCancelled {
+                    rental_request: rental_request.clone(),
+                },
+                Some(user),
+            );
 
             Ok(block_id)
         }

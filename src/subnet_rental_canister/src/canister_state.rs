@@ -102,6 +102,10 @@ pub fn get_rental_request(requester: &Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow(|map| map.get(requester))
 }
 
+pub fn remove_rental_request(requester: &Principal) -> Option<RentalRequest> {
+    RENTAL_REQUESTS.with_borrow_mut(|map| map.remove(requester))
+}
+
 pub fn iter_rental_requests() -> Vec<(Principal, RentalRequest)> {
     RENTAL_REQUESTS.with_borrow(|map| map.iter().collect())
 }
