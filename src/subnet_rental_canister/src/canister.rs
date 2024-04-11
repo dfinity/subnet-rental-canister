@@ -380,6 +380,12 @@ pub async fn execute_rental_request_proposal(
 #[update]
 pub async fn refund() -> Result<u64, String> {
     let caller = ic_cdk::caller();
+    // Before removing the rental request, acquire a lock on it, so that the
+    // polling process cannot concurrently convert the request into a rental agreement.
+    let guard_res = CallerGuard::new(caller, "rental_request");
+    if guard_res.is_err() {
+        return Err("Failed to acquire lock. Try again.".to_string());
+    }
     // does the caller have an active rental request?
     match remove_rental_request(&caller) {
         None => Err("Caller does not have an open rental request.".to_string()),
@@ -393,12 +399,6 @@ pub async fn refund() -> Result<u64, String> {
                 creation_date: _,
                 rental_condition_id: _,
             } = rental_request;
-            // Before removing the rental request, acquire a lock on it, so that the
-            // polling process cannot concurrently convert the request into a rental agreement.
-            let guard_res = CallerGuard::new(user, "rental_request");
-            if guard_res.is_err() {
-                return Err("Failed to acquire lock. Try again.".to_string());
-            }
 
             // Refund the remaining ICP on the SRC main subaccount to the user.
             let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
