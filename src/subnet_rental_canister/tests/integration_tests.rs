@@ -235,6 +235,7 @@ fn test_initial_proposal() {
     assert!(rental_requests.len() == 1);
     let RentalRequest {
         user,
+        refundable_icp: _,
         locked_amount_cycles: _,
         initial_proposal_id: _,
         creation_date: _,
