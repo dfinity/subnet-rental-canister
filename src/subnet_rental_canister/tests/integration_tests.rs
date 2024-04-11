@@ -224,7 +224,7 @@ fn test_initial_proposal() {
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
-    assert!(rental_requests.len() == 1);
+    assert_eq!(rental_requests.len(), 1);
     let RentalRequest {
         user,
         refundable_icp: _,
@@ -244,6 +244,10 @@ fn test_initial_proposal() {
         update::<Result<u64, String>>(&pic, src_principal, Some(user_principal), "refund", ());
     // anonymous principal should fail
     assert!(res.is_ok());
+
+    let rental_requests =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
+    assert!(rental_requests.is_empty());
 }
 
 #[test]
