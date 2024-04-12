@@ -77,7 +77,6 @@ pub enum EventType {
     /// When the user calls get_refund and the effort is abandoned.
     RentalRequestCancelled {
         rental_request: RentalRequest,
-        refund_amount: Tokens,
     },
     /// After successfull polling for a CreateSubnet proposal, a RentalAgreement is created
     RentalAgreementCreated {

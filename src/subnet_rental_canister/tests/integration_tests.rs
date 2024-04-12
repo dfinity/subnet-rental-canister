@@ -117,43 +117,25 @@ fn setup() -> (PocketIc, Principal) {
     (pic, subnet_rental_canister)
 }
 
-#[test]
-fn dummy() {
-    setup();
-}
-
-#[test]
-fn test_initial_proposal() {
-    let (pic, src_principal) = setup();
-
-    let user_principal = USER_1;
-
+fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principal: Principal) {
+    // user finds rental conditions
     let res = query::<Vec<(RentalConditionId, RentalConditions)>>(
-        &pic,
-        SRC_ID,
+        pic,
+        src_principal,
         None,
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
-    let (
-        _,
-        RentalConditions {
-            description: _,
-            subnet_id: _,
-            daily_cost_cycles,
-            initial_rental_period_days,
-            billing_period_days: _,
-        },
-    ) = res[0];
-    // same calculation as in SRC; assuming an exchange rate
-    let (exchange_rate_icp_per_xdr, decimals) = (12_503_823_284, 9);
-    let needed_cycles = daily_cost_cycles.checked_mul(initial_rental_period_days as u128);
-    let e8s = needed_cycles
-        .and_then(|x| x.checked_mul(u128::pow(10, decimals)))
-        .and_then(|x| x.checked_div(exchange_rate_icp_per_xdr as u128))
-        .and_then(|x| x.checked_div(10_000))
-        .unwrap();
-    let needed_icp = Tokens::from_e8s(e8s as u64);
+    let (rental_condition_id, ref _rental_conditions) = res[0];
+    // user finds current price by consulting SRC
+    let needed_icp = update::<Result<Tokens, String>>(
+        pic,
+        src_principal,
+        None,
+        "get_todays_price",
+        rental_condition_id,
+    )
+    .unwrap();
     // user transfers some ICP to SRC
     let transfer_args = TransferArgs {
         memo: Memo(0),
@@ -164,27 +146,46 @@ fn test_initial_proposal() {
         created_at_time: None,
     };
     let _res = update::<TransferResult>(
-        &pic,
+        pic,
         MAINNET_LEDGER_CANISTER_ID,
         Some(user_principal),
         "transfer",
         transfer_args,
     )
     .unwrap();
+}
 
-    // set an exchange rate for the current time
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let midnight = now - now % 86400;
+fn set_mock_exchange_rate(
+    pic: &PocketIc,
+    time_secs: u64,
+    exchange_rate_icp_per_xdr: u64,
+    decimals: u32,
+) {
+    let midnight = time_secs - time_secs % 86400;
     let arg: Vec<(u64, (u64, u32))> = vec![(midnight, (exchange_rate_icp_per_xdr, decimals))];
     update::<()>(
-        &pic,
+        pic,
         Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
         None,
         "set_exchange_rate_data",
         arg,
     );
+}
 
-    // create proposal
+#[test]
+fn test_initial_proposal() {
+    let (pic, src_principal) = setup();
+
+    let user_principal = USER_1;
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+
+    // user performs preparations
+    make_initial_transfer(&pic, src_principal, user_principal);
+
+    // user creates proposal
     let now = now * 1_000_000_000;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
@@ -192,6 +193,7 @@ fn test_initial_proposal() {
         proposal_id: 999,
         proposal_creation_time: now,
     };
+    // run proposal
     update::<Result<(), ExecuteProposalError>>(
         &pic,
         src_principal,
@@ -200,16 +202,6 @@ fn test_initial_proposal() {
         payload.clone(),
     )
     .unwrap();
-
-    // it should only work the first time for the same user
-    let res = update::<Result<(), ExecuteProposalError>>(
-        &pic,
-        src_principal,
-        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
-        "execute_rental_request_proposal",
-        payload,
-    );
-    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequestingSubnetRental);
 
     // assert state is as expected
     let src_history = query::<Vec<Event>>(
@@ -228,13 +220,14 @@ fn test_initial_proposal() {
     );
     // think of a better test than length
     assert_eq!(src_history.len(), 1);
-    assert_eq!(user_history.len(), 3);
+    assert_eq!(user_history.len(), 2);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
-    assert!(rental_requests.len() == 1);
+    assert_eq!(rental_requests.len(), 1);
     let RentalRequest {
         user,
+        refundable_icp,
         locked_amount_cycles: _,
         initial_proposal_id: _,
         creation_date: _,
@@ -242,6 +235,64 @@ fn test_initial_proposal() {
     } = rental_requests[0];
     assert_eq!(user, user_principal);
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);
+
+    // get refund
+    let balance_before = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
+    let res = update::<Result<u64, String>>(&pic, src_principal, None, "refund", ());
+    // anonymous principal should fail
+    assert!(res.is_err());
+    let res =
+        update::<Result<u64, String>>(&pic, src_principal, Some(user_principal), "refund", ());
+    assert!(res.is_ok());
+    // check that transfer has succeeded
+    let balance_after = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
+    assert_eq!(balance_after - balance_before, refundable_icp - DEFAULT_FEE);
+
+    let rental_requests =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
+    assert!(rental_requests.is_empty());
+}
+
+#[test]
+fn test_duplicate_request_fails() {
+    let (pic, src_principal) = setup();
+
+    let user_principal = USER_1;
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+
+    // user performs preparations
+    make_initial_transfer(&pic, src_principal, user_principal);
+
+    // user creates proposal
+    let now = now * 1_000_000_000;
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_id: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: now,
+    };
+    // run proposal
+    update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload.clone(),
+    )
+    .unwrap();
+
+    // it must only work the first time for the same user
+    let res = update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload,
+    );
+    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequestingSubnetRental);
 }
 
 // #[test]
@@ -403,7 +454,7 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn _check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
+fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
     query(
         pic,
         MAINNET_LEDGER_CANISTER_ID,
