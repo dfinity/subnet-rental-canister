@@ -117,7 +117,7 @@ fn setup() -> (PocketIc, Principal) {
     (pic, subnet_rental_canister)
 }
 
-fn prepare_proposal(pic: &PocketIc, src_principal: Principal, user_principal: Principal) {
+fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principal: Principal) {
     // user finds rental conditions
     let res = query::<Vec<(RentalConditionId, RentalConditions)>>(
         pic,
@@ -183,7 +183,7 @@ fn test_initial_proposal() {
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // user performs preparations
-    prepare_proposal(&pic, src_principal, user_principal);
+    make_initial_transfer(&pic, src_principal, user_principal);
 
     // user creates proposal
     let now = now * 1_000_000_000;
@@ -227,7 +227,7 @@ fn test_initial_proposal() {
     assert_eq!(rental_requests.len(), 1);
     let RentalRequest {
         user,
-        refundable_icp: _,
+        refundable_icp,
         locked_amount_cycles: _,
         initial_proposal_id: _,
         creation_date: _,
@@ -237,13 +237,16 @@ fn test_initial_proposal() {
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);
 
     // get refund
+    let balance_before = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
     let res = update::<Result<u64, String>>(&pic, src_principal, None, "refund", ());
     // anonymous principal should fail
     assert!(res.is_err());
     let res =
         update::<Result<u64, String>>(&pic, src_principal, Some(user_principal), "refund", ());
-    // anonymous principal should fail
     assert!(res.is_ok());
+    // check that transfer has succeeded
+    let balance_after = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
+    assert_eq!(balance_after - balance_before, refundable_icp - DEFAULT_FEE);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
@@ -261,7 +264,7 @@ fn test_duplicate_request_fails() {
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // user performs preparations
-    prepare_proposal(&pic, src_principal, user_principal);
+    make_initial_transfer(&pic, src_principal, user_principal);
 
     // user creates proposal
     let now = now * 1_000_000_000;
@@ -451,7 +454,7 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     decode_one::<T>(&res).unwrap()
 }
 
-fn _check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
+fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {
     query(
         pic,
         MAINNET_LEDGER_CANISTER_ID,

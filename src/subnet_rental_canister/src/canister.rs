@@ -387,7 +387,7 @@ pub async fn refund() -> Result<u64, String> {
         return Err("Failed to acquire lock. Try again.".to_string());
     }
     // does the caller have an active rental request?
-    match remove_rental_request(&caller) {
+    match get_rental_request(&caller) {
         None => Err("Caller does not have an open rental request.".to_string()),
         Some(
             rental_request @ RentalRequest {
@@ -421,8 +421,9 @@ pub async fn refund() -> Result<u64, String> {
                 "SRC burned {} locked cycles after refunding.",
                 locked_amount_cycles
             );
-
-            // TODO: stop polling.. or polling simply stops when the rental request is no longer in the map.
+            // remove rental request from global map
+            remove_rental_request(&caller);
+            //polling simply stops when the rental request is no longer in the map.
 
             persist_event(
                 EventType::RentalRequestCancelled {
