@@ -423,7 +423,6 @@ pub async fn refund() -> Result<u64, String> {
             );
             // remove rental request from global map
             remove_rental_request(&caller);
-            //polling simply stops when the rental request is no longer in the map.
 
             persist_event(
                 EventType::RentalRequestCancelled {
