@@ -455,6 +455,11 @@ pub async fn execute_rental_request_proposal(
 /// Returns the block index of the refund transaction.
 #[update]
 pub async fn refund() -> Result<u64, String> {
+    // Overall guard to prevent spamming the ledger canister.
+    let overall_guard = CallerGuard::new(Principal::anonymous(), "");
+    if overall_guard.is_err() {
+        return Err("Only one refund may execute at a time. Try again".to_string());
+    }
     let caller = ic_cdk::caller();
     // Before removing the rental request, acquire a lock on it, so that the
     // polling process cannot concurrently convert the request into a rental agreement.
@@ -511,7 +516,7 @@ pub async fn refund() -> Result<u64, String> {
             Ok(block_id)
         }
         None => {
-            println!("Caller has no open rental request. Refunding all funds on the SRC/caller subaccount.");
+            println!("Caller has no open rental request. Refunding all funds on the caller subaccount of the SRC.");
             let src_principal = ic_cdk::id();
             let res = account_balance(
                 MAINNET_LEDGER_CANISTER_ID,
@@ -536,7 +541,7 @@ pub async fn refund() -> Result<u64, String> {
                     fee: DEFAULT_FEE,
                     from_subaccount: Some(Subaccount::from(caller)),
                     amount: balance - DEFAULT_FEE,
-                    memo: Memo(balance.e8s()),
+                    memo: Memo(0),
                     created_at_time: None,
                 },
             )
