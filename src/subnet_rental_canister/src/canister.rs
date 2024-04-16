@@ -456,7 +456,7 @@ pub async fn execute_rental_request_proposal(
 #[update]
 pub async fn refund() -> Result<u64, String> {
     // Overall guard to prevent spamming the ledger canister.
-    let overall_guard = CallerGuard::new(Principal::anonymous(), "");
+    let overall_guard = CallerGuard::new(Principal::anonymous(), "refund");
     if overall_guard.is_err() {
         return Err("Only one refund may execute at a time. Try again".to_string());
     }
