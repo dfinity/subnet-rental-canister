@@ -19,7 +19,11 @@ use crate::{
 use candid::Principal;
 use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
-use ic_ledger_types::{Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANISTER_ID};
+use ic_ledger_types::{
+    account_balance, transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens,
+    TransferArgs, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
+};
 
 ////////// CANISTER METHODS //////////
 
@@ -448,21 +452,6 @@ pub async fn execute_rental_request_proposal(
     Ok(())
 }
 
-/// Called by governance if the community rejects the proposal.
-#[update]
-pub async fn reject_rental_request_proposal(
-    SubnetRentalProposalPayload {
-        user: _,
-        rental_condition_id: _,
-        proposal_id: _,
-        proposal_creation_time: _,
-    }: SubnetRentalProposalPayload,
-) -> Result<(), ExecuteProposalError> {
-    // transfer to user subaccount to enable refund
-    // TODO
-    Ok(())
-}
-
 /// Returns the block index of the refund transaction.
 #[update]
 pub async fn refund() -> Result<u64, String> {
@@ -475,7 +464,6 @@ pub async fn refund() -> Result<u64, String> {
     }
     // does the caller have an active rental request?
     match get_rental_request(&caller) {
-        None => Err("Caller does not have an open rental request.".to_string()),
         Some(
             rental_request @ RentalRequest {
                 user,
@@ -520,6 +508,54 @@ pub async fn refund() -> Result<u64, String> {
                 Some(user),
             );
 
+            Ok(block_id)
+        }
+        None => {
+            println!("Caller has no open rental request. Refunding all funds on the SRC/caller subaccount.");
+            let src_principal = ic_cdk::id();
+            let res = account_balance(
+                MAINNET_LEDGER_CANISTER_ID,
+                AccountBalanceArgs {
+                    account: AccountIdentifier::new(&src_principal, &Subaccount::from(caller)),
+                },
+            )
+            .await;
+            let Ok(balance) = res else {
+                return Err(format!("Failed to refund: {:?}", res.unwrap_err()));
+            };
+            if balance < DEFAULT_FEE {
+                return Err(format!(
+                    "Failed refund: {} has insufficient funds {}",
+                    caller, balance
+                ));
+            }
+            let res = transfer(
+                MAINNET_LEDGER_CANISTER_ID,
+                TransferArgs {
+                    to: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
+                    fee: DEFAULT_FEE,
+                    from_subaccount: Some(Subaccount::from(caller)),
+                    amount: balance - DEFAULT_FEE,
+                    memo: Memo(balance.e8s()),
+                    created_at_time: None,
+                },
+            )
+            .await
+            .expect("Failed refund: Failed to call ledger canister");
+            let Ok(block_id) = res else {
+                return Err(format!(
+                    "Failed to refund {} ICP to {:?}: {:?}",
+                    balance - DEFAULT_FEE,
+                    caller,
+                    res.unwrap_err()
+                ));
+            };
+            println!(
+                "SRC refunded {} ICP to {}, block_id: {}",
+                balance - DEFAULT_FEE,
+                caller,
+                block_id
+            );
             Ok(block_id)
         }
     }
