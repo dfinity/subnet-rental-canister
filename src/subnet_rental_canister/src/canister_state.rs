@@ -5,7 +5,7 @@
 ///
 /// Relevant updates to state leave a trace in the corresponding History trace log.  
 use crate::{
-    history::{Event, EventType, History},
+    history::{Event, EventType},
     Principal, RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
 };
 use ic_cdk::println;
@@ -17,6 +17,7 @@ use ic_stable_structures::{
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
+    ops::RangeBounds,
 };
 
 thread_local! {
@@ -42,7 +43,7 @@ thread_local! {
 
     // Memory region 2
     // Keys are subnet_id, user principal or None for changes to rental conditions.
-    static HISTORY: RefCell<StableBTreeMap<Option<Principal>, History, VirtualMemory<DefaultMemoryImpl>>> =
+    static HISTORY: RefCell<StableBTreeMap<(Option<Principal>, Event), (), VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
     // Memory region 3
@@ -128,14 +129,15 @@ pub fn cache_rate(time: u64, rate: u64, decimals: u32) {
 
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
     HISTORY.with_borrow_mut(|map| {
-        let mut history = map.get(&key).unwrap_or_default();
-        history.events.push(event.into());
-        map.insert(key, history);
+        let composite_key = (key, event.into());
+        map.insert(composite_key, ());
     })
 }
 
-pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
-    HISTORY.with_borrow(|map| map.get(&principal).map(|h| h.events).unwrap_or_default())
+pub fn get_history(principal: Principal) -> Vec<Event> {
+    let start = (principal, ..);
+    let end = (principal, ..);
+    HISTORY.with_borrow(|map| map.range(start..end))
 }
 
 /// Create a RentalRequest with the current time as create_date, insert into canister state

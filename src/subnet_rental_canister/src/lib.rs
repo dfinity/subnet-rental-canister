@@ -22,7 +22,7 @@ const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 // Types
 
 /// Rental conditions are kept in a global HashMap and only changed via code upgrades.
-#[derive(Debug, Clone, Copy, CandidType, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize, Hash)]
 pub enum RentalConditionId {
     App13CH,
 }
@@ -30,7 +30,7 @@ pub enum RentalConditionId {
 /// Set of conditions for a subnet up for rent.
 /// Rental conditions are kept in a global HashMap and only changed via code upgrades.
 /// Once the subnet_id is known, it is added as Some().
-#[derive(Debug, Clone, CandidType, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub struct RentalConditions {
     /// A description of the topology of this subnet.
     pub description: String,
@@ -67,7 +67,7 @@ pub struct SubnetRentalProposalPayload {
 }
 
 /// Successful proposal execution leads to a RentalRequest.
-#[derive(Clone, CandidType, Debug, Deserialize)]
+#[derive(Clone, CandidType, PartialEq, Eq, PartialOrd, Ord, Debug, Deserialize)]
 pub struct RentalRequest {
     pub user: Principal,
     /// The amount of ICP in SRC's main account which remain refundable.
@@ -97,7 +97,7 @@ impl Storable for RentalRequest {
     }
 }
 
-#[derive(Debug, Clone, CandidType, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub struct RentalAgreement {
     // ===== Immutable data =====
     /// The principal which paid the deposit and will be whitelisted.
@@ -135,7 +135,7 @@ impl Storable for RentalAgreement {
     }
 }
 
-#[derive(CandidType, Debug, PartialEq, Clone, Deserialize)]
+#[derive(CandidType, Debug, PartialEq, Eq, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
     CallXRCFailed(ExchangeRateError),
@@ -151,7 +151,7 @@ pub enum ExecuteProposalError {
     SubnetNotRented,
 }
 
-#[derive(CandidType, Debug, PartialEq, Clone, Deserialize)]
+#[derive(CandidType, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
 pub struct PriceCalculationData {
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
