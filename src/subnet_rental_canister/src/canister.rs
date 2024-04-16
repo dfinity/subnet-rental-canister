@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::canister_state::{
     self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
     get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
-    remove_rental_request, set_rental_request, CallerGuard,
+    remove_rental_request, update_rental_request, CallerGuard,
 };
 use crate::external_calls::{
     convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, refund_user, transfer_to_src_main,
@@ -182,7 +182,7 @@ async fn locking() {
                 last_locking_time: now,
                 lock_amount_icp,
             };
-            set_rental_request(user, new_rental_request);
+            update_rental_request(user, move |_| new_rental_request).unwrap();
         }
     }
 }

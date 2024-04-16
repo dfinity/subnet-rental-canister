@@ -102,9 +102,18 @@ pub fn get_rental_request(requester: &Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow(|map| map.get(requester))
 }
 
-/// Use for mutating only, for new requests use 'create_rental_request'.
-pub fn set_rental_request(requester: Principal, request: RentalRequest) {
-    RENTAL_REQUESTS.with_borrow_mut(|map| map.insert(requester, request));
+/// Used to mutate an existing rental request.
+pub fn update_rental_request(
+    requester: Principal,
+    f: impl FnOnce(RentalRequest) -> RentalRequest,
+) -> Result<(), String> {
+    RENTAL_REQUESTS.with_borrow_mut(|map| match map.get(&requester) {
+        None => Err("Princial has no rental agreement.".to_string()),
+        Some(value) => {
+            map.insert(requester, f(value));
+            Ok(())
+        }
+    })
 }
 
 pub fn remove_rental_request(requester: &Principal) -> Option<RentalRequest> {
