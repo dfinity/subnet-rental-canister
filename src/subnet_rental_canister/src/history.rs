@@ -106,6 +106,17 @@ pub enum EventType {
     PaymentFailure {
         reason: String,
     },
+    /// A successfull locking of 10% during the wait until subnet creation.
+    LockingSuccess {
+        user: Principal,
+        amount: Tokens,
+        cycles: u128,
+    },
+    /// A failure to lock 10% during the wait until subnet creation.
+    LockingFailure {
+        user: Principal,
+        reason: String,
+    },
     Degraded,
     Undegraded,
     Other {

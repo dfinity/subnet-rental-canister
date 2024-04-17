@@ -80,9 +80,14 @@ pub struct RentalRequest {
     pub initial_proposal_id: u64,
     /// Rental request creation date in nanoseconds since epoch.
     pub creation_date: u64,
-    // ===== Some fields from the proposal payload for the rental agreement =====
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_id: RentalConditionId,
+    /// ===== Data for the ICP-locking timer. =====
+    /// The last time ICP were successfully locked. If this is
+    /// 30d in the past, a new locking event should trigger.
+    pub last_locking_time: u64,
+    /// 10% of the initially transferred amount.
+    pub lock_amount_icp: Tokens,
 }
 
 impl Storable for RentalRequest {

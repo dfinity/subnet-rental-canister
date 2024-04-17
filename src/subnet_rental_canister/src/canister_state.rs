@@ -103,6 +103,20 @@ pub fn get_rental_request(requester: &Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow(|map| map.get(requester))
 }
 
+/// Used to mutate an existing rental request.
+pub fn update_rental_request(
+    requester: Principal,
+    f: impl FnOnce(RentalRequest) -> RentalRequest,
+) -> Result<(), String> {
+    RENTAL_REQUESTS.with_borrow_mut(|map| match map.get(&requester) {
+        None => Err("Princial has no rental agreement.".to_string()),
+        Some(value) => {
+            map.insert(requester, f(value));
+            Ok(())
+        }
+    })
+}
+
 pub fn remove_rental_request(requester: &Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow_mut(|map| map.remove(requester))
 }
@@ -148,6 +162,8 @@ pub fn create_rental_request(
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
     rental_condition_id: RentalConditionId,
+    last_locking_time: u64,
+    lock_amount_icp: Tokens,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
@@ -157,6 +173,8 @@ pub fn create_rental_request(
         initial_proposal_id,
         creation_date: now,
         rental_condition_id,
+        last_locking_time,
+        lock_amount_icp,
     };
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {
