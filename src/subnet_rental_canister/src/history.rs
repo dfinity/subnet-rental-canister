@@ -39,16 +39,14 @@ impl Event {
     pub fn _start_bound() -> Self {
         Event {
             date: 0,
-            event: EventType::_Unused,
+            event: EventType::_UnusedStart,
         }
     }
 
     pub fn _end_bound() -> Self {
         Event {
             date: u64::MAX,
-            event: EventType::Other {
-                message: "z".to_string(),
-            },
+            event: EventType::_UnusedStart,
         }
     }
 }
@@ -65,7 +63,7 @@ impl From<EventType> for Event {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub enum EventType {
     /// To implement start bound
-    _Unused,
+    _UnusedStart,
     /// Changed via code upgrade, which should create this event in the post-upgrade hook.
     /// A None value means that the entry has been removed from the map.
     RentalConditionsChanged {
@@ -130,4 +128,6 @@ pub enum EventType {
     Other {
         message: String,
     },
+    /// To implement end bound
+    _UnusedEnd,
 }
