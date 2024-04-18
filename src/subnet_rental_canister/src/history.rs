@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::RangeBounds};
+use std::borrow::Cow;
 
 use crate::{Principal, RentalConditionId, RentalConditions, RentalRequest};
 use candid::{CandidType, Decode, Encode};
@@ -27,16 +27,6 @@ impl Storable for Event {
     const BOUND: Bound = Bound::Unbounded;
 }
 
-// impl<T> RangeBounds<T> for Event {
-//     fn start_bound(&self) -> std::ops::Bound<&T> {
-//         todo!()
-//     }
-
-//     fn end_bound(&self) -> std::ops::Bound<&T> {
-//         todo!()
-//     }
-// }
-
 impl Event {
     pub fn event(&self) -> EventType {
         self.event.clone()
@@ -44,6 +34,22 @@ impl Event {
 
     pub fn date(&self) -> u64 {
         self.date
+    }
+
+    pub fn _start_bound() -> Self {
+        Event {
+            date: 0,
+            event: EventType::_Unused,
+        }
+    }
+
+    pub fn _end_bound() -> Self {
+        Event {
+            date: u64::MAX,
+            event: EventType::Other {
+                message: "z".to_string(),
+            },
+        }
     }
 }
 
@@ -58,6 +64,8 @@ impl From<EventType> for Event {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub enum EventType {
+    /// To implement start bound
+    _Unused,
     /// Changed via code upgrade, which should create this event in the post-upgrade hook.
     /// A None value means that the entry has been removed from the map.
     RentalConditionsChanged {

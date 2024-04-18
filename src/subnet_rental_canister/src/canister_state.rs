@@ -17,7 +17,6 @@ use ic_stable_structures::{
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
-    ops::RangeBounds,
 };
 
 thread_local! {
@@ -43,6 +42,7 @@ thread_local! {
 
     // Memory region 2
     // Keys are subnet_id, user principal or None for changes to rental conditions.
+    #[allow(clippy::type_complexity)]
     static HISTORY: RefCell<StableBTreeMap<(Option<Principal>, Event), (), VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
@@ -148,10 +148,12 @@ pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
     })
 }
 
-pub fn get_history(principal: Principal) -> Vec<Event> {
-    let start = (principal, ..);
-    let end = (principal, ..);
-    HISTORY.with_borrow(|map| map.range(start..end))
+pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
+    let start = Event::_start_bound();
+    let end = Event::_end_bound();
+    let start = (principal, start);
+    let end = (principal, end);
+    HISTORY.with_borrow(|map| map.range(start..end).map(|((_, v), _)| v).collect())
 }
 
 /// Create a RentalRequest with the current time as create_date, insert into canister state
