@@ -153,6 +153,12 @@ pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
     let end = Event::_end_bound();
     let start = (principal, start);
     let end = (principal, end);
+    // (Option<Principal>, u64, Event), range query
+    // start sequence number with 1. draw new sequence number for each principal when creating an event...
+    // keep sequence number in separate map? //
+    // Map<Option<Principal>, SequenceNum> gives last seq num
+    // Map<(Option<Principal>, SequenceNum), Event>
+
     HISTORY.with_borrow(|map| map.range(start..end).map(|((_, v), _)| v).collect())
 }
 

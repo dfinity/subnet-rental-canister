@@ -685,3 +685,5 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 fn round_to_previous_midnight(time_secs: u64) -> u64 {
     time_secs - time_secs % 86400
 }
+
+ic_cdk::export_candid!();
