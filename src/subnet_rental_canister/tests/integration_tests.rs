@@ -191,7 +191,7 @@ fn test_initial_proposal() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time: Some(now),
     };
     // run proposal
     update::<Result<(), ExecuteProposalError>>(
@@ -274,7 +274,7 @@ fn test_duplicate_request_fails() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time: Some(now),
     };
     // run proposal
     update::<Result<(), ExecuteProposalError>>(
@@ -377,7 +377,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: 999,
+        proposal_creation_time: Some(999),
     };
     let res = update::<Result<(), ExecuteProposalError>>(
         &pic,
@@ -387,6 +387,31 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         payload,
     );
     assert_eq!(res.unwrap_err(), ExecuteProposalError::UnauthorizedCaller);
+}
+
+#[test]
+fn test_missing_proposal_creation_time() {
+    let (pic, src_principal) = setup();
+
+    let user_principal = USER_1;
+
+    // user creates proposal
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_id: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: None,
+    };
+    // run proposal
+    let err = update::<Result<(), ExecuteProposalError>>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload.clone(),
+    )
+    .unwrap_err();
+    assert_eq!(err, ExecuteProposalError::MissingProposalCreationTime);
 }
 
 // fn accept_test_rental_agreement(
@@ -400,7 +425,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
 //         subnet_id,
 //         user: *user,
 //         principals: vec![*user],
-//         proposal_creation_time: 0,
+//         proposal_creation_time: Some(0),
 //     };
 
 //     pic.update_call(

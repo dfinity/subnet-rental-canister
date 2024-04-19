@@ -341,6 +341,9 @@ pub async fn execute_rental_request_proposal(
         return with_error(user, proposal_id, e);
     }
 
+    let proposal_creation_time =
+        proposal_creation_time.ok_or(ExecuteProposalError::MissingProposalCreationTime)?;
+
     // unwrap safety:
     // The rental_condition_id key must have a value in the rental conditions map at compile time.
     // TODO: unit test
