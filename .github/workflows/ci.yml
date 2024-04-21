@@ -70,7 +70,7 @@ jobs:
       run: cargo fmt --all -- --check
 
   release: 
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ github.event_name == 'release' || github.event_name == 'prerelease' }}
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
