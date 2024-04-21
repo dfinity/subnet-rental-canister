@@ -71,6 +71,7 @@ jobs:
     - run: echo ${{ github.event_name }}
     - run: echo ${{ github.ref_type }}
 
+
   release: 
     if: ${{ github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
@@ -91,6 +92,6 @@ jobs:
     - name: upload artifacts to release page
       uses: softprops/action-gh-release@master
       with:
-        files: "subnet_rental_canister.wasm.gz"
+        files: "dist/subnet_rental_canister.wasm.gz"
 
 
