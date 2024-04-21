@@ -6,6 +6,8 @@ on:
     branches: [ "master" ]
     tags: 
       - '*'
+    
+
 
 env:
   CARGO_TERM_COLOR: always
@@ -68,9 +70,11 @@ jobs:
     - uses: actions/checkout@v4
     - name: Run fmt
       run: cargo fmt --all -- --check
+    - run: echo ${{ github.event_name }}
+    - run: echo ${{ github.ref_type }}
 
   release: 
-    if: ${{ github.event_name == 'release' || github.event_name == 'prerelease' }}
+    if: ${{ github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
