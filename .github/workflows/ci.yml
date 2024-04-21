@@ -66,3 +66,27 @@ jobs:
     - uses: actions/checkout@v4
     - name: Run fmt
       run: cargo fmt --all -- --check
+
+  release: 
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: |
+        rustup target add wasm32-unknown-unknown
+        ./scripts/build.sh
+    - name: move artifacs to dist
+      run: |
+        mkdir dist
+        cp target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm dist/subnet_rental_canister.wasm
+        gzip dist/subnet_rental_canister.wasm
+    - name: ls
+      run: echo `ls -la dist/`
+    - name: upload artifacts to release page
+      uses: softprops/action-gh-release@master
+      with:
+        files: "subnet_rental_canister.wasm.gz"
+
+
