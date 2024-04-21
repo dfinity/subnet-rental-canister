@@ -68,6 +68,8 @@ jobs:
     - uses: actions/checkout@v4
     - name: Run fmt
       run: cargo fmt --all -- --check
+    - run: echo ${{ github.event_name }}
+    - run: echo ${{ github.ref_type }}
 
 
   release: 
