@@ -93,5 +93,3 @@ jobs:
         files: |
           "subnet_rental_canister.wasm.gz"
           "src.sha256"
-
-
