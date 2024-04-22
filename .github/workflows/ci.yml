@@ -91,5 +91,5 @@ jobs:
       uses: softprops/action-gh-release@master
       with:
         files: |
-          "subnet_rental_canister.wasm.gz"
-          "src.sha256"
+          subnet_rental_canister.wasm.gz
+          src.sha256
