@@ -325,7 +325,7 @@ pub async fn execute_rental_request_proposal(
             EventType::RentalRequestFailed {
                 user,
                 proposal_id,
-                reason: e.clone(),
+                reason: format!("{:?}", e.clone()),
             },
             Some(user),
         );
