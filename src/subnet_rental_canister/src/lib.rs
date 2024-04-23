@@ -1,7 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
-use external_canister_interfaces::exchange_rate_canister::ExchangeRateError;
-use external_types::NotifyError;
-use ic_ledger_types::{Memo, Tokens, TransferError};
+use ic_ledger_types::{Memo, Tokens};
 use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
 
@@ -143,16 +141,16 @@ impl Storable for RentalAgreement {
 #[derive(CandidType, Debug, PartialEq, Eq, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
-    CallXRCFailed(ExchangeRateError),
+    CallXRCFailed(String),
     PriceCalculationError(PriceCalculationData),
     UserAlreadyRequestingSubnetRental,
     SubnetAlreadyRented,
     SubnetAlreadyRequested,
     UnauthorizedCaller,
     InsufficientFunds,
-    TransferUserToSrcError(TransferError),
-    TransferSrcToCmcError(TransferError),
-    NotifyTopUpError(NotifyError),
+    TransferUserToSrcError(String),
+    TransferSrcToCmcError(String),
+    NotifyTopUpError(String),
     SubnetNotRented,
 }
 
