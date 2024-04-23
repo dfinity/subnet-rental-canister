@@ -161,7 +161,7 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecutePropos
     let Ok(block_index) = transfer_to_cmc_result else {
         let e = transfer_to_cmc_result.unwrap_err();
         println!("Transfer from SRC to CMC failed: {:?}", e);
-        return Err(ExecuteProposalError::TransferSrcToCmcError(e));
+        return Err(ExecuteProposalError::TransferSrcToCmcError(e.to_string()));
     };
 
     // Notify CMC about the top-up. This is what triggers the exchange from ICP to cycles.
@@ -169,7 +169,7 @@ pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecutePropos
     let Ok(actual_cycles) = notify_top_up_result else {
         let e = notify_top_up_result.unwrap_err();
         println!("Notify top-up failed: {:?}", e);
-        return Err(ExecuteProposalError::NotifyTopUpError(e));
+        return Err(ExecuteProposalError::NotifyTopUpError(format!("{:?}", e)));
     };
     Ok(actual_cycles)
 }
