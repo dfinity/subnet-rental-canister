@@ -17,7 +17,7 @@ use crate::{
     ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
 };
 use candid::Principal;
-use ic_cdk::{init, post_upgrade, query};
+use ic_cdk::{export_candid, init, post_upgrade, query};
 use ic_cdk::{println, update};
 use ic_ledger_types::{
     account_balance, transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens,
@@ -378,7 +378,7 @@ pub async fn execute_rental_request_proposal(
     // Call exchange rate canister.
     let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
     let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
-        let e = ExecuteProposalError::CallXRCFailed(res.unwrap_err());
+        let e = ExecuteProposalError::CallXRCFailed(format!("{:?}", res.unwrap_err()));
         return with_error(user, proposal_id, e);
     };
 
@@ -398,7 +398,7 @@ pub async fn execute_rental_request_proposal(
     let res = transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id).await;
     let Ok(block_index) = res else {
         println!("Fatal: Failed to transfer enough ICP to SRC main account");
-        let e = ExecuteProposalError::TransferUserToSrcError(res.unwrap_err());
+        let e = ExecuteProposalError::TransferUserToSrcError(format!("{:?}", res.unwrap_err()));
         return with_error(user, proposal_id, e);
     };
     let transferred_icp = needed_icp - DEFAULT_FEE;
@@ -685,3 +685,6 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 fn round_to_previous_midnight(time_secs: u64) -> u64 {
     time_secs - time_secs % 86400
 }
+
+// allow candid-extractor to derive candid interface from rust code
+export_candid!();
