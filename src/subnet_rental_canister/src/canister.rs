@@ -208,6 +208,11 @@ pub fn get_history_page(principal: Option<Principal>, page_index: u64) -> Vec<Ev
     canister_state::get_history_page(principal, page_index, page_size)
 }
 
+#[query]
+pub fn get_payment_subaccount() -> AccountIdentifier {
+    AccountIdentifier::new(&ic_cdk::id(), &Subaccount::from(ic_cdk::caller()))
+}
+
 // #[query]
 // pub fn list_rental_agreements() -> Vec<RentalAgreement> {
 //     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
