@@ -35,6 +35,11 @@ impl Event {
     pub fn date(&self) -> u64 {
         self.date
     }
+
+    /// For unit tests only
+    pub fn _mk_event(date: u64, event: EventType) -> Self {
+        Self { date, event }
+    }
 }
 
 impl From<EventType> for Event {

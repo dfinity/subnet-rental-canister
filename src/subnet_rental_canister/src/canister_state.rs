@@ -163,7 +163,7 @@ pub fn next_seq(mbp: Option<Principal>) -> Seq {
 /// Returns the largest _used_ sequence number without increasing the underlying counter.
 /// Returns None if no sequence number has been drawn for this principal yet.
 pub fn get_current_seq(mbp: Option<Principal>) -> Option<Seq> {
-    SEQUENCES.with_borrow(|map| map.get(&mbp)).map(|x| x - 1)
+    SEQUENCES.with_borrow(|map| map.get(&mbp)).map(|x| x)
 }
 
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
@@ -188,6 +188,8 @@ pub fn get_history_page(
     if high_seq == 0 {
         return vec![];
     }
+    // we want the end to be included (end = most recent event)
+    let high_seq = high_seq + 1;
     let low_seq = high_seq.saturating_sub(page_size);
     let start = (principal, low_seq);
     let end = (principal, high_seq);
@@ -288,4 +290,47 @@ pub fn create_rental_agreement(
             Ok(())
         }
     })
+}
+
+#[cfg(test)]
+mod canister_state_test {
+    use crate::history::EventType;
+
+    use super::*;
+
+    #[test]
+    fn test_history_pagination() {
+        fn make_event(date: u64) -> Event {
+            Event::_mk_event(
+                date,
+                EventType::RentalRequestCreated {
+                    rental_request: RentalRequest {
+                        user: Principal::anonymous(),
+                        refundable_icp: Tokens::from_e8s(100),
+                        locked_amount_cycles: 99,
+                        initial_proposal_id: 99,
+                        creation_date: date,
+                        rental_condition_id: RentalConditionId::App13CH,
+                        last_locking_time: 99,
+                        lock_amount_icp: Tokens::from_e8s(10),
+                    },
+                },
+            )
+        }
+        persist_event(make_event(1), None);
+        persist_event(make_event(2), None);
+        persist_event(make_event(3), None);
+        persist_event(make_event(4), None);
+        persist_event(make_event(5), None);
+        let events = get_history_page(None, 0, 2);
+        assert_eq!(events[0].date(), 4);
+        assert_eq!(events[1].date(), 5);
+        let events = get_history_page(None, 1, 2);
+        assert_eq!(events[0].date(), 2);
+        assert_eq!(events[1].date(), 3);
+        let events = get_history_page(None, 2, 2);
+        assert_eq!(events[0].date(), 1);
+        let events = get_history_page(None, 3, 2);
+        assert!(events.is_empty());
+    }
 }
