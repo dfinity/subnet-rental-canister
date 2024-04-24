@@ -17,7 +17,7 @@ use crate::{
     ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
 };
 use candid::Principal;
-use ic_cdk::{export_candid, init, post_upgrade, query};
+use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
 use ic_ledger_types::{
     account_balance, transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens,
@@ -203,10 +203,8 @@ pub fn list_rental_requests() -> Vec<RentalRequest> {
 }
 
 #[query]
-pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
-    let mut res = canister_state::get_history(principal);
-    res.sort_by_key(|event| event.date());
-    res
+pub fn get_history_page(principal: Option<Principal>, page_index: u64) -> Vec<Event> {
+    canister_state::get_history_page(principal, page_index, 20)
 }
 
 // #[query]

@@ -8,12 +8,14 @@ type EventType = variant {
   };
   Undegraded;
   LockingSuccess : record { user : principal; cycles : nat; amount : Tokens };
+  _UnusedEnd;
   RentalAgreementTerminated : record {
     initial_proposal_id : nat64;
     user : principal;
     rental_condition_id : RentalConditionId;
     subnet_creation_proposal_id : opt nat64;
   };
+  _UnusedStart;
   PaymentFailure : record { reason : text };
   RentalRequestCreated : record { rental_request : RentalRequest };
   Degraded;

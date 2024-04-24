@@ -19,6 +19,8 @@ use std::{
     collections::{BTreeSet, HashMap},
 };
 
+type Seq = u64;
+
 thread_local! {
 
     static RENTAL_CONDITIONS: RefCell<HashMap<RentalConditionId, RentalConditions>> =
@@ -41,17 +43,22 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 
     // Memory region 2
-    // Keys are subnet_id, user principal or None for changes to rental conditions.
-    #[allow(clippy::type_complexity)]
-    static HISTORY: RefCell<StableBTreeMap<(Option<Principal>, Event), (), VirtualMemory<DefaultMemoryImpl>>> =
+    // The current number of events for each principal. Helps with range queries on the history and with pagination.
+    static SEQUENCES: RefCell<StableBTreeMap<Option<Principal>, Seq, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
     // Memory region 3
+    // Keys are subnet_id / user principal; or None for changes to rental conditions.
+    #[allow(clippy::type_complexity)]
+    static HISTORY: RefCell<StableBTreeMap<(Option<Principal>, Seq), Event, VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
+
+    // Memory region 4
     // Cache for ICP/XDR exchange rates.
     // The keys are timestamps in seconds since epoch (rounded to midnight).
     // The values are (rate, decimal) where the rate is scaled by 10^decimals.
     static RATES: RefCell<StableBTreeMap<u64, (u64, u32), VirtualMemory<DefaultMemoryImpl>>> =
-        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(4)))));
 }
 
 struct Locks {
@@ -141,25 +148,50 @@ pub fn cache_rate(time: u64, rate: u64, decimals: u32) {
     RATES.with_borrow_mut(|map| map.insert(time, (rate, decimals)));
 }
 
-pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
-    HISTORY.with_borrow_mut(|map| {
-        let composite_key = (key, event.into());
-        map.insert(composite_key, ());
+/// Returns the next unused sequence number for the given principal and increases
+/// the underlying counter.
+/// Starts at 1, so that the sequence numbers can be strictly bound by (0, u64:MAX).
+pub fn next_seq(mbp: Option<Principal>) -> Seq {
+    SEQUENCES.with_borrow_mut(|map| {
+        let cur = map.get(&mbp).unwrap_or_default();
+        let res = cur + 1;
+        map.insert(mbp, res);
+        res
     })
 }
 
-pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
-    let start = Event::_start_bound();
-    let end = Event::_end_bound();
-    let start = (principal, start);
-    let end = (principal, end);
-    // (Option<Principal>, u64, Event), range query
-    // start sequence number with 1. draw new sequence number for each principal when creating an event...
-    // keep sequence number in separate map? //
-    // Map<Option<Principal>, SequenceNum> gives last seq num
-    // Map<(Option<Principal>, SequenceNum), Event>
+/// Returns the largest _used_ sequence number without increasing the underlying counter.
+/// Returns None if no sequence number has been drawn for this principal yet.
+pub fn get_current_seq(mbp: Option<Principal>) -> Option<Seq> {
+    SEQUENCES.with_borrow(|map| map.get(&mbp)).map(|x| x - 1)
+}
 
-    HISTORY.with_borrow(|map| map.range(start..end).map(|((_, v), _)| v).collect())
+pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
+    // get the next sequence number for this principal
+    let seq = next_seq(key);
+    HISTORY.with_borrow_mut(|map| {
+        let composite_key = (key, seq);
+        map.insert(composite_key, event.into());
+    })
+}
+
+/// Get a page of events for the given principal. page_index 0 refers to the most recent events,
+/// page_index 1 to the next older events, etc.
+pub fn get_history_page(
+    principal: Option<Principal>,
+    page_index: u64,
+    page_size: u64,
+) -> Vec<Event> {
+    let high_seq = get_current_seq(principal).unwrap_or_default();
+    // move back by page_index many pages
+    let high_seq = high_seq.saturating_sub(page_index * page_size);
+    if high_seq == 0 {
+        return vec![];
+    }
+    let low_seq = high_seq.saturating_sub(page_size);
+    let start = (principal, low_seq);
+    let end = (principal, high_seq);
+    HISTORY.with_borrow(|map| map.range(start..end).map(|(_k, v)| v).collect())
 }
 
 /// Create a RentalRequest with the current time as create_date, insert into canister state
