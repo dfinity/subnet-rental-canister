@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{ExecuteProposalError, Principal, RentalConditionId, RentalConditions, RentalRequest};
+use crate::{Principal, RentalConditionId, RentalConditions, RentalRequest};
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
@@ -72,7 +72,7 @@ pub enum EventType {
     RentalRequestFailed {
         user: Principal,
         proposal_id: u64,
-        reason: ExecuteProposalError,
+        reason: String,
     },
     /// When the user calls get_refund and the effort is abandoned.
     RentalRequestCancelled {
