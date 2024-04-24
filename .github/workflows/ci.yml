@@ -25,6 +25,7 @@ jobs:
       run: |
         delta=$(git diff src/subnet_rental_canister/subnet_rental_canister.did)
         if [[ $delta ]]; then
+          echo "The SRC wasm's candid interface has changed, but the candid file of the SRC has not been changed."
           echo "$delta"
           exit 1
         fi

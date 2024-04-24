@@ -163,7 +163,7 @@ pub fn next_seq(mbp: Option<Principal>) -> Seq {
 /// Returns the largest _used_ sequence number without increasing the underlying counter.
 /// Returns None if no sequence number has been drawn for this principal yet.
 pub fn get_current_seq(mbp: Option<Principal>) -> Option<Seq> {
-    SEQUENCES.with_borrow(|map| map.get(&mbp)).map(|x| x)
+    SEQUENCES.with_borrow(|map| map.get(&mbp))
 }
 
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
