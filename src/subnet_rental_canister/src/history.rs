@@ -7,7 +7,7 @@ use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
 /// Important events are persisted for auditing by the community.
-/// Prefer creating events via EventType::SomeVariant.into()
+/// Create events via EventType::SomeVariant.into()
 /// so that system time is captured automatically.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub struct Event {
@@ -36,7 +36,7 @@ impl Event {
         self.date
     }
 
-    /// For unit tests only
+    #[cfg(test)]
     pub fn _mk_event(date: u64, event: EventType) -> Self {
         Self { date, event }
     }
@@ -67,7 +67,7 @@ pub enum EventType {
     RentalRequestFailed {
         user: Principal,
         proposal_id: u64,
-        // String instead of ExecuteProposalError because of missing traits in external structs.
+        // Convert dependencies' error types to string in order to keep candid interface minimal.
         reason: String,
     },
     /// When the user calls get_refund and the effort is abandoned.

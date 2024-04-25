@@ -19,7 +19,7 @@ use std::{
     collections::{BTreeSet, HashMap},
 };
 
-type Seq = u64;
+type EventNum = u64;
 
 thread_local! {
 
@@ -44,13 +44,13 @@ thread_local! {
 
     // Memory region 2
     // The current number of events for each principal. Helps with range queries on the history and with pagination.
-    static SEQUENCES: RefCell<StableBTreeMap<Option<Principal>, Seq, VirtualMemory<DefaultMemoryImpl>>> =
+    static EVENT_COUNTERS: RefCell<StableBTreeMap<Option<Principal>, EventNum, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
     // Memory region 3
     // Keys are subnet_id / user principal; or None for changes to rental conditions.
     #[allow(clippy::type_complexity)]
-    static HISTORY: RefCell<StableBTreeMap<(Option<Principal>, Seq), Event, VirtualMemory<DefaultMemoryImpl>>> =
+    static HISTORY: RefCell<StableBTreeMap<(Option<Principal>, EventNum), Event, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
 
     // Memory region 4
@@ -151,8 +151,8 @@ pub fn cache_rate(time: u64, rate: u64, decimals: u32) {
 /// Returns the next unused sequence number for the given principal and increases
 /// the underlying counter.
 /// Starts at 1, so that the sequence numbers can be strictly bound by (0, u64:MAX).
-pub fn next_seq(mbp: Option<Principal>) -> Seq {
-    SEQUENCES.with_borrow_mut(|map| {
+pub fn next_seq(mbp: Option<Principal>) -> EventNum {
+    EVENT_COUNTERS.with_borrow_mut(|map| {
         let cur = map.get(&mbp).unwrap_or_default();
         let res = cur + 1;
         map.insert(mbp, res);
@@ -162,8 +162,8 @@ pub fn next_seq(mbp: Option<Principal>) -> Seq {
 
 /// Returns the largest _used_ sequence number without increasing the underlying counter.
 /// Returns None if no sequence number has been drawn for this principal yet.
-pub fn get_current_seq(mbp: Option<Principal>) -> Option<Seq> {
-    SEQUENCES.with_borrow(|map| map.get(&mbp))
+pub fn get_current_seq(mbp: Option<Principal>) -> Option<EventNum> {
+    EVENT_COUNTERS.with_borrow(|map| map.get(&mbp))
 }
 
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
