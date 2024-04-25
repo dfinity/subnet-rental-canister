@@ -21,7 +21,7 @@ use subnet_rental_canister::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     history::Event,
-    ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
+    EventPage, ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
     SubnetRentalProposalPayload, E8S,
 };
 
@@ -204,23 +204,23 @@ fn test_initial_proposal() {
     .unwrap();
 
     // assert state is as expected
-    let src_history = query_multi_arg::<Vec<Event>>(
+    let src_history = query_multi_arg::<EventPage>(
         &pic,
         src_principal,
         None,
-        "get_history_page",
-        (None::<Option<Principal>>, None::<Option<u64>>),
+        "get_rental_conditions_history_page",
+        (None::<Option<u64>>,),
     );
-    let user_history = query_multi_arg::<Vec<Event>>(
+    let user_history = query_multi_arg::<EventPage>(
         &pic,
         src_principal,
         None,
         "get_history_page",
-        (Some(user_principal), None::<Option<u64>>),
+        (user_principal, None::<Option<u64>>),
     );
     // think of a better test than length
-    assert_eq!(src_history.len(), 1);
-    assert_eq!(user_history.len(), 2);
+    assert_eq!(src_history.events.len(), 1);
+    assert_eq!(user_history.events.len(), 2);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());

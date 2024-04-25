@@ -8,10 +8,9 @@ use crate::canister_state::{
 use crate::external_calls::{
     convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, refund_user, transfer_to_src_main,
 };
-use crate::history::Event;
 use crate::{
-    canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
-    TRILLION,
+    canister_state::persist_event, history::EventType, EventPage, RentalConditionId,
+    RentalConditions, TRILLION,
 };
 use crate::{
     ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
@@ -202,14 +201,31 @@ pub fn list_rental_requests() -> Vec<RentalRequest> {
         .collect()
 }
 
-///
+/// Get the first page (the most recent) of events associated with the provided principal by
+/// passing `older_than: None`.
+/// The principal should be a user/tenant or a subnet id.
+/// Returns both a vector of events and a token to provide in a subsequent call to this method
+/// to retrieve the page before by passing `older_than: Some(continuation)`.
 #[query]
-pub fn get_history_page(
-    principal: Option<Principal>,
-    older_than: Option<u64>,
-) -> (Vec<Event>, u64) {
+pub fn get_history_page(principal: Principal, older_than: Option<u64>) -> EventPage {
     let page_size = 20;
-    canister_state::get_history_page(principal, older_than, page_size)
+    let (events, continuation) =
+        canister_state::get_history_page(Some(principal), older_than, page_size);
+    EventPage {
+        events,
+        continuation,
+    }
+}
+
+/// Like 'get_history_page' but for the changes in rental conditions.
+#[query]
+pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage {
+    let page_size = 20;
+    let (events, continuation) = canister_state::get_history_page(None, older_than, page_size);
+    EventPage {
+        events,
+        continuation,
+    }
 }
 
 #[query]

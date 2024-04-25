@@ -1,4 +1,5 @@
 type Event = record { date : nat64; event : EventType };
+type EventPage = record { events : vec Event; continuation : nat64 };
 type EventType = variant {
   RentalRequestCancelled : record { rental_request : RentalRequest };
   PaymentSuccess : record {
@@ -86,8 +87,9 @@ type SubnetRentalProposalPayload = record {
 type Tokens = record { e8s : nat64 };
 service : () -> {
   execute_rental_request_proposal : (SubnetRentalProposalPayload) -> (Result);
-  get_history_page : (opt principal, opt nat64) -> (vec Event, nat64) query;
+  get_history_page : (principal, opt nat64) -> (EventPage) query;
   get_payment_subaccount : () -> (vec nat8) query;
+  get_rental_conditions_history_page : (opt nat64) -> (EventPage) query;
   get_todays_price : (RentalConditionId) -> (Result_1);
   list_rental_conditions : () -> (
       vec record { RentalConditionId; RentalConditions },

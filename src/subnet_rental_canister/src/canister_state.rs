@@ -191,9 +191,6 @@ pub fn get_history_page(
             .map(|x| x + 1)
             .unwrap_or_default()
     });
-    if high_seq == 0 {
-        return (vec![], 0);
-    }
     let low_seq = high_seq.saturating_sub(page_size);
     let start = (principal, low_seq);
     let end = (principal, high_seq);

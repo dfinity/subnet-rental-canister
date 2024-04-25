@@ -1,4 +1,5 @@
 use candid::{CandidType, Decode, Deserialize, Encode, Principal};
+use history::Event;
 use ic_ledger_types::{Memo, Tokens};
 use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
@@ -154,10 +155,27 @@ pub enum ExecuteProposalError {
     SubnetNotRented,
 }
 
+/// The data in this struct was used in a failed attempt to calculate an ICP/XDR
+/// exchange rate for the subnet rental canister.
 #[derive(CandidType, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
 pub struct PriceCalculationData {
+    /// From the rental conditions.
     daily_cost_cycles: u128,
+    /// From the rental conditions.
     initial_rental_period_days: u64,
+    /// The exchange rate is a positive integer scaled by 10^decimals.
     scaled_exchange_rate_xdr_per_icp: u64,
+    /// Scale factor for the exchange rate.
     decimals: u32,
+}
+
+/// The return type of the query method 'get_history_page'.
+#[derive(CandidType, Debug, Clone, Deserialize)]
+pub struct EventPage {
+    /// Up to a page of events.
+    pub events: Vec<Event>,
+    /// The event number of the oldest event in the page.
+    /// Used to continue with the next page by calling
+    /// 'get_history_page(principal, Some(continuation))'
+    pub continuation: u64,
 }
