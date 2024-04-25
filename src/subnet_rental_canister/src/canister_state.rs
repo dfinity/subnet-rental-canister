@@ -175,25 +175,30 @@ pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
     })
 }
 
-/// Get a page of events for the given principal. page_index 0 refers to the most recent events,
-/// page_index 1 to the next older events, etc.
+/// Returns a page of events for the given principal, and the event number of the oldest event in that page.
+/// If older_than is None, the most recent page is returned.
+/// Otherwise, the provided event number is just outside of (i.e., more recent than) the returned page,
+/// all elements of which are older than the given value.
 pub fn get_history_page(
     principal: Option<Principal>,
-    page_index: u64,
+    older_than: Option<u64>,
     page_size: u64,
-) -> Vec<Event> {
-    let high_seq = get_current_seq(principal).unwrap_or_default();
-    // move back by page_index many pages
-    let high_seq = high_seq.saturating_sub(page_index * page_size);
+) -> (Vec<Event>, u64) {
+    // User-provided value has priority. If not given, use the most recent event. +1 for range end inclusion.
+    // The order of +1 and unwrap_or_default is important!
+    let high_seq = older_than.unwrap_or_else(|| {
+        get_current_seq(principal)
+            .map(|x| x + 1)
+            .unwrap_or_default()
+    });
     if high_seq == 0 {
-        return vec![];
+        return (vec![], 0);
     }
-    // we want the end to be included (end = most recent event)
-    let high_seq = high_seq + 1;
     let low_seq = high_seq.saturating_sub(page_size);
     let start = (principal, low_seq);
     let end = (principal, high_seq);
-    HISTORY.with_borrow(|map| map.range(start..end).map(|(_k, v)| v).collect())
+    let page = HISTORY.with_borrow(|map| map.range(start..end).map(|(_k, v)| v).collect());
+    (page, low_seq)
 }
 
 /// Create a RentalRequest with the current time as create_date, insert into canister state
@@ -322,15 +327,15 @@ mod canister_state_test {
         persist_event(make_event(3), None);
         persist_event(make_event(4), None);
         persist_event(make_event(5), None);
-        let events = get_history_page(None, 0, 2);
+        let (events, oldest) = get_history_page(None, None, 2);
         assert_eq!(events[0].date(), 4);
         assert_eq!(events[1].date(), 5);
-        let events = get_history_page(None, 1, 2);
+        let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert_eq!(events[0].date(), 2);
         assert_eq!(events[1].date(), 3);
-        let events = get_history_page(None, 2, 2);
+        let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert_eq!(events[0].date(), 1);
-        let events = get_history_page(None, 3, 2);
+        let (events, _oldest) = get_history_page(None, Some(oldest), 2);
         assert!(events.is_empty());
     }
 }

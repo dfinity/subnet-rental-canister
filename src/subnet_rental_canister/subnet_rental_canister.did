@@ -86,7 +86,7 @@ type SubnetRentalProposalPayload = record {
 type Tokens = record { e8s : nat64 };
 service : () -> {
   execute_rental_request_proposal : (SubnetRentalProposalPayload) -> (Result);
-  get_history_page : (opt principal, nat64) -> (vec Event) query;
+  get_history_page : (opt principal, opt nat64) -> (vec Event, nat64) query;
   get_payment_subaccount : () -> (vec nat8) query;
   get_todays_price : (RentalConditionId) -> (Result_1);
   list_rental_conditions : () -> (

@@ -202,10 +202,14 @@ pub fn list_rental_requests() -> Vec<RentalRequest> {
         .collect()
 }
 
+///
 #[query]
-pub fn get_history_page(principal: Option<Principal>, page_index: u64) -> Vec<Event> {
+pub fn get_history_page(
+    principal: Option<Principal>,
+    older_than: Option<u64>,
+) -> (Vec<Event>, u64) {
     let page_size = 20;
-    canister_state::get_history_page(principal, page_index, page_size)
+    canister_state::get_history_page(principal, older_than, page_size)
 }
 
 #[query]

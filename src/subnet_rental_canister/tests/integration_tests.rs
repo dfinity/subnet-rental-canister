@@ -209,14 +209,14 @@ fn test_initial_proposal() {
         src_principal,
         None,
         "get_history_page",
-        (None::<Option<Principal>>, 0u64),
+        (None::<Option<Principal>>, None::<Option<u64>>),
     );
     let user_history = query_multi_arg::<Vec<Event>>(
         &pic,
         src_principal,
         None,
         "get_history_page",
-        (Some(user_principal), 0u64),
+        (Some(user_principal), None::<Option<u64>>),
     );
     // think of a better test than length
     assert_eq!(src_history.len(), 1);
