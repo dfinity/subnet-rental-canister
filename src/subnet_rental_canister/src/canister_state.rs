@@ -327,11 +327,14 @@ mod canister_state_test {
         let (events, oldest) = get_history_page(None, None, 2);
         assert_eq!(events[0].date(), 4);
         assert_eq!(events[1].date(), 5);
+        assert_eq!(events.len(), 2);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert_eq!(events[0].date(), 2);
         assert_eq!(events[1].date(), 3);
+        assert_eq!(events.len(), 2);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert_eq!(events[0].date(), 1);
+        assert_eq!(events.len(), 1);
         let (events, _oldest) = get_history_page(None, Some(oldest), 2);
         assert!(events.is_empty());
         // also test empty history

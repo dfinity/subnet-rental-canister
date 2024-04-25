@@ -20,7 +20,6 @@ use subnet_rental_canister::{
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
-    history::Event,
     EventPage, ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
     SubnetRentalProposalPayload, E8S,
 };
