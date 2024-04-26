@@ -177,6 +177,6 @@ pub struct EventPage {
     /// The event number of the oldest event in the page.
     /// Used to continue with the next page by calling
     /// `get_history_page(principal, Some(continuation))` or
-    /// `get_rental_conditions_history_page(...)`
+    /// `get_rental_conditions_history_page(principal, Some(continuation))
     pub continuation: u64,
 }

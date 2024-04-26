@@ -189,7 +189,6 @@ pub fn get_history_page(
     // In that case, +1 for range end inclusion.
     let high_seq = older_than.unwrap_or_else(|| get_current_seq(principal).unwrap_or_default() + 1);
     let low_seq = high_seq.saturating_sub(page_size);
-    println!("low, high {} {}", low_seq, high_seq);
     let start = (principal, low_seq);
     let end = (principal, high_seq);
     let page = HISTORY.with_borrow(|map| map.range(start..end).map(|(_k, v)| v).collect());
