@@ -8,16 +8,15 @@ use crate::canister_state::{
 use crate::external_calls::{
     convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, refund_user, transfer_to_src_main,
 };
-use crate::history::Event;
 use crate::{
-    canister_state::persist_event, history::EventType, RentalConditionId, RentalConditions,
-    TRILLION,
+    canister_state::persist_event, history::EventType, EventPage, RentalConditionId,
+    RentalConditions, TRILLION,
 };
 use crate::{
     ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
 };
 use candid::Principal;
-use ic_cdk::{export_candid, init, post_upgrade, query};
+use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
 use ic_ledger_types::{
     account_balance, transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens,
@@ -202,11 +201,36 @@ pub fn list_rental_requests() -> Vec<RentalRequest> {
         .collect()
 }
 
+/// Get the first page (the most recent) of events associated with the provided principal by
+/// passing `older_than: None`.
+/// The principal should be a user/tenant or a subnet id.
+/// Returns both a vector of events and a token to provide in a subsequent call to this method
+/// to retrieve the page before by passing `older_than: Some(continuation)`.
 #[query]
-pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
-    let mut res = canister_state::get_history(principal);
-    res.sort_by_key(|event| event.date());
-    res
+pub fn get_history_page(principal: Principal, older_than: Option<u64>) -> EventPage {
+    let page_size = 20;
+    let (events, continuation) =
+        canister_state::get_history_page(Some(principal), older_than, page_size);
+    EventPage {
+        events,
+        continuation,
+    }
+}
+
+/// Like `get_history_page` but for the changes in rental conditions.
+#[query]
+pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage {
+    let page_size = 20;
+    let (events, continuation) = canister_state::get_history_page(None, older_than, page_size);
+    EventPage {
+        events,
+        continuation,
+    }
+}
+
+#[query]
+pub fn get_payment_subaccount() -> AccountIdentifier {
+    AccountIdentifier::new(&ic_cdk::id(), &Subaccount::from(ic_cdk::caller()))
 }
 
 // #[query]
@@ -687,4 +711,4 @@ fn round_to_previous_midnight(time_secs: u64) -> u64 {
 }
 
 // allow candid-extractor to derive candid interface from rust code
-export_candid!();
+ic_cdk::export_candid!();

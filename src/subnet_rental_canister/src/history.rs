@@ -7,17 +7,15 @@ use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
 
 /// Important events are persisted for auditing by the community.
-/// History struct instances are values in a Map<SubnetId, History>, so the
-/// corresponding subnet_id is always implied.
-/// Events on rental conditions changes are collected under 'None'.  
-/// Events belonging to a valid rental agreement are then bracketed by the variants
-/// Created and Terminated.
-#[derive(Debug, Default, Clone, CandidType, Deserialize)]
-pub struct History {
-    pub events: Vec<Event>,
+/// Create events via EventType::SomeVariant.into()
+/// so that system time is captured automatically.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
+pub struct Event {
+    date: u64,
+    event: EventType,
 }
 
-impl Storable for History {
+impl Storable for Event {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
@@ -25,16 +23,8 @@ impl Storable for History {
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
         Decode!(&bytes, Self).unwrap()
     }
-    const BOUND: Bound = Bound::Unbounded;
-}
 
-/// A rental agreement state change.
-/// Prefer creating events via EventType::SomeVariant.into()
-/// so that system time is captured automatically.
-#[derive(Debug, Clone, CandidType, Deserialize)]
-pub struct Event {
-    event: EventType,
-    date: u64,
+    const BOUND: Bound = Bound::Unbounded;
 }
 
 impl Event {
@@ -44,6 +34,11 @@ impl Event {
 
     pub fn date(&self) -> u64 {
         self.date
+    }
+
+    #[cfg(test)]
+    pub fn _mk_event(date: u64, event: EventType) -> Self {
+        Self { date, event }
     }
 }
 
@@ -56,7 +51,7 @@ impl From<EventType> for Event {
     }
 }
 
-#[derive(Debug, Clone, CandidType, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub enum EventType {
     /// Changed via code upgrade, which should create this event in the post-upgrade hook.
     /// A None value means that the entry has been removed from the map.
@@ -72,6 +67,7 @@ pub enum EventType {
     RentalRequestFailed {
         user: Principal,
         proposal_id: u64,
+        // Convert dependencies' error types to string in order to keep candid interface minimal.
         reason: String,
     },
     /// When the user calls get_refund and the effort is abandoned.

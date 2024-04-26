@@ -11,7 +11,7 @@ cp target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm subnet_rent
 
 # auto-create the candid interface
 cargo install candid-extractor --version 0.1.3
-candid-extractor subnet_rental_canister.wasm > subnet_rental_canister.did
+candid-extractor subnet_rental_canister.wasm > src/subnet_rental_canister/subnet_rental_canister.did
 
 # build the mock exchange rate canister for testing
 cargo rustc -p xrc_mock --crate-type=cdylib --locked --target wasm32-unknown-unknown --release

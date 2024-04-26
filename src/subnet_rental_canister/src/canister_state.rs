@@ -5,7 +5,7 @@
 ///
 /// Relevant updates to state leave a trace in the corresponding History trace log.  
 use crate::{
-    history::{Event, EventType, History},
+    history::{Event, EventType},
     Principal, RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
 };
 use ic_cdk::println;
@@ -18,6 +18,8 @@ use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
 };
+
+type EventNum = u64;
 
 thread_local! {
 
@@ -41,16 +43,22 @@ thread_local! {
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))));
 
     // Memory region 2
-    // Keys are subnet_id, user principal or None for changes to rental conditions.
-    static HISTORY: RefCell<StableBTreeMap<Option<Principal>, History, VirtualMemory<DefaultMemoryImpl>>> =
+    // The current number of events for each principal. Helps with range queries on the history and with pagination.
+    static EVENT_COUNTERS: RefCell<StableBTreeMap<Option<Principal>, EventNum, VirtualMemory<DefaultMemoryImpl>>> =
         RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2)))));
 
     // Memory region 3
+    // Keys are subnet_id / user principal; or None for changes to rental conditions.
+    #[allow(clippy::type_complexity)]
+    static HISTORY: RefCell<StableBTreeMap<(Option<Principal>, EventNum), Event, VirtualMemory<DefaultMemoryImpl>>> =
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
+
+    // Memory region 4
     // Cache for ICP/XDR exchange rates.
     // The keys are timestamps in seconds since epoch (rounded to midnight).
     // The values are (rate, decimal) where the rate is scaled by 10^decimals.
     static RATES: RefCell<StableBTreeMap<u64, (u64, u32), VirtualMemory<DefaultMemoryImpl>>> =
-        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3)))));
+        RefCell::new(StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(4)))));
 }
 
 struct Locks {
@@ -140,16 +148,60 @@ pub fn cache_rate(time: u64, rate: u64, decimals: u32) {
     RATES.with_borrow_mut(|map| map.insert(time, (rate, decimals)));
 }
 
-pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
-    HISTORY.with_borrow_mut(|map| {
-        let mut history = map.get(&key).unwrap_or_default();
-        history.events.push(event.into());
-        map.insert(key, history);
+/// Returns the next unused sequence number for the given principal and increases
+/// the underlying counter. Starts at 0.
+pub fn next_seq(mbp: Option<Principal>) -> EventNum {
+    EVENT_COUNTERS.with_borrow_mut(|map| {
+        let cur = map.get(&mbp).unwrap_or_default();
+        map.insert(mbp, cur + 1);
+        cur
     })
 }
 
-pub fn get_history(principal: Option<Principal>) -> Vec<Event> {
-    HISTORY.with_borrow(|map| map.get(&principal).map(|h| h.events).unwrap_or_default())
+/// Returns the largest _used_ sequence number without increasing the underlying counter.
+/// Returns None if no sequence number has been drawn for this principal yet.
+pub fn get_current_seq(mbp: Option<Principal>) -> Option<EventNum> {
+    EVENT_COUNTERS
+        .with_borrow(|map| map.get(&mbp))
+        .and_then(|x| {
+            #[allow(clippy::let_and_return)]
+            let y = x.checked_sub(1);
+            #[cfg(test)]
+            assert!(y.is_some());
+            y
+        })
+}
+
+pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
+    // get the next sequence number for this principal
+    let seq = next_seq(key);
+    HISTORY.with_borrow_mut(|map| {
+        let composite_key = (key, seq);
+        map.insert(composite_key, event.into());
+    })
+}
+
+/// Returns a page of events for the given principal, and the event number of the oldest event in that page.
+/// If older_than is None, the most recent page is returned.
+/// Otherwise, the provided event number is just outside of (i.e., more recent than) the returned page,
+/// all elements of which are older than the given value.
+pub fn get_history_page(
+    principal: Option<Principal>,
+    older_than: Option<u64>,
+    page_size: u64,
+) -> (Vec<Event>, u64) {
+    // User-provided value has priority. If not given, use the most recent event.
+    // In that case, +1 for range end inclusion.
+    let high_seq = older_than.unwrap_or_else(|| {
+        get_current_seq(principal)
+            .map(|x| x + 1)
+            .unwrap_or_default()
+    });
+    let low_seq = high_seq.saturating_sub(page_size);
+    let start = (principal, low_seq);
+    let end = (principal, high_seq);
+    let page = HISTORY.with_borrow(|map| map.range(start..end).map(|(_k, v)| v).collect());
+    (page, low_seq)
 }
 
 /// Create a RentalRequest with the current time as create_date, insert into canister state
@@ -246,4 +298,58 @@ pub fn create_rental_agreement(
             Ok(())
         }
     })
+}
+
+#[cfg(test)]
+mod canister_state_test {
+    use crate::history::EventType;
+
+    use super::*;
+
+    #[test]
+    fn test_history_pagination() {
+        fn make_event(date: u64) -> Event {
+            Event::_mk_event(
+                date,
+                EventType::RentalRequestCreated {
+                    rental_request: RentalRequest {
+                        user: Principal::anonymous(),
+                        refundable_icp: Tokens::from_e8s(100),
+                        locked_amount_cycles: 99,
+                        initial_proposal_id: 99,
+                        creation_date: date,
+                        rental_condition_id: RentalConditionId::App13CH,
+                        last_locking_time: 99,
+                        lock_amount_icp: Tokens::from_e8s(10),
+                    },
+                },
+            )
+        }
+        persist_event(make_event(1), None);
+        persist_event(make_event(2), None);
+        persist_event(make_event(3), None);
+        persist_event(make_event(4), None);
+        persist_event(make_event(5), None);
+        let (events, oldest) = get_history_page(None, None, 2);
+        assert_eq!(events[0].date(), 4);
+        assert_eq!(events[1].date(), 5);
+        assert_eq!(events.len(), 2);
+        let (events, oldest) = get_history_page(None, Some(oldest), 2);
+        assert_eq!(events[0].date(), 2);
+        assert_eq!(events[1].date(), 3);
+        assert_eq!(events.len(), 2);
+        let (events, oldest) = get_history_page(None, Some(oldest), 2);
+        assert_eq!(events[0].date(), 1);
+        assert_eq!(events.len(), 1);
+        let (events, oldest) = get_history_page(None, Some(oldest), 2);
+        assert!(events.is_empty());
+        assert_eq!(oldest, 0);
+        // also test empty history
+        let (events, oldest) = get_history_page(Some(Principal::anonymous()), None, 2);
+        assert!(events.is_empty());
+        assert_eq!(oldest, 0);
+        let (events, oldest) = get_history_page(Some(Principal::anonymous()), Some(3), 2);
+        assert!(events.is_empty());
+        assert_eq!(oldest, 1); // because 3 - 2 = 1
+    }
 }

@@ -1,4 +1,4 @@
-use candid::{decode_one, encode_args, encode_one, CandidType, Principal};
+use candid::{decode_one, encode_args, encode_one, utils::ArgumentEncoder, CandidType, Principal};
 use ic_ledger_types::{
     AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferResult,
     DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
@@ -20,8 +20,7 @@ use subnet_rental_canister::{
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
-    history::Event,
-    ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
+    EventPage, ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
     SubnetRentalProposalPayload, E8S,
 };
 
@@ -204,23 +203,23 @@ fn test_initial_proposal() {
     .unwrap();
 
     // assert state is as expected
-    let src_history = query::<Vec<Event>>(
+    let src_history = query_multi_arg::<EventPage>(
         &pic,
         src_principal,
         None,
-        "get_history",
-        None::<Option<Principal>>,
+        "get_rental_conditions_history_page",
+        (None::<Option<u64>>,),
     );
-    let user_history = query::<Vec<Event>>(
+    let user_history = query_multi_arg::<EventPage>(
         &pic,
         src_principal,
         None,
-        "get_history",
-        Some(user_principal),
+        "get_history_page",
+        (user_principal, None::<Option<u64>>),
     );
     // think of a better test than length
-    assert_eq!(src_history.len(), 1);
-    assert_eq!(user_history.len(), 2);
+    assert_eq!(src_history.events.len(), 1);
+    assert_eq!(user_history.events.len(), 2);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
@@ -425,6 +424,28 @@ fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
             sender.unwrap_or(Principal::anonymous()),
             method,
             encode_one(args).unwrap(),
+        )
+        .unwrap();
+    let res = match res {
+        WasmResult::Reply(res) => res,
+        WasmResult::Reject(message) => panic!("Query expected Reply, got Reject: \n{}", message),
+    };
+    decode_one::<T>(&res).unwrap()
+}
+
+fn query_multi_arg<T: for<'a> Deserialize<'a> + candid::CandidType>(
+    pic: &PocketIc,
+    canister_id: Principal,
+    sender: Option<Principal>,
+    method: &str,
+    args: impl CandidType + ArgumentEncoder,
+) -> T {
+    let res = pic
+        .query_call(
+            canister_id,
+            sender.unwrap_or(Principal::anonymous()),
+            method,
+            encode_args(args).unwrap(),
         )
         .unwrap();
     let res = match res {

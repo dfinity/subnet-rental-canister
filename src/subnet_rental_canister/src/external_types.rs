@@ -8,7 +8,7 @@ pub struct NotifyTopUpArg {
     pub canister_id: Principal,
 }
 
-#[derive(CandidType, Deserialize, PartialEq, Debug, Clone)]
+#[derive(CandidType, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub enum NotifyError {
     Refunded {
         block_index: Option<u64>,
