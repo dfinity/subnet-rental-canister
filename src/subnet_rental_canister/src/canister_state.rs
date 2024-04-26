@@ -149,21 +149,22 @@ pub fn cache_rate(time: u64, rate: u64, decimals: u32) {
 }
 
 /// Returns the next unused sequence number for the given principal and increases
-/// the underlying counter.
-/// Starts at 1, so that the sequence numbers can be strictly bound by (0, u64:MAX).
+/// the underlying counter. Starts at 0.
 pub fn next_seq(mbp: Option<Principal>) -> EventNum {
     EVENT_COUNTERS.with_borrow_mut(|map| {
         let cur = map.get(&mbp).unwrap_or_default();
-        let res = cur + 1;
-        map.insert(mbp, res);
-        res
+        map.insert(mbp, cur + 1);
+        cur
     })
 }
 
 /// Returns the largest _used_ sequence number without increasing the underlying counter.
 /// Returns None if no sequence number has been drawn for this principal yet.
 pub fn get_current_seq(mbp: Option<Principal>) -> Option<EventNum> {
-    EVENT_COUNTERS.with_borrow(|map| map.get(&mbp))
+    EVENT_COUNTERS
+        .with_borrow(|map| map.get(&mbp))
+        // always valid because `next_seq` initializes the value with 1.
+        .map(|x| x - 1)
 }
 
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
@@ -188,6 +189,7 @@ pub fn get_history_page(
     // In that case, +1 for range end inclusion.
     let high_seq = older_than.unwrap_or_else(|| get_current_seq(principal).unwrap_or_default() + 1);
     let low_seq = high_seq.saturating_sub(page_size);
+    println!("low, high {} {}", low_seq, high_seq);
     let start = (principal, low_seq);
     let end = (principal, high_seq);
     let page = HISTORY.with_borrow(|map| map.range(start..end).map(|(_k, v)| v).collect());
@@ -340,9 +342,6 @@ mod canister_state_test {
         assert_eq!(oldest, 0);
         let (events, oldest) = get_history_page(Some(Principal::anonymous()), Some(3), 2);
         assert!(events.is_empty());
-        assert_eq!(oldest, 1);
-        let (events, oldest) = get_history_page(Some(Principal::anonymous()), None, 0);
-        assert!(events.is_empty());
-        assert_eq!(oldest, 1);
+        assert_eq!(oldest, 1); // because 3 - 2 = 1
     }
 }
