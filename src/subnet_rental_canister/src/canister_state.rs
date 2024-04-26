@@ -163,8 +163,12 @@ pub fn next_seq(mbp: Option<Principal>) -> EventNum {
 pub fn get_current_seq(mbp: Option<Principal>) -> Option<EventNum> {
     EVENT_COUNTERS
         .with_borrow(|map| map.get(&mbp))
-        // always valid because `next_seq` initializes the value with 1.
-        .map(|x| x - 1)
+        .and_then(|x| {
+            let y = x.checked_sub(1);
+            #[cfg(test)]
+            assert!(y.is_some());
+            y
+        })
 }
 
 pub fn persist_event(event: impl Into<Event>, key: Option<Principal>) {
@@ -187,7 +191,11 @@ pub fn get_history_page(
 ) -> (Vec<Event>, u64) {
     // User-provided value has priority. If not given, use the most recent event.
     // In that case, +1 for range end inclusion.
-    let high_seq = older_than.unwrap_or_else(|| get_current_seq(principal).unwrap_or_default() + 1);
+    let high_seq = older_than.unwrap_or_else(|| {
+        get_current_seq(principal)
+            .map(|x| x + 1)
+            .unwrap_or_default()
+    });
     let low_seq = high_seq.saturating_sub(page_size);
     let start = (principal, low_seq);
     let end = (principal, high_seq);
