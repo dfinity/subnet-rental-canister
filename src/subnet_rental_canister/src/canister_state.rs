@@ -184,13 +184,9 @@ pub fn get_history_page(
     older_than: Option<u64>,
     page_size: u64,
 ) -> (Vec<Event>, u64) {
-    // User-provided value has priority. If not given, use the most recent event. +1 for range end inclusion.
-    // The order of +1 and unwrap_or_default is important!
-    let high_seq = older_than.unwrap_or_else(|| {
-        get_current_seq(principal)
-            .map(|x| x + 1)
-            .unwrap_or_default()
-    });
+    // User-provided value has priority. If not given, use the most recent event.
+    // In that case, +1 for range end inclusion.
+    let high_seq = older_than.unwrap_or_else(|| get_current_seq(principal).unwrap_or_default() + 1);
     let low_seq = high_seq.saturating_sub(page_size);
     let start = (principal, low_seq);
     let end = (principal, high_seq);
@@ -335,14 +331,18 @@ mod canister_state_test {
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert_eq!(events[0].date(), 1);
         assert_eq!(events.len(), 1);
-        let (events, _oldest) = get_history_page(None, Some(oldest), 2);
+        let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert!(events.is_empty());
+        assert_eq!(oldest, 0);
         // also test empty history
-        let (events, _oldest) = get_history_page(Some(Principal::anonymous()), None, 2);
+        let (events, oldest) = get_history_page(Some(Principal::anonymous()), None, 2);
         assert!(events.is_empty());
-        let (events, _oldest) = get_history_page(Some(Principal::anonymous()), Some(3), 2);
+        assert_eq!(oldest, 0);
+        let (events, oldest) = get_history_page(Some(Principal::anonymous()), Some(3), 2);
         assert!(events.is_empty());
-        let (events, _oldest) = get_history_page(Some(Principal::anonymous()), None, 0);
+        assert_eq!(oldest, 1);
+        let (events, oldest) = get_history_page(Some(Principal::anonymous()), None, 0);
         assert!(events.is_empty());
+        assert_eq!(oldest, 1);
     }
 }
