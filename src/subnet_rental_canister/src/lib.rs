@@ -169,7 +169,8 @@ pub struct PriceCalculationData {
     decimals: u32,
 }
 
-/// The return type of the query method `get_history_page`.
+/// The return type of the query methods `get_history_page` and
+/// `get_rental_conditions_history_page`.
 #[derive(CandidType, Debug, Clone, Deserialize)]
 pub struct EventPage {
     /// Up to a page of events (20).
@@ -177,6 +178,6 @@ pub struct EventPage {
     /// The event number of the oldest event in the page.
     /// Used to continue with the next page by calling
     /// `get_history_page(principal, Some(continuation))` or
-    /// `get_rental_conditions_history_page(principal, Some(continuation))
+    /// `get_rental_conditions_history_page(Some(continuation))
     pub continuation: u64,
 }

@@ -164,6 +164,7 @@ pub fn get_current_seq(mbp: Option<Principal>) -> Option<EventNum> {
     EVENT_COUNTERS
         .with_borrow(|map| map.get(&mbp))
         .and_then(|x| {
+            #[allow(clippy::let_and_return)]
             let y = x.checked_sub(1);
             #[cfg(test)]
             assert!(y.is_some());
