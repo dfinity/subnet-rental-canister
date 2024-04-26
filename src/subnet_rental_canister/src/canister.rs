@@ -6,7 +6,8 @@ use crate::canister_state::{
     remove_rental_request, update_rental_request, CallerGuard,
 };
 use crate::external_calls::{
-    convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, refund_user, transfer_to_src_main,
+    check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
+    refund_user,
 };
 use crate::{
     canister_state::persist_event, history::EventType, EventPage, RentalConditionId,
@@ -144,7 +145,7 @@ async fn locking() {
                 "SRC will lock {} ICP for rental request {}.",
                 lock_amount_icp, user
             );
-            let res = convert_icp_to_cycles(lock_amount_icp).await;
+            let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
             let Ok(locked_cycles) = res else {
                 println!(
                     "Failed to convert ICP to cycles for rental request {}",
@@ -396,7 +397,7 @@ pub async fn execute_rental_request_proposal(
 
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
-    // the XRC canister has a resolution of seconds, the SRC in nanos.
+    // The XRC canister has a resolution of seconds, the SRC in nanos.
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time / BILLION);
 
     // Call exchange rate canister.
@@ -418,32 +419,23 @@ pub async fn execute_rental_request_proposal(
         return with_error(user, proposal_id, e);
     };
 
-    // Transfer from user-derived subaccount to SRC main. The proposal id is used as the Memo.
-    let res = transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id).await;
-    let Ok(block_index) = res else {
-        println!("Fatal: Failed to transfer enough ICP to SRC main account");
-        let e = ExecuteProposalError::TransferUserToSrcError(format!("{:?}", res.unwrap_err()));
+    // Check that the amount the user transferred to the SRC/user subaccount covers the initial cost.
+    let available_icp = check_subaccount_balance(Subaccount::from(user)).await;
+    println!("Available icp: {}", available_icp);
+    if needed_icp < available_icp {
+        println!("Fatal: Not enough ICP on the user subaccount to cover the initial period.");
+        let e = ExecuteProposalError::InsufficientFunds {
+            have: available_icp,
+            need: needed_icp,
+        };
         return with_error(user, proposal_id, e);
-    };
-    let transferred_icp = needed_icp - DEFAULT_FEE;
-    println!(
-        "SRC Successfully transferred {} ICP (plus fee) from {:?} to the SRC main account.",
-        transferred_icp,
-        Subaccount::from(user)
-    );
-    persist_event(
-        EventType::TransferSuccess {
-            amount: transferred_icp,
-            block_index,
-        },
-        Some(user),
-    );
+    }
 
     // Lock 10% by converting to cycles
-    let lock_amount_icp = Tokens::from_e8s(transferred_icp.e8s() / 10);
+    let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
     println!("SRC will lock {} ICP.", lock_amount_icp);
 
-    let res = convert_icp_to_cycles(lock_amount_icp).await;
+    let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
     let Ok(locked_cycles) = res else {
         println!("Fatal: Failed to convert ICP to cycles");
         let e = res.unwrap_err();
@@ -452,7 +444,7 @@ pub async fn execute_rental_request_proposal(
     println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
     let lock_time = ic_cdk::api::time();
 
-    let refundable_icp = transferred_icp - lock_amount_icp;
+    let refundable_icp = needed_icp - lock_amount_icp;
     // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
     create_rental_request(
         user,
@@ -491,7 +483,7 @@ pub async fn refund() -> Result<u64, String> {
     if guard_res.is_err() {
         return Err("Failed to acquire lock. Try again.".to_string());
     }
-    // does the caller have an active rental request?
+    // Does the caller have an active rental request?
     match get_rental_request(&caller) {
         Some(
             rental_request @ RentalRequest {
@@ -506,7 +498,7 @@ pub async fn refund() -> Result<u64, String> {
             },
         ) => {
             println!("Refund requested for user principal {:?}", &caller);
-            // Refund the remaining ICP on the SRC main subaccount to the user.
+            // Refund the remaining ICP on the SRC/user subaccount to the user.
             let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
             let Ok(block_id) = res else {
                 return Err(format!(

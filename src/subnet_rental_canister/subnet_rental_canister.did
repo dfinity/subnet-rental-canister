@@ -42,14 +42,13 @@ type ExecuteProposalError = variant {
   SubnetAlreadyRequested;
   SubnetNotRented;
   UserAlreadyRequestingSubnetRental;
-  TransferUserToSrcError : text;
   NotifyTopUpError : text;
   CallXRCFailed : text;
   UnauthorizedCaller;
   CallGovernanceFailed;
   SubnetAlreadyRented;
   TransferSrcToCmcError : text;
-  InsufficientFunds;
+  InsufficientFunds : record { have : Tokens; need : Tokens };
 };
 type PriceCalculationData = record {
   daily_cost_cycles : nat;

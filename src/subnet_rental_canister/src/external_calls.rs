@@ -1,7 +1,7 @@
 use candid::Principal;
 use ic_ledger_types::{
-    transfer, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferError,
-    DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
+    transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs,
+    TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_LEDGER_CANISTER_ID,
 };
 
@@ -49,7 +49,7 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
     // in the CMC, and cannot be changed from outside. What's going on here?
 }
 
-pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
+pub async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
         TransferArgs {
@@ -58,10 +58,10 @@ pub async fn transfer_to_cmc(amount: Tokens) -> Result<u64, TransferError> {
                 &Subaccount::from(ic_cdk::id()),
             ),
             fee: DEFAULT_FEE,
-            from_subaccount: None,
+            from_subaccount: Some(source),
             amount,
             memo: MEMO_TOP_UP_CANISTER,
-            created_at_time: None, // TODO: set for deduplication
+            created_at_time: None,
         },
     )
     .await
@@ -100,7 +100,7 @@ pub async fn refund_user(
         TransferArgs {
             to: AccountIdentifier::new(&user_principal, &DEFAULT_SUBACCOUNT),
             fee: DEFAULT_FEE,
-            from_subaccount: None,
+            from_subaccount: Some(Subaccount::from(user_principal)),
             amount,
             memo: Memo(proposal_id),
             created_at_time: None,
@@ -155,9 +155,12 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(
     }
 }
 
-pub async fn convert_icp_to_cycles(amount: Tokens) -> Result<u128, ExecuteProposalError> {
+pub async fn convert_icp_to_cycles(
+    amount: Tokens,
+    source: Subaccount,
+) -> Result<u128, ExecuteProposalError> {
     // Transfer the ICP from the SRC to the CMC. The second fee is for the notify top-up.
-    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE).await;
+    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE, source).await;
     let Ok(block_index) = transfer_to_cmc_result else {
         let e = transfer_to_cmc_result.unwrap_err();
         println!("Transfer from SRC to CMC failed: {:?}", e);
@@ -197,4 +200,17 @@ pub async fn get_create_subnet_proposal() -> Result<(), String> {
         .expect("Failed to call GovernanceCanister")
         .0;
     todo!()
+}
+
+pub async fn check_subaccount_balance(subaccount: Subaccount) -> Tokens {
+    ic_cdk::call::<_, (Tokens,)>(
+        MAINNET_LEDGER_CANISTER_ID,
+        "account_balance",
+        (AccountBalanceArgs {
+            account: AccountIdentifier::new(&ic_cdk::id(), &subaccount),
+        },),
+    )
+    .await
+    .expect("Failed to call LedgerCanister")
+    .0
 }

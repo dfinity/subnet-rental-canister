@@ -219,7 +219,7 @@ fn test_initial_proposal() {
     );
     // think of a better test than length
     assert_eq!(src_history.events.len(), 1);
-    assert_eq!(user_history.events.len(), 2);
+    assert_eq!(user_history.events.len(), 1);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
