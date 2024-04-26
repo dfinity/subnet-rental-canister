@@ -260,6 +260,60 @@ fn test_initial_proposal() {
 }
 
 #[test]
+fn test_failed_initial_proposal() {
+    let (pic, src_principal) = setup();
+
+    let user_principal = USER_1;
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+
+    // check user history before running proposal
+    let user_history = query_multi_arg::<EventPage>(
+        &pic,
+        src_principal,
+        None,
+        "get_history_page",
+        (user_principal, None::<Option<u64>>),
+    );
+    assert_eq!(user_history.events.len(), 0);
+
+    // user creates proposal
+    let now = now * 1_000_000_000;
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_id: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: now,
+    };
+    // run proposal
+    update::<()>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload.clone(),
+    )
+    .unwrap_err();
+
+    // the history is updated
+    let user_history = query_multi_arg::<EventPage>(
+        &pic,
+        src_principal,
+        None,
+        "get_history_page",
+        (user_principal, None::<Option<u64>>),
+    );
+    assert_eq!(user_history.events.len(), 1);
+
+    // check that there are no rental requests
+    let rental_requests =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
+    assert!(rental_requests.is_empty());
+}
+
+#[test]
 fn test_duplicate_request_fails() {
     let (pic, src_principal) = setup();
 
