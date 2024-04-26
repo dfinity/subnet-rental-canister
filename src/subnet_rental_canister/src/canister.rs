@@ -217,7 +217,7 @@ pub fn get_history_page(principal: Principal, older_than: Option<u64>) -> EventP
     }
 }
 
-/// Like 'get_history_page' but for the changes in rental conditions.
+/// Like `get_history_page` but for the changes in rental conditions.
 #[query]
 pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage {
     let page_size = 20;
