@@ -247,7 +247,7 @@ fn test_initial_proposal() {
     // get refund on behalf of the actual renter
     let res =
         update::<Result<u64, String>>(&pic, src_principal, Some(user_principal), "refund", ());
-    assert!(res.is_ok());
+    assert!(res.unwrap().is_ok());
 
     // check that transfer has succeeded
     let balance_after = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
