@@ -145,6 +145,7 @@ pub enum ExecuteProposalError {
     CallXRCFailed(String),
     PriceCalculationError(PriceCalculationData),
     UserAlreadyRequestingSubnetRental,
+    UserAlreadyHasAgreement,
     SubnetAlreadyRented,
     SubnetAlreadyRequested,
     UnauthorizedCaller,

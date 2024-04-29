@@ -230,6 +230,8 @@ pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage 
     }
 }
 
+/// The future tenant may call this to derive the subaccount into which they must
+/// transfer ICP.
 #[query]
 pub fn get_payment_subaccount() -> AccountIdentifier {
     AccountIdentifier::new(&ic_cdk::id(), &Subaccount::from(ic_cdk::caller()))
@@ -375,9 +377,15 @@ pub async fn execute_rental_request_proposal_(
         return with_error(user, proposal_id, e);
     }
 
+    // Fail if user has an active rental agreement
+    if get_rental_agreement(&user).is_some() {
+        println!("Fatal: User already has an active rental agreement.");
+        let e = ExecuteProposalError::UserAlreadyHasAgreement;
+        return with_error(user, proposal_id, e);
+    }
+
     // unwrap safety:
-    // The rental_condition_id key must have a value in the rental conditions map at compile time.
-    // TODO: unit test
+    // The rental_condition_id key must have a value in the rental conditions map due to `init` and `post_upgrade`.
     let RentalConditions {
         description: _,
         subnet_id,
@@ -442,6 +450,7 @@ pub async fn execute_rental_request_proposal_(
         };
         return with_error(user, proposal_id, e);
     }
+    let surplus_icp = available_icp - needed_icp;
 
     // Lock 10% by converting to cycles
     let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
@@ -456,7 +465,7 @@ pub async fn execute_rental_request_proposal_(
     println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
     let lock_time = ic_cdk::api::time();
 
-    let refundable_icp = needed_icp - lock_amount_icp;
+    let refundable_icp = needed_icp - lock_amount_icp + surplus_icp;
     // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
     create_rental_request(
         user,
