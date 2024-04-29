@@ -147,7 +147,7 @@ async fn locking() {
             // Only try to lock if we haven't already locked 100% or more.
             // Use multiplication result to account for rounding errors.
             if locked_amount_icp >= Tokens::from_e8s(lock_amount_icp.e8s() * 10) {
-                println!("Rental request for {:?} is already fully locked.", user);
+                println!("Rental request for {} is already fully locked.", user);
                 continue;
             }
             println!(
@@ -191,6 +191,7 @@ async fn locking() {
                 initial_proposal_id,
                 creation_date,
                 rental_condition_id,
+                // we risk not accounting for a few days in case this function does not run as scheduled
                 last_locking_time: now,
             };
             update_rental_request(user, move |_| new_rental_request).unwrap();
@@ -492,11 +493,11 @@ pub async fn execute_rental_request_proposal_(
         lock_time,
     )
     .unwrap();
-    println!("Created rental request for tenant {:?}", user);
+    println!("Created rental request for tenant {}", user);
 
     // Either proceed with existing subnet_id, or start polling for future subnet creation.
     if let Some(subnet_id) = subnet_id {
-        println!("Reusing existing subnet {:?}", subnet_id);
+        println!("Reusing existing subnet {}", subnet_id);
         // TODO: Create rental agreement
     } else {
         // TODO: Start polling
@@ -535,12 +536,12 @@ pub async fn refund() -> Result<u64, String> {
                 last_locking_time: _,
             },
         ) => {
-            println!("Refund requested for user principal {:?}", &caller);
+            println!("Refund requested for user principal {}", &caller);
             // Refund the remaining ICP on the SRC/user subaccount to the user.
             let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
             let Ok(block_id) = res else {
                 return Err(format!(
-                    "Failed to refund {} ICP to {:?}: {:?}",
+                    "Failed to refund {} ICP to {}: {:?}",
                     refundable_icp - DEFAULT_FEE,
                     user,
                     res.unwrap_err()
@@ -603,7 +604,7 @@ pub async fn refund() -> Result<u64, String> {
             .expect("Failed refund: Failed to call ledger canister");
             let Ok(block_id) = res else {
                 return Err(format!(
-                    "Failed to refund {} ICP to {:?}: {:?}",
+                    "Failed to refund {} ICP to {}: {:?}",
                     balance - DEFAULT_FEE,
                     caller,
                     res.unwrap_err()
