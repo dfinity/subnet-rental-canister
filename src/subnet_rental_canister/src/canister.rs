@@ -283,7 +283,6 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
         drop(guard_res);
         tup
     };
-
     let res = calculate_subnet_price(
         daily_cost_cycles,
         initial_rental_period_days,
@@ -296,7 +295,7 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     }
 }
 
-// Used both for public endpoint 'get_todays_price' and proposal execution.
+// Used both for public endpoint `get_todays_price` and proposal execution.
 fn calculate_subnet_price(
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
@@ -399,6 +398,7 @@ pub async fn execute_rental_request_proposal_(
         None => {}
         Some(subnet_id) => {
             if get_rental_agreement(&subnet_id).is_some() {
+                println!("Fatal: Subnet is already being rented.");
                 let e = ExecuteProposalError::SubnetAlreadyRented;
                 return with_error(user, proposal_id, e);
             }
@@ -407,10 +407,12 @@ pub async fn execute_rental_request_proposal_(
     // Fail if the provided rental_condition_id (i.e., subnet) is already part of a pending rental request:
     for (_, rental_request) in iter_rental_requests().iter() {
         if rental_request.rental_condition_id == rental_condition_id {
+            println!("Fatal: The given rental condition id is already part of a rental request.");
             let e = ExecuteProposalError::SubnetAlreadyRequested;
             return with_error(user, proposal_id, e);
         }
     }
+    println!("Proceeding with rental request execution.");
 
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
@@ -454,7 +456,10 @@ pub async fn execute_rental_request_proposal_(
 
     // Lock 10% by converting to cycles
     let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
-    println!("SRC will lock {} ICP.", lock_amount_icp);
+    println!(
+        "SRC will lock 10% of the initial cost: {} ICP.",
+        lock_amount_icp
+    );
 
     let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
     let Ok(locked_cycles) = res else {
@@ -477,6 +482,7 @@ pub async fn execute_rental_request_proposal_(
         lock_amount_icp,
     )
     .unwrap();
+    println!("Created rental request for tenant {:?}", user);
 
     // Either proceed with existing subnet_id, or start polling for future subnet creation.
     if let Some(subnet_id) = subnet_id {
