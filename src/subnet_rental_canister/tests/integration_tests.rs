@@ -401,15 +401,6 @@ fn test_locking() {
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ())
             .pop()
             .unwrap();
-    // user,
-    // initial_cost_icp: _,
-    // refundable_icp,
-    // locked_amount_icp: _,
-    // locked_amount_cycles: _,
-    // initial_proposal_id: _,
-    // creation_date: _,
-    // rental_condition_id,
-    // last_locking_time: _,
     let lock_amount_icp = Tokens::from_e8s(initial_amount_icp.e8s() / 10);
     assert_eq!(rental_request.locked_amount_icp, lock_amount_icp);
     // this one might fail due to rounding errors
