@@ -430,7 +430,7 @@ pub async fn execute_rental_request_proposal_(
 
     // Check that the amount the user transferred to the SRC/user subaccount covers the initial cost.
     let available_icp = check_subaccount_balance(Subaccount::from(user)).await;
-    println!("Available icp: {}", available_icp);
+    println!("Available icp: {}; needed: {}", available_icp, needed_icp);
     if needed_icp < available_icp {
         println!("Fatal: Not enough ICP on the user subaccount to cover the initial period.");
         let e = ExecuteProposalError::InsufficientFunds {

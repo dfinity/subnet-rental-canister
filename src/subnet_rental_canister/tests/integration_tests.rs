@@ -116,7 +116,13 @@ fn setup() -> (PocketIc, Principal) {
     (pic, subnet_rental_canister)
 }
 
-fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principal: Principal) {
+// transfers a fraction of the initial payment (`fraction = 1` to transfer the full initial payment)
+fn make_initial_transfer(
+    pic: &PocketIc,
+    src_principal: Principal,
+    user_principal: Principal,
+    fraction: u64,
+) {
     // user finds rental conditions
     let res = query::<Vec<(RentalConditionId, RentalConditions)>>(
         pic,
@@ -139,7 +145,7 @@ fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principa
     // user transfers some ICP to SRC
     let transfer_args = TransferArgs {
         memo: Memo(0),
-        amount: needed_icp,
+        amount: Tokens::from_e8s(needed_icp.e8s() / fraction),
         fee: DEFAULT_FEE,
         from_subaccount: None,
         to: AccountIdentifier::new(&src_principal, &Subaccount::from(user_principal)),
@@ -183,8 +189,8 @@ fn test_initial_proposal() {
     let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
-    // user performs preparations
-    make_initial_transfer(&pic, src_principal, user_principal);
+    // transfer the initial payment
+    make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
     let now = now * 1_000_000_000;
@@ -269,6 +275,9 @@ fn test_failed_initial_proposal() {
     let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
+    // transfer only half of the initial payment
+    make_initial_transfer(&pic, src_principal, user_principal, 2);
+
     // check user history before running proposal
     let user_history = query_multi_arg::<EventPage>(
         &pic,
@@ -324,7 +333,7 @@ fn test_duplicate_request_fails() {
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // user performs preparations
-    make_initial_transfer(&pic, src_principal, user_principal);
+    make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
     let now = now * 1_000_000_000;
