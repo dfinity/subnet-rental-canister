@@ -49,6 +49,8 @@ jobs:
       run: dfx start --background
     - name: Add wasm target
       run: rustup target add wasm32-unknown-unknown
+    - name: Build canister candid interface and WASM
+      run: ./scripts/build.sh
     - name: Deploy
       run: dfx deploy
 
