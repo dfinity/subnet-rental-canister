@@ -37,25 +37,6 @@ type EventType = variant {
   };
   TransferSuccess : record { block_index : nat64; amount : Tokens };
 };
-type ExecuteProposalError = variant {
-  PriceCalculationError : PriceCalculationData;
-  SubnetAlreadyRequested;
-  SubnetNotRented;
-  UserAlreadyRequestingSubnetRental;
-  NotifyTopUpError : text;
-  CallXRCFailed : text;
-  UnauthorizedCaller;
-  CallGovernanceFailed;
-  SubnetAlreadyRented;
-  TransferSrcToCmcError : text;
-  InsufficientFunds : record { have : Tokens; need : Tokens };
-};
-type PriceCalculationData = record {
-  daily_cost_cycles : nat;
-  decimals : nat32;
-  initial_rental_period_days : nat64;
-  scaled_exchange_rate_xdr_per_icp : nat64;
-};
 type RentalConditionId = variant { App13CH };
 type RentalConditions = record {
   daily_cost_cycles : nat;
@@ -74,9 +55,8 @@ type RentalRequest = record {
   locked_amount_cycles : nat;
   creation_date : nat64;
 };
-type Result = variant { Ok; Err : ExecuteProposalError };
-type Result_1 = variant { Ok : Tokens; Err : text };
-type Result_2 = variant { Ok : nat64; Err : text };
+type Result = variant { Ok : Tokens; Err : text };
+type Result_1 = variant { Ok : nat64; Err : text };
 type SubnetRentalProposalPayload = record {
   user : principal;
   rental_condition_id : RentalConditionId;
@@ -85,14 +65,14 @@ type SubnetRentalProposalPayload = record {
 };
 type Tokens = record { e8s : nat64 };
 service : () -> {
-  execute_rental_request_proposal : (SubnetRentalProposalPayload) -> (Result);
+  execute_rental_request_proposal : (SubnetRentalProposalPayload) -> ();
   get_history_page : (principal, opt nat64) -> (EventPage) query;
   get_payment_subaccount : () -> (vec nat8) query;
   get_rental_conditions_history_page : (opt nat64) -> (EventPage) query;
-  get_todays_price : (RentalConditionId) -> (Result_1);
+  get_todays_price : (RentalConditionId) -> (Result);
   list_rental_conditions : () -> (
       vec record { RentalConditionId; RentalConditions },
     ) query;
   list_rental_requests : () -> (vec RentalRequest) query;
-  refund : () -> (Result_2);
+  refund : () -> (Result_1);
 }
