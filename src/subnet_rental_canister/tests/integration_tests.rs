@@ -234,13 +234,14 @@ fn test_initial_proposal() {
     assert_eq!(rental_requests.len(), 1);
     let RentalRequest {
         user,
+        initial_cost_icp: _,
         refundable_icp,
+        locked_amount_icp: _,
         locked_amount_cycles: _,
         initial_proposal_id: _,
         creation_date: _,
         rental_condition_id,
         last_locking_time: _,
-        lock_amount_icp: _,
     } = rental_requests[0];
     assert_eq!(user, user_principal);
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);

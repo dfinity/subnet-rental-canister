@@ -133,23 +133,31 @@ async fn locking() {
     for rental_request in iter_rental_requests().into_iter().map(|(_, v)| v) {
         let RentalRequest {
             user,
+            initial_cost_icp,
             refundable_icp,
+            locked_amount_icp,
             locked_amount_cycles,
             initial_proposal_id,
             creation_date,
             rental_condition_id,
             last_locking_time,
-            lock_amount_icp,
         } = rental_request;
         if (now - last_locking_time) / BILLION / 60 / 60 / 24 >= 30 {
+            let lock_amount_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
+            // Only try to lock if we haven't already locked 100% or more.
+            // Use multiplication result to account for rounding errors.
+            if locked_amount_icp >= Tokens::from_e8s(lock_amount_icp.e8s() * 10) {
+                println!("Rental request for {:?} is already fully locked.", user);
+                continue;
+            }
             println!(
-                "SRC will lock {} ICP for rental request {}.",
+                "SRC will lock {} ICP for rental request of user {}.",
                 lock_amount_icp, user
             );
             let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
             let Ok(locked_cycles) = res else {
                 println!(
-                    "Failed to convert ICP to cycles for rental request {}",
+                    "Failed to convert ICP to cycles for rental request of user {}",
                     user
                 );
                 let e = res.unwrap_err();
@@ -172,16 +180,18 @@ async fn locking() {
                 Some(user),
             );
             let refundable_icp = refundable_icp - lock_amount_icp;
+            let locked_amount_icp = locked_amount_icp + lock_amount_icp;
             let locked_amount_cycles = locked_amount_cycles + locked_cycles;
             let new_rental_request = RentalRequest {
                 user,
+                initial_cost_icp,
                 refundable_icp,
+                locked_amount_icp,
                 locked_amount_cycles,
                 initial_proposal_id,
                 creation_date,
                 rental_condition_id,
                 last_locking_time: now,
-                lock_amount_icp,
             };
             update_rental_request(user, move |_| new_rental_request).unwrap();
         }
@@ -452,7 +462,6 @@ pub async fn execute_rental_request_proposal_(
         };
         return with_error(user, proposal_id, e);
     }
-    let surplus_icp = available_icp - needed_icp;
 
     // Lock 10% by converting to cycles
     let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
@@ -470,16 +479,17 @@ pub async fn execute_rental_request_proposal_(
     println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
     let lock_time = ic_cdk::api::time();
 
-    let refundable_icp = needed_icp - lock_amount_icp + surplus_icp;
+    let refundable_icp = available_icp - lock_amount_icp;
     // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
     create_rental_request(
         user,
+        needed_icp,
         refundable_icp,
+        lock_amount_icp,
         locked_cycles,
         proposal_id,
         rental_condition_id,
         lock_time,
-        lock_amount_icp,
     )
     .unwrap();
     println!("Created rental request for tenant {:?}", user);
@@ -515,13 +525,14 @@ pub async fn refund() -> Result<u64, String> {
         Some(
             rental_request @ RentalRequest {
                 user,
+                initial_cost_icp: _,
                 refundable_icp,
+                locked_amount_icp: _,
                 locked_amount_cycles,
                 initial_proposal_id,
                 creation_date: _,
                 rental_condition_id: _,
                 last_locking_time: _,
-                lock_amount_icp: _,
             },
         ) => {
             println!("Refund requested for user principal {:?}", &caller);

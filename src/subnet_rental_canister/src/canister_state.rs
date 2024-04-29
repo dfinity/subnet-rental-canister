@@ -206,25 +206,28 @@ pub fn get_history_page(
 
 /// Create a RentalRequest with the current time as create_date, insert into canister state
 /// and persist the corresponding event.
+#[allow(clippy::too_many_arguments)]
 pub fn create_rental_request(
     user: Principal,
+    initial_cost_icp: Tokens,
     refundable_icp: Tokens,
+    locked_amount_icp: Tokens,
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
     rental_condition_id: RentalConditionId,
     last_locking_time: u64,
-    lock_amount_icp: Tokens,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
         user,
+        initial_cost_icp,
         refundable_icp,
+        locked_amount_icp,
         locked_amount_cycles,
         initial_proposal_id,
         creation_date: now,
         rental_condition_id,
         last_locking_time,
-        lock_amount_icp,
     };
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {
@@ -314,13 +317,14 @@ mod canister_state_test {
                 EventType::RentalRequestCreated {
                     rental_request: RentalRequest {
                         user: Principal::anonymous(),
+                        initial_cost_icp: Tokens::from_e8s(100),
                         refundable_icp: Tokens::from_e8s(100),
+                        locked_amount_icp: Tokens::from_e8s(10),
                         locked_amount_cycles: 99,
                         initial_proposal_id: 99,
                         creation_date: date,
                         rental_condition_id: RentalConditionId::App13CH,
                         last_locking_time: 99,
-                        lock_amount_icp: Tokens::from_e8s(10),
                     },
                 },
             )
