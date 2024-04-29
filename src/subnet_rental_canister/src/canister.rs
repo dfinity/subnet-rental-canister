@@ -434,7 +434,7 @@ pub async fn execute_rental_request_proposal_(
         "Available icp: {}; Needed icp: {}",
         available_icp, needed_icp
     );
-    if needed_icp < available_icp {
+    if needed_icp > available_icp {
         println!("Fatal: Not enough ICP on the user subaccount to cover the initial period.");
         let e = ExecuteProposalError::InsufficientFunds {
             have: available_icp,
