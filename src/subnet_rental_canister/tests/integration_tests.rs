@@ -134,6 +134,7 @@ fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principa
         "get_todays_price",
         rental_condition_id,
     )
+    .unwrap()
     .unwrap();
     // user transfers some ICP to SRC
     let transfer_args = TransferArgs {
@@ -168,7 +169,8 @@ fn set_mock_exchange_rate(
         None,
         "set_exchange_rate_data",
         arg,
-    );
+    )
+    .unwrap();
 }
 
 #[test]
@@ -193,7 +195,7 @@ fn test_initial_proposal() {
         proposal_creation_time: now,
     };
     // run proposal
-    update::<Result<(), ExecuteProposalError>>(
+    update::<()>(
         &pic,
         src_principal,
         Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
@@ -237,18 +239,75 @@ fn test_initial_proposal() {
     assert_eq!(user, user_principal);
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);
 
-    // get refund
+    // get refund as anonymous principal (should fail)
     let balance_before = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
     let res = update::<Result<u64, String>>(&pic, src_principal, None, "refund", ());
-    // anonymous principal should fail
-    assert!(res.is_err());
+    assert!(res.unwrap().is_err());
+
+    // get refund on behalf of the actual renter
     let res =
         update::<Result<u64, String>>(&pic, src_principal, Some(user_principal), "refund", ());
-    assert!(res.is_ok());
+    assert!(res.unwrap().is_ok());
+
     // check that transfer has succeeded
     let balance_after = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
     assert_eq!(balance_after - balance_before, refundable_icp - DEFAULT_FEE);
 
+    // afterwards there should be no more rental requests remaining
+    let rental_requests =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
+    assert!(rental_requests.is_empty());
+}
+
+#[test]
+fn test_failed_initial_proposal() {
+    let (pic, src_principal) = setup();
+
+    let user_principal = USER_1;
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+
+    // check user history before running proposal
+    let user_history = query_multi_arg::<EventPage>(
+        &pic,
+        src_principal,
+        None,
+        "get_history_page",
+        (user_principal, None::<Option<u64>>),
+    );
+    assert_eq!(user_history.events.len(), 0);
+
+    // user creates proposal
+    let now = now * 1_000_000_000;
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_id: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: now,
+    };
+    // run proposal
+    update::<()>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload.clone(),
+    )
+    .unwrap_err();
+
+    // the history is updated
+    let user_history = query_multi_arg::<EventPage>(
+        &pic,
+        src_principal,
+        None,
+        "get_history_page",
+        (user_principal, None::<Option<u64>>),
+    );
+    assert_eq!(user_history.events.len(), 1);
+
+    // check that there are no rental requests
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
     assert!(rental_requests.is_empty());
@@ -276,7 +335,7 @@ fn test_duplicate_request_fails() {
         proposal_creation_time: now,
     };
     // run proposal
-    update::<Result<(), ExecuteProposalError>>(
+    update::<()>(
         &pic,
         src_principal,
         Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
@@ -286,14 +345,17 @@ fn test_duplicate_request_fails() {
     .unwrap();
 
     // it must only work the first time for the same user
-    let res = update::<Result<(), ExecuteProposalError>>(
+    let res = update::<()>(
         &pic,
         src_principal,
         Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
         "execute_rental_request_proposal",
         payload,
     );
-    assert!(res.unwrap_err() == ExecuteProposalError::UserAlreadyRequestingSubnetRental);
+    assert!(res.unwrap_err().contains(&format!(
+        "{:?}",
+        ExecuteProposalError::UserAlreadyRequestingSubnetRental
+    )));
 }
 
 // #[test]
@@ -378,14 +440,16 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         proposal_id: 999,
         proposal_creation_time: 999,
     };
-    let res = update::<Result<(), ExecuteProposalError>>(
+    let res = update::<()>(
         &pic,
         src_principal,
         None,
         "execute_rental_request_proposal",
         payload,
     );
-    assert_eq!(res.unwrap_err(), ExecuteProposalError::UnauthorizedCaller);
+    assert!(res
+        .unwrap_err()
+        .contains(&format!("{:?}", ExecuteProposalError::UnauthorizedCaller)));
 }
 
 // fn accept_test_rental_agreement(
@@ -461,7 +525,7 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     sender: Option<Principal>,
     method: &str,
     args: impl CandidType,
-) -> T {
+) -> Result<T, String> {
     let res = pic
         .update_call(
             canister_id,
@@ -470,11 +534,10 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
             encode_one(args).unwrap(),
         )
         .unwrap();
-    let res = match res {
-        WasmResult::Reply(res) => res,
-        WasmResult::Reject(message) => panic!("Update expected Reply, got Reject: \n{}", message),
-    };
-    decode_one::<T>(&res).unwrap()
+    match res {
+        WasmResult::Reply(res) => Ok(decode_one::<T>(&res).unwrap()),
+        WasmResult::Reject(message) => Err(message),
+    }
 }
 
 fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> Tokens {

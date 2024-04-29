@@ -16,6 +16,7 @@ use crate::{
     ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
 };
 use candid::Principal;
+use ic_cdk::api::call::{reject, reply};
 use ic_cdk::{init, post_upgrade, query};
 use ic_cdk::{println, update};
 use ic_ledger_types::{
@@ -330,8 +331,16 @@ fn calculate_subnet_price(
     Ok(tokens)
 }
 
-#[update]
-pub async fn execute_rental_request_proposal(
+#[update(manual_reply = true)]
+pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayload) {
+    if let Err(e) = execute_rental_request_proposal_(payload).await {
+        reject(&format!("Subnet rental request proposal failed: {:?}", e));
+    } else {
+        reply(((),));
+    }
+}
+
+pub async fn execute_rental_request_proposal_(
     SubnetRentalProposalPayload {
         user,
         rental_condition_id,
