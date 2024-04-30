@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    time::UNIX_EPOCH,
+    time::{Duration, UNIX_EPOCH},
 };
 use subnet_rental_canister::{
     external_canister_interfaces::{
@@ -116,7 +116,13 @@ fn setup() -> (PocketIc, Principal) {
     (pic, subnet_rental_canister)
 }
 
-fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principal: Principal) {
+// transfers a fraction of the initial payment (`fraction = 1` to transfer the full initial payment)
+fn make_initial_transfer(
+    pic: &PocketIc,
+    src_principal: Principal,
+    user_principal: Principal,
+    fraction: u64,
+) -> Tokens {
     // user finds rental conditions
     let res = query::<Vec<(RentalConditionId, RentalConditions)>>(
         pic,
@@ -137,9 +143,10 @@ fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principa
     .unwrap()
     .unwrap();
     // user transfers some ICP to SRC
+    let amount = Tokens::from_e8s(needed_icp.e8s() / fraction);
     let transfer_args = TransferArgs {
         memo: Memo(0),
-        amount: needed_icp,
+        amount,
         fee: DEFAULT_FEE,
         from_subaccount: None,
         to: AccountIdentifier::new(&src_principal, &Subaccount::from(user_principal)),
@@ -153,6 +160,7 @@ fn make_initial_transfer(pic: &PocketIc, src_principal: Principal, user_principa
         transfer_args,
     )
     .unwrap();
+    amount
 }
 
 fn set_mock_exchange_rate(
@@ -183,8 +191,8 @@ fn test_initial_proposal() {
     let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
-    // user performs preparations
-    make_initial_transfer(&pic, src_principal, user_principal);
+    // transfer the initial payment
+    make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
     let now = now * 1_000_000_000;
@@ -221,20 +229,21 @@ fn test_initial_proposal() {
     );
     // think of a better test than length
     assert_eq!(src_history.events.len(), 1);
-    assert_eq!(user_history.events.len(), 2);
+    assert_eq!(user_history.events.len(), 1);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
     assert_eq!(rental_requests.len(), 1);
     let RentalRequest {
         user,
+        initial_cost_icp: _,
         refundable_icp,
+        locked_amount_icp: _,
         locked_amount_cycles: _,
         initial_proposal_id: _,
         creation_date: _,
         rental_condition_id,
         last_locking_time: _,
-        lock_amount_icp: _,
     } = rental_requests[0];
     assert_eq!(user, user_principal);
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);
@@ -268,6 +277,9 @@ fn test_failed_initial_proposal() {
     // set an exchange rate for the current time on the XRC mock
     let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+
+    // transfer only half of the initial payment
+    make_initial_transfer(&pic, src_principal, user_principal, 2);
 
     // check user history before running proposal
     let user_history = query_multi_arg::<EventPage>(
@@ -324,7 +336,7 @@ fn test_duplicate_request_fails() {
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // user performs preparations
-    make_initial_transfer(&pic, src_principal, user_principal);
+    make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
     let now = now * 1_000_000_000;
@@ -356,6 +368,98 @@ fn test_duplicate_request_fails() {
         "{:?}",
         ExecuteProposalError::UserAlreadyRequestingSubnetRental
     )));
+}
+
+#[test]
+fn test_locking() {
+    let (pic, src_principal) = setup();
+    let user_principal = USER_1;
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+    // transfer the initial payment
+    let initial_amount_icp = make_initial_transfer(&pic, src_principal, user_principal, 1);
+    // user creates proposal
+    let now = now * 1_000_000_000;
+    let payload = SubnetRentalProposalPayload {
+        user: user_principal,
+        rental_condition_id: RentalConditionId::App13CH,
+        proposal_id: 999,
+        proposal_creation_time: now,
+    };
+    // run proposal
+    update::<()>(
+        &pic,
+        src_principal,
+        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        "execute_rental_request_proposal",
+        payload.clone(),
+    )
+    .unwrap();
+    // check that 10% of the initial amount has been locked
+    let rental_request =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ())
+            .pop()
+            .unwrap();
+    let lock_amount_icp = Tokens::from_e8s(initial_amount_icp.e8s() / 10);
+    assert_eq!(rental_request.locked_amount_icp, lock_amount_icp);
+    // this one might fail due to rounding errors
+    assert_eq!(
+        rental_request.refundable_icp,
+        initial_amount_icp - lock_amount_icp
+    );
+    // let some time pass. nothing should happen
+    pic.advance_time(Duration::from_secs(60 * 60 * 24 * 29));
+    for _ in 0..3 {
+        pic.tick();
+    }
+    let updated_rental_request =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ())
+            .pop()
+            .unwrap();
+    assert_eq!(rental_request, updated_rental_request);
+    // let some time pass. this time, we want a locking event to occur
+    pic.advance_time(Duration::from_secs(60 * 60 * 24 * 2));
+    for _ in 0..3 {
+        pic.tick();
+    }
+    let updated_rental_request =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ())
+            .pop()
+            .unwrap();
+    assert_eq!(
+        updated_rental_request.locked_amount_icp,
+        lock_amount_icp + lock_amount_icp
+    );
+    // this one might fail due to rounding errors
+    assert_eq!(
+        updated_rental_request.refundable_icp,
+        initial_amount_icp - lock_amount_icp - lock_amount_icp
+    );
+    assert!(rental_request.last_locking_time < updated_rental_request.last_locking_time);
+    // repeat 9 times (once more than necessary to lock everything; should silently succeed)
+    for _ in 0..9 {
+        pic.advance_time(Duration::from_secs(60 * 60 * 24 * 30 + 1));
+        for _ in 0..3 {
+            pic.tick();
+        }
+    }
+    let updated_rental_request =
+        query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ())
+            .pop()
+            .unwrap();
+    // in total, we might have an error of strictly less than 10 e8s
+    assert!(updated_rental_request.locked_amount_icp >= initial_amount_icp - Tokens::from_e8s(10));
+    assert!(updated_rental_request.refundable_icp < Tokens::from_e8s(10));
+    // there should be 1 rental request created event + 9 locking events (the last call should not have caused an event)
+    let user_history = query_multi_arg::<EventPage>(
+        &pic,
+        src_principal,
+        None,
+        "get_history_page",
+        (user_principal, None::<Option<u64>>),
+    );
+    assert_eq!(user_history.events.len(), 10);
 }
 
 // #[test]

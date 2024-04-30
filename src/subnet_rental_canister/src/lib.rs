@@ -69,8 +69,13 @@ pub struct SubnetRentalProposalPayload {
 #[derive(Clone, CandidType, PartialEq, Eq, PartialOrd, Ord, Debug, Deserialize)]
 pub struct RentalRequest {
     pub user: Principal,
+    /// The cost in ICP, calculated from the ICP/XDR exchange rate
+    /// at UTC midnight before proposal creation time.
+    pub initial_cost_icp: Tokens,
     /// The amount of ICP in SRC's main account which remain refundable.
     pub refundable_icp: Tokens,
+    /// The amount that is currently locked and available only as cycles.
+    pub locked_amount_icp: Tokens,
     /// The amount of cycles that are no longer refundable.
     pub locked_amount_cycles: u128,
     /// The initial proposal id will be mentioned in the subnet
@@ -85,8 +90,6 @@ pub struct RentalRequest {
     /// The last time ICP were successfully locked. If this is
     /// 30d in the past, a new locking event should trigger.
     pub last_locking_time: u64,
-    /// 10% of the initially transferred amount.
-    pub lock_amount_icp: Tokens,
 }
 
 impl Storable for RentalRequest {
@@ -145,11 +148,11 @@ pub enum ExecuteProposalError {
     CallXRCFailed(String),
     PriceCalculationError(PriceCalculationData),
     UserAlreadyRequestingSubnetRental,
+    UserAlreadyHasAgreement,
     SubnetAlreadyRented,
     SubnetAlreadyRequested,
     UnauthorizedCaller,
-    InsufficientFunds,
-    TransferUserToSrcError(String),
+    InsufficientFunds { have: Tokens, need: Tokens },
     TransferSrcToCmcError(String),
     NotifyTopUpError(String),
     SubnetNotRented,

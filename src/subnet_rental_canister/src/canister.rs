@@ -6,7 +6,8 @@ use crate::canister_state::{
     remove_rental_request, update_rental_request, CallerGuard,
 };
 use crate::external_calls::{
-    convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time, refund_user, transfer_to_src_main,
+    check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
+    refund_user,
 };
 use crate::{
     canister_state::persist_event, history::EventType, EventPage, RentalConditionId,
@@ -132,23 +133,31 @@ async fn locking() {
     for rental_request in iter_rental_requests().into_iter().map(|(_, v)| v) {
         let RentalRequest {
             user,
+            initial_cost_icp,
             refundable_icp,
+            locked_amount_icp,
             locked_amount_cycles,
             initial_proposal_id,
             creation_date,
             rental_condition_id,
             last_locking_time,
-            lock_amount_icp,
         } = rental_request;
         if (now - last_locking_time) / BILLION / 60 / 60 / 24 >= 30 {
+            let lock_amount_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
+            // Only try to lock if we haven't already locked 100% or more.
+            // Use multiplication result to account for rounding errors.
+            if locked_amount_icp >= Tokens::from_e8s(lock_amount_icp.e8s() * 10) {
+                println!("Rental request for {} is already fully locked.", user);
+                continue;
+            }
             println!(
-                "SRC will lock {} ICP for rental request {}.",
+                "SRC will lock {} ICP for rental request of user {}.",
                 lock_amount_icp, user
             );
-            let res = convert_icp_to_cycles(lock_amount_icp).await;
+            let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
             let Ok(locked_cycles) = res else {
                 println!(
-                    "Failed to convert ICP to cycles for rental request {}",
+                    "Failed to convert ICP to cycles for rental request of user {}",
                     user
                 );
                 let e = res.unwrap_err();
@@ -171,16 +180,19 @@ async fn locking() {
                 Some(user),
             );
             let refundable_icp = refundable_icp - lock_amount_icp;
+            let locked_amount_icp = locked_amount_icp + lock_amount_icp;
             let locked_amount_cycles = locked_amount_cycles + locked_cycles;
             let new_rental_request = RentalRequest {
                 user,
+                initial_cost_icp,
                 refundable_icp,
+                locked_amount_icp,
                 locked_amount_cycles,
                 initial_proposal_id,
                 creation_date,
                 rental_condition_id,
+                // we risk not accounting for a few days in case this function does not run as scheduled
                 last_locking_time: now,
-                lock_amount_icp,
             };
             update_rental_request(user, move |_| new_rental_request).unwrap();
         }
@@ -229,6 +241,8 @@ pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage 
     }
 }
 
+/// The future tenant may call this to derive the subaccount into which they must
+/// transfer ICP.
 #[query]
 pub fn get_payment_subaccount() -> AccountIdentifier {
     AccountIdentifier::new(&ic_cdk::id(), &Subaccount::from(ic_cdk::caller()))
@@ -280,7 +294,6 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
         drop(guard_res);
         tup
     };
-
     let res = calculate_subnet_price(
         daily_cost_cycles,
         initial_rental_period_days,
@@ -293,7 +306,7 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     }
 }
 
-// Used both for public endpoint 'get_todays_price' and proposal execution.
+// Used both for public endpoint `get_todays_price` and proposal execution.
 fn calculate_subnet_price(
     daily_cost_cycles: u128,
     initial_rental_period_days: u64,
@@ -374,9 +387,15 @@ pub async fn execute_rental_request_proposal_(
         return with_error(user, proposal_id, e);
     }
 
+    // Fail if user has an active rental agreement
+    if get_rental_agreement(&user).is_some() {
+        println!("Fatal: User already has an active rental agreement.");
+        let e = ExecuteProposalError::UserAlreadyHasAgreement;
+        return with_error(user, proposal_id, e);
+    }
+
     // unwrap safety:
-    // The rental_condition_id key must have a value in the rental conditions map at compile time.
-    // TODO: unit test
+    // The rental_condition_id key must have a value in the rental conditions map due to `init` and `post_upgrade`.
     let RentalConditions {
         description: _,
         subnet_id,
@@ -390,6 +409,7 @@ pub async fn execute_rental_request_proposal_(
         None => {}
         Some(subnet_id) => {
             if get_rental_agreement(&subnet_id).is_some() {
+                println!("Fatal: Subnet is already being rented.");
                 let e = ExecuteProposalError::SubnetAlreadyRented;
                 return with_error(user, proposal_id, e);
             }
@@ -398,14 +418,16 @@ pub async fn execute_rental_request_proposal_(
     // Fail if the provided rental_condition_id (i.e., subnet) is already part of a pending rental request:
     for (_, rental_request) in iter_rental_requests().iter() {
         if rental_request.rental_condition_id == rental_condition_id {
+            println!("Fatal: The given rental condition id is already part of a rental request.");
             let e = ExecuteProposalError::SubnetAlreadyRequested;
             return with_error(user, proposal_id, e);
         }
     }
+    println!("Proceeding with rental request execution.");
 
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
-    // the XRC canister has a resolution of seconds, the SRC in nanos.
+    // The XRC canister has a resolution of seconds, the SRC in nanos.
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time / BILLION);
 
     // Call exchange rate canister.
@@ -427,32 +449,29 @@ pub async fn execute_rental_request_proposal_(
         return with_error(user, proposal_id, e);
     };
 
-    // Transfer from user-derived subaccount to SRC main. The proposal id is used as the Memo.
-    let res = transfer_to_src_main(user.into(), needed_icp - DEFAULT_FEE, proposal_id).await;
-    let Ok(block_index) = res else {
-        println!("Fatal: Failed to transfer enough ICP to SRC main account");
-        let e = ExecuteProposalError::TransferUserToSrcError(format!("{:?}", res.unwrap_err()));
-        return with_error(user, proposal_id, e);
-    };
-    let transferred_icp = needed_icp - DEFAULT_FEE;
+    // Check that the amount the user transferred to the SRC/user subaccount covers the initial cost.
+    let available_icp = check_subaccount_balance(Subaccount::from(user)).await;
     println!(
-        "SRC Successfully transferred {} ICP (plus fee) from {:?} to the SRC main account.",
-        transferred_icp,
-        Subaccount::from(user)
+        "Available icp: {}; Needed icp: {}",
+        available_icp, needed_icp
     );
-    persist_event(
-        EventType::TransferSuccess {
-            amount: transferred_icp,
-            block_index,
-        },
-        Some(user),
-    );
+    if needed_icp > available_icp {
+        println!("Fatal: Not enough ICP on the user subaccount to cover the initial period.");
+        let e = ExecuteProposalError::InsufficientFunds {
+            have: available_icp,
+            need: needed_icp,
+        };
+        return with_error(user, proposal_id, e);
+    }
 
     // Lock 10% by converting to cycles
-    let lock_amount_icp = Tokens::from_e8s(transferred_icp.e8s() / 10);
-    println!("SRC will lock {} ICP.", lock_amount_icp);
+    let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
+    println!(
+        "SRC will lock 10% of the initial cost: {} ICP.",
+        lock_amount_icp
+    );
 
-    let res = convert_icp_to_cycles(lock_amount_icp).await;
+    let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
     let Ok(locked_cycles) = res else {
         println!("Fatal: Failed to convert ICP to cycles");
         let e = res.unwrap_err();
@@ -461,22 +480,24 @@ pub async fn execute_rental_request_proposal_(
     println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
     let lock_time = ic_cdk::api::time();
 
-    let refundable_icp = transferred_icp - lock_amount_icp;
+    let refundable_icp = available_icp - lock_amount_icp;
     // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
     create_rental_request(
         user,
+        needed_icp,
         refundable_icp,
+        lock_amount_icp,
         locked_cycles,
         proposal_id,
         rental_condition_id,
         lock_time,
-        lock_amount_icp,
     )
     .unwrap();
+    println!("Created rental request for tenant {}", user);
 
     // Either proceed with existing subnet_id, or start polling for future subnet creation.
     if let Some(subnet_id) = subnet_id {
-        println!("Reusing existing subnet {:?}", subnet_id);
+        println!("Reusing existing subnet {}", subnet_id);
         // TODO: Create rental agreement
     } else {
         // TODO: Start polling
@@ -500,26 +521,27 @@ pub async fn refund() -> Result<u64, String> {
     if guard_res.is_err() {
         return Err("Failed to acquire lock. Try again.".to_string());
     }
-    // does the caller have an active rental request?
+    // Does the caller have an active rental request?
     match get_rental_request(&caller) {
         Some(
             rental_request @ RentalRequest {
                 user,
+                initial_cost_icp: _,
                 refundable_icp,
+                locked_amount_icp: _,
                 locked_amount_cycles,
                 initial_proposal_id,
                 creation_date: _,
                 rental_condition_id: _,
                 last_locking_time: _,
-                lock_amount_icp: _,
             },
         ) => {
-            println!("Refund requested for user principal {:?}", &caller);
-            // Refund the remaining ICP on the SRC main subaccount to the user.
+            println!("Refund requested for user principal {}", &caller);
+            // Refund the remaining ICP on the SRC/user subaccount to the user.
             let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
             let Ok(block_id) = res else {
                 return Err(format!(
-                    "Failed to refund {} ICP to {:?}: {:?}",
+                    "Failed to refund {} ICP to {}: {:?}",
                     refundable_icp - DEFAULT_FEE,
                     user,
                     res.unwrap_err()
@@ -582,7 +604,7 @@ pub async fn refund() -> Result<u64, String> {
             .expect("Failed refund: Failed to call ledger canister");
             let Ok(block_id) = res else {
                 return Err(format!(
-                    "Failed to refund {} ICP to {:?}: {:?}",
+                    "Failed to refund {} ICP to {}: {:?}",
                     balance - DEFAULT_FEE,
                     caller,
                     res.unwrap_err()
