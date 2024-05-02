@@ -462,78 +462,6 @@ fn test_locking() {
     assert_eq!(user_history.events.len(), 10);
 }
 
-// #[test]
-// fn test_proposal_rejected_if_already_rented() {
-//     let (pic, canister_id) = setup();
-
-//     let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
-
-//     // The first time must succeed.
-//     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
-//     let WasmResult::Reply(res) = wasm_res else {
-//         panic!("Expected a reply");
-//     };
-//     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-//     assert!(res.is_ok());
-
-//     // Using the same subnet again must fail.
-//     let wasm_res = accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
-//     let WasmResult::Reply(res) = wasm_res else {
-//         panic!("Expected a reply");
-//     };
-
-//     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-//     assert!(matches!(
-//         res,
-//         Err(ExecuteProposalError::SubnetAlreadyRented)
-//     ));
-// }
-
-// #[test]
-// fn test_proposal_rejected_if_too_low_funds() {
-//     let (pic, canister_id) = setup();
-
-//     let _block_index_approve = icrc2_approve(&pic, USER_2, 5_000 * E8S);
-
-//     // User 2 has too low funds.
-//     let wasm_res = accept_test_rental_agreement(&pic, &USER_2, &canister_id, SUBNET_FOR_RENT);
-//     let WasmResult::Reply(res) = wasm_res else {
-//         panic!("Expected a reply");
-//     };
-//     let res = decode_one::<Result<(), ExecuteProposalError>>(&res).unwrap();
-//     assert!(matches!(
-//         res,
-//         Err(ExecuteProposalError::TransferUserToSrcError(
-//             TransferFromError::InsufficientFunds { .. }
-//         ))
-//     ));
-// }
-
-// #[test]
-// fn test_burning() {
-//     let (pic, canister_id) = setup();
-//     let _block_index_approve = icrc2_approve(&pic, USER_1, 5_000 * E8S);
-//     accept_test_rental_agreement(&pic, &USER_1, &canister_id, SUBNET_FOR_RENT);
-
-//     let billing_records: Vec<(Principal, BillingRecord)> =
-//         query(&pic, canister_id, "list_billing_records", ());
-//     let initial_balance = billing_records[0].1.cycles_balance;
-//     pic.advance_time(Duration::from_secs(2));
-//     pic.tick();
-//     let billing_records: Vec<(Principal, BillingRecord)> =
-//         query(&pic, canister_id, "list_billing_records", ());
-//     let balance_1 = billing_records[0].1.cycles_balance;
-//     assert!(balance_1 < initial_balance);
-
-//     pic.advance_time(Duration::from_secs(4));
-//     pic.tick();
-//     let billing_records: Vec<(Principal, BillingRecord)> =
-//         query(&pic, canister_id, "list_billing_records", ());
-//     let balance_2 = billing_records[0].1.cycles_balance;
-//     assert!(balance_2 < initial_balance);
-//     assert!(balance_2 < balance_1);
-// }
-
 #[test]
 fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
     let (pic, src_principal) = setup();
@@ -556,29 +484,15 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         .contains(&format!("{:?}", ExecuteProposalError::UnauthorizedCaller)));
 }
 
+// TODO
+
+// fn test_proposal_rejected_if_already_rented() {
+// fn test_proposal_rejected_if_too_low_funds() {
+// fn test_burning() {
 // fn accept_test_rental_agreement(
-//     pic: &PocketIc,
-//     user: &Principal,
-//     canister_id: &Principal,
-//     subnet_id_str: &str,
-// ) -> WasmResult {
-//     let subnet_id = Principal::from_text(subnet_id_str).unwrap();
-//     let arg = SubnetRentalProposalPayload {
-//         subnet_id,
-//         user: *user,
-//         principals: vec![*user],
-//         proposal_creation_time: 0,
-//     };
 
-//     pic.update_call(
-//         *canister_id,
-//         MAINNET_GOVERNANCE_CANISTER_ID,
-//         "accept_rental_agreement",
-//         encode_one(arg).unwrap(),
-//     )
-//     .unwrap()
-// }
-
+// ====================================================================================================================
+// Helpers
 fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     pic: &PocketIc,
     canister_id: Principal,
