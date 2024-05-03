@@ -164,7 +164,7 @@ pub fn list_rental_requests() -> Vec<RentalRequest> {
 
 /// Get the first page (the most recent) of events associated with the provided principal by
 /// passing `older_than: None`.
-/// The principal should be a user/tenant or a subnet id.
+/// The principal should be a user or a subnet id.
 /// Returns both a vector of events and a token to provide in a subsequent call to this method
 /// to retrieve the page before by passing `older_than: Some(continuation)`.
 #[query]
@@ -189,7 +189,7 @@ pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage 
     }
 }
 
-/// The future tenant may call this to derive the subaccount into which they must
+/// The future user may call this to derive the subaccount into which they must
 /// transfer ICP.
 #[query]
 pub fn get_payment_subaccount() -> AccountIdentifier {
@@ -443,7 +443,7 @@ pub async fn execute_rental_request_proposal_(
         lock_time,
     )
     .unwrap();
-    println!("Created rental request for tenant {}", user);
+    println!("Created rental request for user {}", user);
 
     // Either proceed with existing subnet_id, or start polling for future subnet creation.
     if let Some(subnet_id) = subnet_id {
