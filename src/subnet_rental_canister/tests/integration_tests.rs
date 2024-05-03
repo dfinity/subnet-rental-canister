@@ -142,6 +142,15 @@ fn make_initial_transfer(
     )
     .unwrap()
     .unwrap();
+    // user finds the correct subaccount via SRC
+    let target_subaccount = update::<AccountIdentifier>(
+        pic,
+        src_principal,
+        Some(user_principal),
+        "get_payment_subaccount",
+        (),
+    )
+    .unwrap();
     // user transfers some ICP to SRC
     let amount = Tokens::from_e8s(needed_icp.e8s() / fraction);
     let transfer_args = TransferArgs {
@@ -149,7 +158,7 @@ fn make_initial_transfer(
         amount,
         fee: DEFAULT_FEE,
         from_subaccount: None,
-        to: AccountIdentifier::new(&src_principal, &Subaccount::from(user_principal)),
+        to: target_subaccount,
         created_at_time: None,
     };
     let _res = update::<TransferResult>(

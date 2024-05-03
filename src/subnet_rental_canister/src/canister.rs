@@ -327,7 +327,9 @@ pub async fn execute_rental_request_proposal_(
     }
     verify_caller_is_governance()?;
 
-    let _guard = CallerGuard::new(user, "rental_request").unwrap();
+    // make sure no concurrent calls to this method can exist, in addition to governance's check.
+    let _guard = CallerGuard::new(Principal::anonymous(), "rental_request").unwrap();
+
     // Fail if user has an existing rental request going on
     if get_rental_request(&user).is_some() {
         println!("Fatal: User already has an open SubnetRentalRequest waiting for completion.");
