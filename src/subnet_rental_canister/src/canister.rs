@@ -450,7 +450,9 @@ pub async fn execute_rental_request_proposal_(
         println!("Reusing existing subnet {}", subnet_id);
         // TODO: Create rental agreement
     } else {
-        // TODO: Start polling
+        // TODO:
+        // Poll on an internal data structure. The governance canister will notify
+        // the SRC by writing there. An SRC timer should still pick it up automatically.
     }
 
     Ok(())

@@ -493,7 +493,6 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
 }
 
 // TODO
-
 // fn test_proposal_rejected_if_already_rented() {
 // fn test_burning() {
 // fn accept_test_rental_agreement(

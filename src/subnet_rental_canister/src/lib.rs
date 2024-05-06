@@ -42,7 +42,6 @@ pub struct RentalConditions {
 }
 
 impl Storable for RentalConditions {
-    // TODO: find max size and bound
     const BOUND: Bound = Bound::Unbounded;
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(self).unwrap())
@@ -93,7 +92,6 @@ pub struct RentalRequest {
 }
 
 impl Storable for RentalRequest {
-    // TODO: find max size and bound
     const BOUND: Bound = Bound::Unbounded;
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(self).unwrap())
