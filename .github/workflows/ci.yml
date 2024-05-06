@@ -83,11 +83,12 @@ jobs:
         ./scripts/docker_build.sh
     - name: gzip artifact
       run: |
+        sha256sum subnet_rental_canister.wasm > src_sha256.txt
         gzip subnet_rental_canister.wasm
-        sha256sum subnet_rental_canister.wasm.gz > src.sha256
+        sha256sum subnet_rental_canister.wasm.gz >> src_sha256.txt
     - name: upload artifacts to release page
       uses: softprops/action-gh-release@master
       with:
         files: |
           subnet_rental_canister.wasm.gz
-          src.sha256
+          src_sha256.txt
