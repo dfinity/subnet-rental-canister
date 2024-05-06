@@ -42,7 +42,6 @@ pub struct RentalConditions {
 }
 
 impl Storable for RentalConditions {
-    // TODO: find max size and bound
     const BOUND: Bound = Bound::Unbounded;
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(self).unwrap())
@@ -57,7 +56,7 @@ impl Storable for RentalConditions {
 /// with this argument in case the proposal was valid and adopted.
 #[derive(Clone, CandidType, Deserialize)]
 pub struct SubnetRentalProposalPayload {
-    // The tenant, who makes the payments
+    // The user who makes the payments and enters an agreement.
     pub user: Principal,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_id: RentalConditionId,
@@ -93,7 +92,6 @@ pub struct RentalRequest {
 }
 
 impl Storable for RentalRequest {
-    // TODO: find max size and bound
     const BOUND: Bound = Bound::Unbounded;
     fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(self).unwrap())

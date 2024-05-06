@@ -81,7 +81,6 @@ pub enum EventType {
         subnet_creation_proposal_id: Option<u64>,
         rental_condition_id: RentalConditionId,
     },
-    // TODO: How to even get this?
     RentalAgreementTerminated {
         user: Principal,
         initial_proposal_id: u64,

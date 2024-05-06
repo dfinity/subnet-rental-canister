@@ -22,7 +22,7 @@ jobs:
         rustup target add wasm32-unknown-unknown
         ./scripts/build.sh
     - name: Download PocketIC
-      run: curl -sLO https://github.com/dfinity/pocketic/releases/download/3.0.1/pocket-ic-x86_64-linux.gz
+      run: curl -sLO https://github.com/dfinity/pocketic/releases/download/4.0.0/pocket-ic-x86_64-linux.gz
     - name: Prepare PocketIC
       run: | 
         gunzip pocket-ic-x86_64-linux.gz

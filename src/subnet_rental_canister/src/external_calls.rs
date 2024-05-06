@@ -11,9 +11,6 @@ use crate::external_canister_interfaces::exchange_rate_canister::{
     GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
 };
 
-use crate::external_canister_interfaces::governance_canister::{
-    ListProposalInfo, ListProposalInfoResponse, GOVERNANCE_CANISTER_PRINCIPAL_STR,
-};
 use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
 use ic_cdk::println;
@@ -43,10 +40,6 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
     .await
     .expect("Failed to call CMC")
     .0
-    // TODO: In the canister logs, the CMC claims that the burning of ICPs failed, but the cycles are minted anyway.
-    // It states that the "transfer fee should be 0.00010000 Token", but that fee is hardcoded to
-    // (ZERO)[https://sourcegraph.com/github.com/dfinity/ic@8126ad2fab0196908d9456a65914a3e05179ac4b/-/blob/rs/nns/cmc/src/main.rs?L1835]
-    // in the CMC, and cannot be changed from outside. What's going on here?
 }
 
 pub async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, TransferError> {
@@ -175,31 +168,6 @@ pub async fn convert_icp_to_cycles(
         return Err(ExecuteProposalError::NotifyTopUpError(format!("{:?}", e)));
     };
     Ok(actual_cycles)
-}
-
-/// Used for polling for the subnet creation proposal.
-pub async fn get_create_subnet_proposal() -> Result<(), String> {
-    // TODO
-    let request = ListProposalInfo {
-        include_reward_status: vec![],
-        omit_large_fields: Some(true),
-        before_proposal: None,
-        limit: 100,
-        exclude_topic: vec![],
-        include_all_manage_neuron_proposals: Some(true),
-        // We only want ProposalStatus::Adopted = 3
-        include_status: vec![3],
-    };
-    let ListProposalInfoResponse { proposal_info: _ } =
-        ic_cdk::call::<_, (ListProposalInfoResponse,)>(
-            Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap(),
-            "list_proposals",
-            (request,),
-        )
-        .await
-        .expect("Failed to call GovernanceCanister")
-        .0;
-    todo!()
 }
 
 pub async fn check_subaccount_balance(subaccount: Subaccount) -> Tokens {
