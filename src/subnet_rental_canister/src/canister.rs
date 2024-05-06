@@ -48,7 +48,7 @@ fn set_initial_conditions() {
         RentalConditions {
             description: "All nodes must be in Switzerland.".to_string(),
             subnet_id: None,
-            daily_cost_cycles: 835 * TRILLION,
+            daily_cost_cycles: 820 * TRILLION,
             initial_rental_period_days: 180,
             billing_period_days: 30,
         },
