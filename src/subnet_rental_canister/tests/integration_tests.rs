@@ -440,7 +440,6 @@ fn test_locking() {
         updated_rental_request.locked_amount_icp,
         lock_amount_icp + lock_amount_icp
     );
-    // this one might fail due to rounding errors
     assert_eq!(
         updated_rental_request.refundable_icp,
         initial_amount_icp - lock_amount_icp - lock_amount_icp
@@ -496,7 +495,6 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
 // TODO
 
 // fn test_proposal_rejected_if_already_rented() {
-// fn test_proposal_rejected_if_too_low_funds() {
 // fn test_burning() {
 // fn accept_test_rental_agreement(
 
