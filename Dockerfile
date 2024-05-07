@@ -26,4 +26,4 @@ WORKDIR /subnet-rental-canister
 RUN ./scripts/build.sh
 
 # Shrink the canister
-RUN ic-wasm subnet_rental_canister.wasm -o subnet_rental_canister.wasm shrink
+RUN ./ic-wasm subnet_rental_canister.wasm -o subnet_rental_canister.wasm shrink
