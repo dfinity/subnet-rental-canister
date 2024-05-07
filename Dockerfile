@@ -2,7 +2,7 @@ FROM --platform=linux/amd64 ubuntu:22.04
 
 ENV RUSTUP_HOME=/opt/rustup
 ENV CARGO_HOME=/opt/cargo
-ENV RUST_VERSION=1.74.0
+ENV RUST_VERSION=1.77.1
 
 # Set the timezone to UTC
 ENV TZ=UTC
@@ -17,8 +17,7 @@ ENV PATH=/opt/cargo/bin:${PATH}
 RUN curl --fail https://sh.rustup.rs -sSf \
     | sh -s -- -y --default-toolchain ${RUST_VERSION}-x86_64-unknown-linux-gnu --no-modify-path && \
     rustup default ${RUST_VERSION}-x86_64-unknown-linux-gnu && \
-    rustup target add wasm32-unknown-unknown &&\
-    cargo install ic-wasm --version 0.7.0
+    rustup target add wasm32-unknown-unknown
 
 COPY . /subnet-rental-canister
 WORKDIR /subnet-rental-canister
