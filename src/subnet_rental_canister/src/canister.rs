@@ -306,7 +306,7 @@ pub async fn execute_rental_request_proposal_(
         user,
         rental_condition_id,
         proposal_id,
-        proposal_creation_time,
+        proposal_creation_time_seconds,
     }: SubnetRentalProposalPayload,
 ) -> Result<(), ExecuteProposalError> {
     /// This function makes sense locally only because EventType::RentalRequestFailed is fixed.
@@ -378,7 +378,7 @@ pub async fn execute_rental_request_proposal_(
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
     // Proposal creation time passed by NNS Governance is in seconds.
-    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time);
+    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time_seconds);
 
     // Call exchange rate canister.
     let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;

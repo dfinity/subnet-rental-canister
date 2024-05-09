@@ -234,7 +234,7 @@ fn test_initial_proposal() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
 
     // advance time by one day
@@ -352,7 +352,7 @@ fn test_failed_initial_proposal() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
     // run proposal
     update::<()>(
@@ -399,7 +399,7 @@ fn test_duplicate_request_fails() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
     // run proposal
     update::<()>(
@@ -440,7 +440,7 @@ fn test_locking() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
     // run proposal
     update::<()>(
@@ -524,7 +524,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: 999,
+        proposal_creation_time_seconds: 999,
     };
     let res = update::<()>(
         &pic,
