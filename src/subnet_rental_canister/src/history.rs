@@ -11,7 +11,7 @@ use serde::Deserialize;
 /// so that system time is captured automatically.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub struct Event {
-    date: u64,
+    time_nanos: u64,
     event: EventType,
 }
 
@@ -32,13 +32,13 @@ impl Event {
         self.event.clone()
     }
 
-    pub fn date(&self) -> u64 {
-        self.date
+    pub fn time_nanos(&self) -> u64 {
+        self.time_nanos
     }
 
     #[cfg(test)]
-    pub fn _mk_event(date: u64, event: EventType) -> Self {
-        Self { date, event }
+    pub fn _mk_event(time_nanos: u64, event: EventType) -> Self {
+        Self { time_nanos, event }
     }
 }
 
@@ -46,7 +46,7 @@ impl From<EventType> for Event {
     fn from(value: EventType) -> Self {
         Event {
             event: value,
-            date: ic_cdk::api::time(),
+            time_nanos: ic_cdk::api::time(),
         }
     }
 }

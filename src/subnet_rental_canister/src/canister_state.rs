@@ -204,7 +204,7 @@ pub fn get_history_page(
     (page, low_seq)
 }
 
-/// Create a RentalRequest with the current time as create_date, insert into canister state
+/// Create a RentalRequest with the current time as creation_time_nanos, insert into canister state
 /// and persist the corresponding event.
 #[allow(clippy::too_many_arguments)]
 pub fn create_rental_request(
@@ -311,9 +311,9 @@ mod canister_state_test {
 
     #[test]
     fn test_history_pagination() {
-        fn make_event(date: u64) -> Event {
+        fn make_event(time_nanos: u64) -> Event {
             Event::_mk_event(
-                date,
+                time_nanos,
                 EventType::RentalRequestCreated {
                     rental_request: RentalRequest {
                         user: Principal::anonymous(),
@@ -322,7 +322,7 @@ mod canister_state_test {
                         locked_amount_icp: Tokens::from_e8s(10),
                         locked_amount_cycles: 99,
                         initial_proposal_id: 99,
-                        creation_time_nanos: date,
+                        creation_time_nanos: time_nanos,
                         rental_condition_id: RentalConditionId::App13CH,
                         last_locking_time_nanos: 99,
                     },
@@ -335,15 +335,15 @@ mod canister_state_test {
         persist_event(make_event(4), None);
         persist_event(make_event(5), None);
         let (events, oldest) = get_history_page(None, None, 2);
-        assert_eq!(events[0].date(), 4);
-        assert_eq!(events[1].date(), 5);
+        assert_eq!(events[0].time_nanos(), 4);
+        assert_eq!(events[1].time_nanos(), 5);
         assert_eq!(events.len(), 2);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
-        assert_eq!(events[0].date(), 2);
-        assert_eq!(events[1].date(), 3);
+        assert_eq!(events[0].time_nanos(), 2);
+        assert_eq!(events[1].time_nanos(), 3);
         assert_eq!(events.len(), 2);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
-        assert_eq!(events[0].date(), 1);
+        assert_eq!(events[0].time_nanos(), 1);
         assert_eq!(events.len(), 1);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert!(events.is_empty());
