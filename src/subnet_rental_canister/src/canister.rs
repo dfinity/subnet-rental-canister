@@ -88,9 +88,9 @@ async fn locking() {
             initial_proposal_id,
             creation_time_nanos,
             rental_condition_id,
-            last_locking_time,
+            last_locking_time_nanos,
         } = rental_request;
-        if (now - last_locking_time) / BILLION / 60 / 60 / 24 >= 30 {
+        if (now - last_locking_time_nanos) / BILLION / 60 / 60 / 24 >= 30 {
             let lock_amount_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
             // Only try to lock if we haven't already locked 100% or more.
             // Use multiplication result to account for rounding errors.
@@ -140,7 +140,7 @@ async fn locking() {
                 creation_time_nanos,
                 rental_condition_id,
                 // we risk not accounting for a few days in case this function does not run as scheduled
-                last_locking_time: now,
+                last_locking_time_nanos: now,
             };
             update_rental_request(user, move |_| new_rental_request).unwrap();
         }
@@ -485,7 +485,7 @@ pub async fn refund() -> Result<u64, String> {
                 initial_proposal_id,
                 creation_time_nanos: _,
                 rental_condition_id: _,
-                last_locking_time: _,
+                last_locking_time_nanos: _,
             },
         ) => {
             println!("Refund requested for user principal {}", &caller);

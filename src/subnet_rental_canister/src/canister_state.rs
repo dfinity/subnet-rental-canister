@@ -215,7 +215,7 @@ pub fn create_rental_request(
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
     rental_condition_id: RentalConditionId,
-    last_locking_time: u64,
+    last_locking_time_nanos: u64,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
@@ -227,7 +227,7 @@ pub fn create_rental_request(
         initial_proposal_id,
         creation_time_nanos: now,
         rental_condition_id,
-        last_locking_time,
+        last_locking_time_nanos,
     };
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {
@@ -324,7 +324,7 @@ mod canister_state_test {
                         initial_proposal_id: 99,
                         creation_time_nanos: date,
                         rental_condition_id: RentalConditionId::App13CH,
-                        last_locking_time: 99,
+                        last_locking_time_nanos: 99,
                     },
                 },
             )

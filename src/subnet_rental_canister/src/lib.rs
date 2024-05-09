@@ -88,7 +88,7 @@ pub struct RentalRequest {
     /// ===== Data for the ICP-locking timer. =====
     /// The last time ICP were successfully locked. If this is
     /// 30d in the past, a new locking event should trigger.
-    pub last_locking_time: u64,
+    pub last_locking_time_nanos: u64,
 }
 
 impl Storable for RentalRequest {
