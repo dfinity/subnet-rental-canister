@@ -118,7 +118,7 @@ pub struct RentalAgreement {
     pub creation_time_nanos: u64,
     // ===== Mutable data =====
     /// The time in nanos since epoch until which the rental agreement is paid for.
-    pub covered_until: u64,
+    pub covered_until_nanos: u64,
     /// This subnet's share of cycles among the SRC's cycles.
     /// Increased by the locking mechanism, monthly.
     /// Increased by the payment process (via timer).

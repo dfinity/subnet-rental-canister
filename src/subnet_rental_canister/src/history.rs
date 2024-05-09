@@ -95,7 +95,7 @@ pub enum EventType {
     PaymentSuccess {
         amount: Tokens,
         cycles: u128,
-        covered_until: u64,
+        covered_until_nanos: u64,
     },
     PaymentFailure {
         reason: String,

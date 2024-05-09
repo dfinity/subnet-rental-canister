@@ -276,7 +276,7 @@ pub fn create_rental_agreement(
         subnet_creation_proposal_id,
         rental_condition_id,
         creation_time_nanos: now,
-        covered_until: now + initial_rental_period_nanos,
+        covered_until_nanos: now + initial_rental_period_nanos,
         cycles_balance,
         last_burned: now,
     };
