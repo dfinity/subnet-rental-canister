@@ -377,8 +377,8 @@ pub async fn execute_rental_request_proposal_(
 
     // ------------------------------------------------------------------
     // Attempt to transfer enough ICP to cover the initial rental period.
-    // The XRC canister has a resolution of seconds, the SRC in nanos.
-    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time / BILLION);
+    // Proposal creation time passed by NNS Governance is in seconds.
+    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time);
 
     // Call exchange rate canister.
     let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
