@@ -250,7 +250,7 @@ fn test_initial_proposal() {
         locked_amount_icp: _,
         locked_amount_cycles: _,
         initial_proposal_id: _,
-        creation_date: _,
+        creation_time_nanos: _,
         rental_condition_id,
         last_locking_time: _,
     } = rental_requests[0];

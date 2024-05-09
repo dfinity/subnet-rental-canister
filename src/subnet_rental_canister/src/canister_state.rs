@@ -225,7 +225,7 @@ pub fn create_rental_request(
         locked_amount_icp,
         locked_amount_cycles,
         initial_proposal_id,
-        creation_date: now,
+        creation_time_nanos: now,
         rental_condition_id,
         last_locking_time,
     };
@@ -251,7 +251,7 @@ pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow_mut(|requests| requests.remove(&user))
 }
 
-/// Create a RentalAgreement with the current time as creation_date, insert into canister state  
+/// Create a RentalAgreement with the current time as creation_time_nanos, insert into canister state  
 /// and create the corresponding event.
 #[allow(clippy::too_many_arguments)]
 pub fn create_rental_agreement(
@@ -275,7 +275,7 @@ pub fn create_rental_agreement(
         initial_proposal_id,
         subnet_creation_proposal_id,
         rental_condition_id,
-        creation_date: now,
+        creation_time_nanos: now,
         covered_until: now + initial_rental_period_nanos,
         cycles_balance,
         last_burned: now,
@@ -322,7 +322,7 @@ mod canister_state_test {
                         locked_amount_icp: Tokens::from_e8s(10),
                         locked_amount_cycles: 99,
                         initial_proposal_id: 99,
-                        creation_date: date,
+                        creation_time_nanos: date,
                         rental_condition_id: RentalConditionId::App13CH,
                         last_locking_time: 99,
                     },

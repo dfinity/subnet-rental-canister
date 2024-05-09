@@ -82,7 +82,7 @@ pub struct RentalRequest {
     /// canister, polling can stop.
     pub initial_proposal_id: u64,
     /// Rental request creation date in nanoseconds since epoch.
-    pub creation_date: u64,
+    pub creation_time_nanos: u64,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_id: RentalConditionId,
     /// ===== Data for the ICP-locking timer. =====
@@ -115,7 +115,7 @@ pub struct RentalAgreement {
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_id: RentalConditionId,
     /// Rental agreement creation date in nanoseconds since epoch.
-    pub creation_date: u64,
+    pub creation_time_nanos: u64,
     // ===== Mutable data =====
     /// The date in nanos since epoch until which the rental agreement is paid for.
     pub covered_until: u64,

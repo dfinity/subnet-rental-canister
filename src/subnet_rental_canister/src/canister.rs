@@ -86,7 +86,7 @@ async fn locking() {
             locked_amount_icp,
             locked_amount_cycles,
             initial_proposal_id,
-            creation_date,
+            creation_time_nanos,
             rental_condition_id,
             last_locking_time,
         } = rental_request;
@@ -137,7 +137,7 @@ async fn locking() {
                 locked_amount_icp,
                 locked_amount_cycles,
                 initial_proposal_id,
-                creation_date,
+                creation_time_nanos,
                 rental_condition_id,
                 // we risk not accounting for a few days in case this function does not run as scheduled
                 last_locking_time: now,
@@ -483,7 +483,7 @@ pub async fn refund() -> Result<u64, String> {
                 locked_amount_icp: _,
                 locked_amount_cycles,
                 initial_proposal_id,
-                creation_date: _,
+                creation_time_nanos: _,
                 rental_condition_id: _,
                 last_locking_time: _,
             },
