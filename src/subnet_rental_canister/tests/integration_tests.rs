@@ -296,9 +296,9 @@ fn test_initial_proposal() {
         locked_amount_icp: _,
         locked_amount_cycles: _,
         initial_proposal_id: _,
-        creation_date: _,
+        creation_time_nanos: _,
         rental_condition_id,
-        last_locking_time: _,
+        last_locking_time_nanos: _,
     } = rental_requests[0];
     assert_eq!(user, user_principal);
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);
@@ -490,7 +490,9 @@ fn test_locking() {
         updated_rental_request.refundable_icp,
         initial_amount_icp - lock_amount_icp - lock_amount_icp
     );
-    assert!(rental_request.last_locking_time < updated_rental_request.last_locking_time);
+    assert!(
+        rental_request.last_locking_time_nanos < updated_rental_request.last_locking_time_nanos
+    );
     // repeat 9 times (once more than necessary to lock everything; should silently succeed)
     for _ in 0..9 {
         pic.advance_time(Duration::from_secs(60 * 60 * 24 * 30 + 1));

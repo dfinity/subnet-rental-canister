@@ -204,7 +204,7 @@ pub fn get_history_page(
     (page, low_seq)
 }
 
-/// Create a RentalRequest with the current time as create_date, insert into canister state
+/// Create a RentalRequest with the current time as creation_time_nanos, insert into canister state
 /// and persist the corresponding event.
 #[allow(clippy::too_many_arguments)]
 pub fn create_rental_request(
@@ -215,7 +215,7 @@ pub fn create_rental_request(
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
     rental_condition_id: RentalConditionId,
-    last_locking_time: u64,
+    last_locking_time_nanos: u64,
 ) -> Result<(), String> {
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
@@ -225,9 +225,9 @@ pub fn create_rental_request(
         locked_amount_icp,
         locked_amount_cycles,
         initial_proposal_id,
-        creation_date: now,
+        creation_time_nanos: now,
         rental_condition_id,
-        last_locking_time,
+        last_locking_time_nanos,
     };
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
         if requests.contains_key(&user) {
@@ -251,7 +251,7 @@ pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow_mut(|requests| requests.remove(&user))
 }
 
-/// Create a RentalAgreement with the current time as creation_date, insert into canister state  
+/// Create a RentalAgreement with the current time as creation_time_nanos, insert into canister state  
 /// and create the corresponding event.
 #[allow(clippy::too_many_arguments)]
 pub fn create_rental_agreement(
@@ -275,8 +275,8 @@ pub fn create_rental_agreement(
         initial_proposal_id,
         subnet_creation_proposal_id,
         rental_condition_id,
-        creation_date: now,
-        covered_until: now + initial_rental_period_nanos,
+        creation_time_nanos: now,
+        covered_until_nanos: now + initial_rental_period_nanos,
         cycles_balance,
         last_burned: now,
     };
@@ -311,9 +311,9 @@ mod canister_state_test {
 
     #[test]
     fn test_history_pagination() {
-        fn make_event(date: u64) -> Event {
+        fn make_event(time_nanos: u64) -> Event {
             Event::_mk_event(
-                date,
+                time_nanos,
                 EventType::RentalRequestCreated {
                     rental_request: RentalRequest {
                         user: Principal::anonymous(),
@@ -322,9 +322,9 @@ mod canister_state_test {
                         locked_amount_icp: Tokens::from_e8s(10),
                         locked_amount_cycles: 99,
                         initial_proposal_id: 99,
-                        creation_date: date,
+                        creation_time_nanos: time_nanos,
                         rental_condition_id: RentalConditionId::App13CH,
-                        last_locking_time: 99,
+                        last_locking_time_nanos: 99,
                     },
                 },
             )
@@ -335,15 +335,15 @@ mod canister_state_test {
         persist_event(make_event(4), None);
         persist_event(make_event(5), None);
         let (events, oldest) = get_history_page(None, None, 2);
-        assert_eq!(events[0].date(), 4);
-        assert_eq!(events[1].date(), 5);
+        assert_eq!(events[0].time_nanos(), 4);
+        assert_eq!(events[1].time_nanos(), 5);
         assert_eq!(events.len(), 2);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
-        assert_eq!(events[0].date(), 2);
-        assert_eq!(events[1].date(), 3);
+        assert_eq!(events[0].time_nanos(), 2);
+        assert_eq!(events[1].time_nanos(), 3);
         assert_eq!(events.len(), 2);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
-        assert_eq!(events[0].date(), 1);
+        assert_eq!(events[0].time_nanos(), 1);
         assert_eq!(events.len(), 1);
         let (events, oldest) = get_history_page(None, Some(oldest), 2);
         assert!(events.is_empty());

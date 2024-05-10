@@ -81,14 +81,14 @@ pub struct RentalRequest {
     /// creation proposal. When this is found on the governance
     /// canister, polling can stop.
     pub initial_proposal_id: u64,
-    /// Rental request creation date in nanoseconds since epoch.
-    pub creation_date: u64,
+    /// Rental request creation time in nanoseconds since epoch.
+    pub creation_time_nanos: u64,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_id: RentalConditionId,
     /// ===== Data for the ICP-locking timer. =====
     /// The last time ICP were successfully locked. If this is
     /// 30d in the past, a new locking event should trigger.
-    pub last_locking_time: u64,
+    pub last_locking_time_nanos: u64,
 }
 
 impl Storable for RentalRequest {
@@ -114,11 +114,11 @@ pub struct RentalAgreement {
     pub subnet_creation_proposal_id: Option<u64>,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_id: RentalConditionId,
-    /// Rental agreement creation date in nanoseconds since epoch.
-    pub creation_date: u64,
+    /// Rental agreement creation time in nanoseconds since epoch.
+    pub creation_time_nanos: u64,
     // ===== Mutable data =====
-    /// The date in nanos since epoch until which the rental agreement is paid for.
-    pub covered_until: u64,
+    /// The time in nanos since epoch until which the rental agreement is paid for.
+    pub covered_until_nanos: u64,
     /// This subnet's share of cycles among the SRC's cycles.
     /// Increased by the locking mechanism, monthly.
     /// Increased by the payment process (via timer).
