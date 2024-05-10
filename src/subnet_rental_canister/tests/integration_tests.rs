@@ -116,13 +116,7 @@ fn setup() -> (PocketIc, Principal) {
     (pic, subnet_rental_canister)
 }
 
-// transfers a fraction of the initial payment (`fraction = 1` to transfer the full initial payment)
-fn make_initial_transfer(
-    pic: &PocketIc,
-    src_principal: Principal,
-    user_principal: Principal,
-    fraction: u64,
-) -> Tokens {
+fn get_todays_price(pic: &PocketIc, src_principal: Principal) -> Tokens {
     // user finds rental conditions
     let res = query::<Vec<(RentalConditionId, RentalConditions)>>(
         pic,
@@ -133,7 +127,7 @@ fn make_initial_transfer(
     );
     let (rental_condition_id, ref _rental_conditions) = res[0];
     // user finds current price by consulting SRC
-    let needed_icp = update::<Result<Tokens, String>>(
+    update::<Result<Tokens, String>>(
         pic,
         src_principal,
         None,
@@ -141,7 +135,17 @@ fn make_initial_transfer(
         rental_condition_id,
     )
     .unwrap()
-    .unwrap();
+    .unwrap()
+}
+
+// transfers a fraction of the initial payment (`fraction = 1` to transfer the full initial payment)
+fn make_initial_transfer(
+    pic: &PocketIc,
+    src_principal: Principal,
+    user_principal: Principal,
+    fraction: u64,
+) -> Tokens {
+    let needed_icp = get_todays_price(pic, src_principal);
     // user finds the correct subaccount via SRC
     let target_subaccount = update::<AccountIdentifier>(
         pic,
@@ -198,20 +202,62 @@ fn test_initial_proposal() {
 
     // set an exchange rate for the current time on the XRC mock
     let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
+    let price1 = get_todays_price(&pic, src_principal);
+
+    // advance time by one day
+    pic.advance_time(Duration::from_secs(86400));
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
+    let price2 = get_todays_price(&pic, src_principal);
+
+    // advance time by one day
+    pic.advance_time(Duration::from_secs(86400));
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+    let price3 = get_todays_price(&pic, src_principal);
+
+    // price should keep declining
+    assert!(price1 > price2);
+    assert!(price2 > price3);
 
     // transfer the initial payment
     make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
-    let now = now * 1_000_000_000;
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
-    // run proposal
+
+    // advance time by one day
+    pic.advance_time(Duration::from_secs(86400));
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
+    let price4 = get_todays_price(&pic, src_principal);
+
+    // advance time by one day
+    pic.advance_time(Duration::from_secs(86400));
+
+    // set an exchange rate for the current time on the XRC mock
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
+    let price5 = get_todays_price(&pic, src_principal);
+
+    // price should keep increasing
+    assert!(price3 < price4);
+    assert!(price4 < price5);
+
+    // the proposal has only been voted two days after its creation
     update::<()>(
         &pic,
         src_principal,
@@ -301,12 +347,12 @@ fn test_failed_initial_proposal() {
     assert_eq!(user_history.events.len(), 0);
 
     // user creates proposal
-    let now = now * 1_000_000_000;
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
     // run proposal
     update::<()>(
@@ -348,12 +394,12 @@ fn test_duplicate_request_fails() {
     make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
-    let now = now * 1_000_000_000;
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
     // run proposal
     update::<()>(
@@ -389,12 +435,12 @@ fn test_locking() {
     // transfer the initial payment
     let initial_amount_icp = make_initial_transfer(&pic, src_principal, user_principal, 1);
     // user creates proposal
-    let now = now * 1_000_000_000;
+    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: now,
+        proposal_creation_time_seconds: now,
     };
     // run proposal
     update::<()>(
@@ -480,7 +526,7 @@ fn test_accept_rental_agreement_cannot_be_called_by_non_governance() {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
         proposal_id: 999,
-        proposal_creation_time: 999,
+        proposal_creation_time_seconds: 999,
     };
     let res = update::<()>(
         &pic,
