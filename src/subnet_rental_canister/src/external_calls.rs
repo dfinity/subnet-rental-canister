@@ -152,8 +152,8 @@ pub async fn convert_icp_to_cycles(
     amount: Tokens,
     source: Subaccount,
 ) -> Result<u128, ExecuteProposalError> {
-    // Transfer the ICP from the SRC to the CMC. The second fee is for the notify top-up.
-    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE - DEFAULT_FEE, source).await;
+    // Transfer the ICP from the SRC to the CMC.
+    let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE, source).await;
     let Ok(block_index) = transfer_to_cmc_result else {
         let e = transfer_to_cmc_result.unwrap_err();
         println!("Transfer from SRC to CMC failed: {:?}", e);
