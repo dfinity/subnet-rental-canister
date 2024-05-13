@@ -490,20 +490,18 @@ pub async fn refund() -> Result<u64, String> {
         ) => {
             println!("Refund requested for user principal {}", &caller);
             // Refund the remaining ICP on the SRC/user subaccount to the user.
-            let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
+            let res = refund_user(user, refundable_icp, initial_proposal_id).await;
             let Ok(block_id) = res else {
                 return Err(format!(
                     "Failed to refund {} ICP to {}: {:?}",
-                    refundable_icp - DEFAULT_FEE,
+                    refundable_icp,
                     user,
                     res.unwrap_err()
                 ));
             };
             println!(
                 "SRC refunded {} ICP to {}, block_id: {}",
-                refundable_icp - DEFAULT_FEE,
-                user,
-                block_id
+                refundable_icp, user, block_id
             );
             ic_cdk::api::cycles_burn(locked_amount_cycles);
             println!(
