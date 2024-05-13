@@ -317,6 +317,10 @@ fn test_initial_proposal() {
     let balance_after = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
     assert_eq!(balance_after - balance_before, refundable_icp - DEFAULT_FEE);
 
+    // check that no funds are left on SRC subaccount
+    let src_balance = check_balance(&pic, src_principal, Subaccount::from(user_principal));
+    assert_eq!(src_balance, Tokens::from_e8s(0));
+
     // afterwards there should be no more rental requests remaining
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, src_principal, None, "list_rental_requests", ());
