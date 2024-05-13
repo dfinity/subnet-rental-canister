@@ -10,7 +10,7 @@ cd "$SCRIPTS_DIR/.."
 
 # Determine URLs for ic-wasm and candid-extractor
 OSTYPE=$(uname -s) || OSTYPE=$OSTYPE
-OSTYPE=$(echo $OSTYPE | tr '[:upper:]' '[:lower:]')
+OSTYPE="$(echo $OSTYPE | tr '[:upper:]' '[:lower:]')"
 RUNNER_OS="${RUNNER_OS:-}"
 if [[ "$OSTYPE" == "linux"* || "$RUNNER_OS" == "Linux" ]]; then
   URL_IC_WASM="https://github.com/dfinity/ic-wasm/releases/download/0.6.0/ic-wasm-linux64"
