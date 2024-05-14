@@ -189,9 +189,9 @@ pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage 
     }
 }
 
-/// Derive the subaccount into which a user must transfer ICP.
+/// Derive the account into which a user must transfer ICP for renting a subnet.
 #[query]
-pub fn get_payment_subaccount(user: Principal) -> String {
+pub fn get_payment_account(user: Principal) -> String {
     AccountIdentifier::new(&ic_cdk::id(), &Subaccount::from(user)).to_hex()
 }
 
