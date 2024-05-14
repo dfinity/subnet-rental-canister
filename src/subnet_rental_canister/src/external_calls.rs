@@ -61,28 +61,6 @@ pub async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, 
     .expect("Failed to call ledger canister")
 }
 
-/// Transfer ICP from user-derived subaccount to SRC default subaccount
-pub async fn transfer_to_src_main(
-    source: Subaccount,
-    amount: Tokens,
-    proposal_id: u64,
-) -> Result<u64, TransferError> {
-    transfer(
-        MAINNET_LEDGER_CANISTER_ID,
-        TransferArgs {
-            to: AccountIdentifier::new(&ic_cdk::id(), &DEFAULT_SUBACCOUNT),
-            fee: DEFAULT_FEE,
-            from_subaccount: Some(source),
-            amount,
-            // deduplication
-            memo: Memo(proposal_id),
-            created_at_time: None,
-        },
-    )
-    .await
-    .expect("Failed to call ledger canister")
-}
-
 pub async fn refund_user(
     user_principal: Principal,
     amount: Tokens,
