@@ -151,7 +151,7 @@ fn make_initial_transfer(
         pic,
         src_principal,
         Some(user_principal),
-        "get_payment_subaccount",
+        "get_payment_account",
         user_principal,
     )
     .unwrap();
