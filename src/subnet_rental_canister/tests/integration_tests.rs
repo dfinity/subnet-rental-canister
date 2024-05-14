@@ -147,14 +147,15 @@ fn make_initial_transfer(
 ) -> Tokens {
     let needed_icp = get_todays_price(pic, src_principal);
     // user finds the correct subaccount via SRC
-    let target_subaccount = update::<AccountIdentifier>(
+    let account_hex = update::<String>(
         pic,
         src_principal,
         Some(user_principal),
-        "get_payment_subaccount",
-        (),
+        "get_payment_account",
+        user_principal,
     )
     .unwrap();
+    let target_account = AccountIdentifier::from_hex(&account_hex).unwrap();
     // user transfers some ICP to SRC
     let amount = Tokens::from_e8s(needed_icp.e8s() / fraction);
     let transfer_args = TransferArgs {
@@ -162,7 +163,7 @@ fn make_initial_transfer(
         amount,
         fee: DEFAULT_FEE,
         from_subaccount: None,
-        to: target_subaccount,
+        to: target_account,
         created_at_time: None,
     };
     let _res = update::<TransferResult>(
