@@ -32,7 +32,7 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
         "notify_top_up",
         (NotifyTopUpArg {
             block_index,
-            canister_id: ic_cdk::id(),
+            canister_id: ic_cdk::api::canister_self(),
         },),
     )
     .await
@@ -43,10 +43,10 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
 pub async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
-        TransferArgs {
+        &TransferArgs {
             to: AccountIdentifier::new(
                 &MAINNET_CYCLES_MINTING_CANISTER_ID,
-                &Subaccount::from(ic_cdk::id()),
+                &Subaccount::from(ic_cdk::api::canister_self()),
             ),
             fee: DEFAULT_FEE,
             from_subaccount: Some(source),
@@ -67,8 +67,8 @@ pub async fn transfer_to_src_main(
 ) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
-        TransferArgs {
-            to: AccountIdentifier::new(&ic_cdk::id(), &DEFAULT_SUBACCOUNT),
+        &TransferArgs {
+            to: AccountIdentifier::new(&ic_cdk::api::canister_self(), &DEFAULT_SUBACCOUNT),
             fee: DEFAULT_FEE,
             from_subaccount: Some(source),
             amount,
@@ -88,7 +88,7 @@ pub async fn refund_user(
 ) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
-        TransferArgs {
+        &TransferArgs {
             to: AccountIdentifier::new(&user_principal, &DEFAULT_SUBACCOUNT),
             fee: DEFAULT_FEE,
             from_subaccount: Some(Subaccount::from(user_principal)),
@@ -173,7 +173,7 @@ pub async fn check_subaccount_balance(subaccount: Subaccount) -> Tokens {
         MAINNET_LEDGER_CANISTER_ID,
         "account_balance",
         (AccountBalanceArgs {
-            account: AccountIdentifier::new(&ic_cdk::id(), &subaccount),
+            account: AccountIdentifier::new(&ic_cdk::api::canister_self(), &subaccount),
         },),
     )
     .await
