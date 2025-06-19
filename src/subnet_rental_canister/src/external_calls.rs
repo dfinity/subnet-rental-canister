@@ -1,19 +1,17 @@
-use candid::Principal;
-use ic_ledger_types::{
-    transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs,
-    TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
-};
-
 use crate::canister_state::{cache_rate, get_cached_rate};
 use crate::external_canister_interfaces::exchange_rate_canister::{
     Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
     GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
 };
-
 use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
+use candid::Principal;
 use ic_cdk::println;
+use ic_ledger_types::{
+    transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs,
+    TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
+    MAINNET_LEDGER_CANISTER_ID,
+};
 
 pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
     ic_cdk::call::<_, ()>(

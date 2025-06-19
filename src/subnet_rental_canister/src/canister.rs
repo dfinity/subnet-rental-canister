@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::canister_state::{
     self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
     get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
@@ -25,6 +23,7 @@ use ic_ledger_types::{
     TransferArgs, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
     MAINNET_LEDGER_CANISTER_ID,
 };
+use std::time::Duration;
 
 ////////// CANISTER METHODS //////////
 

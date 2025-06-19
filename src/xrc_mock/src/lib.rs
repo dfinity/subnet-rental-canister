@@ -1,6 +1,5 @@
-use std::{cell::RefCell, collections::HashMap};
-
 use ic_cdk::{println, update};
+use std::{cell::RefCell, collections::HashMap};
 
 pub const XRC_REQUEST_CYCLES_COST: u128 = 1_000_000_000;
 
