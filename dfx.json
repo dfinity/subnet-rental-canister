@@ -8,13 +8,5 @@
       "wasm": "subnet_rental_canister.wasm",
       "build": "scripts/build.sh"
     }
-  },
-  "defaults": {
-    "build": {
-      "args": "",
-      "packtool": ""
-    }
-  },
-  "output_env_file": ".env",
-  "version": 1
+  }
 }
