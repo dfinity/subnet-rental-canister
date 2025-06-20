@@ -13,7 +13,7 @@ use std::{
 };
 use subnet_rental_canister::{
     external_canister_interfaces::{
-        exchange_rate_canister::EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
+        exchange_rate_canister::EXCHANGE_RATE_CANISTER_ID,
         governance_canister::GOVERNANCE_CANISTER_PRINCIPAL_STR,
     },
     external_types::{
@@ -58,11 +58,10 @@ fn install_cmc(pic: &PocketIc) {
 }
 
 fn install_xrc(pic: &PocketIc) {
-    let xrc_principal = Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap();
-    pic.create_canister_with_id(None, None, xrc_principal)
+    pic.create_canister_with_id(None, None, EXCHANGE_RATE_CANISTER_ID)
         .unwrap();
     let xrc_wasm = fs::read(XRC_WASM).expect("Failed to read XRC wasm");
-    pic.install_canister(xrc_principal, xrc_wasm, vec![], None);
+    pic.install_canister(EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
 }
 
 fn install_ledger(pic: &PocketIc) {
@@ -186,7 +185,7 @@ fn set_mock_exchange_rate(
     let arg: Vec<(u64, (u64, u32))> = vec![(midnight, (exchange_rate_icp_per_xdr, decimals))];
     update::<()>(
         pic,
-        Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
+        EXCHANGE_RATE_CANISTER_ID,
         None,
         "set_exchange_rate_data",
         arg,

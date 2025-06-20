@@ -1,11 +1,12 @@
 use crate::canister_state::{cache_rate, get_cached_rate};
 use crate::external_canister_interfaces::exchange_rate_canister::{
     Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
-    GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
+    GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_ID,
 };
 use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
 use candid::Principal;
+use ic_cdk::call::Call;
 use ic_cdk::println;
 use ic_ledger_types::{
     transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs,
@@ -14,30 +15,28 @@ use ic_ledger_types::{
 };
 
 pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
-    ic_cdk::call::<_, ()>(
+    Call::unbounded_wait(
         MAINNET_CYCLES_MINTING_CANISTER_ID,
         "set_authorized_subnetwork_list",
-        (SetAuthorizedSubnetworkListArgs {
-            who: Some(*user),
-            subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
-        },),
     )
+    .with_arg(SetAuthorizedSubnetworkListArgs {
+        who: Some(*user),
+        subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
+    })
     .await
     .expect("Failed to call CMC");
 }
 
 pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
-    ic_cdk::call::<_, (Result<u128, NotifyError>,)>(
-        MAINNET_CYCLES_MINTING_CANISTER_ID,
-        "notify_top_up",
-        (NotifyTopUpArg {
+    Call::unbounded_wait(MAINNET_CYCLES_MINTING_CANISTER_ID, "notify_top_up")
+        .with_arg(NotifyTopUpArg {
             block_index,
             canister_id: ic_cdk::api::canister_self(),
-        },),
-    )
-    .await
-    .expect("Failed to call CMC")
-    .0
+        })
+        .await
+        .expect("Failed to call CMC")
+        .candid()
+        .expect("Failed to decode result")
 }
 
 pub async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, TransferError> {
@@ -125,15 +124,16 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(
         quote_asset: xdr_asset,
         base_asset: icp_asset,
     };
-    let response = ic_cdk::api::call::call_with_payment128::<_, (GetExchangeRateResult,)>(
-        Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
-        "get_exchange_rate",
-        (request,),
-        10_000_000_000,
-    )
-    .await
-    .expect("Failed to call ExchangeRateCanister");
-    match response.0 {
+    let response: GetExchangeRateResult =
+        Call::unbounded_wait(EXCHANGE_RATE_CANISTER_ID, "get_exchange_rate")
+            .with_arg(request)
+            .with_cycles(10_000_000_000)
+            .await
+            .expect("Failed to call ExchangeRateCanister")
+            .candid()
+            .expect("Failed to decode result");
+
+    match response {
         GetExchangeRateResult::Ok(ExchangeRate {
             metadata: ExchangeRateMetadata { decimals, .. },
             rate,
@@ -169,14 +169,12 @@ pub async fn convert_icp_to_cycles(
 }
 
 pub async fn check_subaccount_balance(subaccount: Subaccount) -> Tokens {
-    ic_cdk::call::<_, (Tokens,)>(
-        MAINNET_LEDGER_CANISTER_ID,
-        "account_balance",
-        (AccountBalanceArgs {
+    Call::unbounded_wait(MAINNET_LEDGER_CANISTER_ID, "account_balance")
+        .with_arg(AccountBalanceArgs {
             account: AccountIdentifier::new(&ic_cdk::api::canister_self(), &subaccount),
-        },),
-    )
-    .await
-    .expect("Failed to call LedgerCanister")
-    .0
+        })
+        .await
+        .expect("Failed to call LedgerCanister")
+        .candid()
+        .expect("Failed to decode result")
 }

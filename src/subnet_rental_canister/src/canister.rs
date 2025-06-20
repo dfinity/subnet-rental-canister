@@ -292,9 +292,9 @@ fn calculate_subnet_price(
 #[update(manual_reply = true)]
 pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayload) {
     if let Err(e) = execute_rental_request_proposal_(payload).await {
-        msg_reject(&format!("Subnet rental request proposal failed: {:?}", e));
+        msg_reject(format!("Subnet rental request proposal failed: {:?}", e));
     } else {
-        msg_reply(&candid::encode_one(()).unwrap());
+        msg_reply(candid::encode_one(()).unwrap());
     }
 }
 
