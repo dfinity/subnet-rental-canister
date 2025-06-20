@@ -20,7 +20,7 @@ use subnet_rental_canister::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     EventPage, ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetRentalProposalPayload, E8S,
+    SubnetRentalProposalPayload, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
@@ -110,7 +110,7 @@ fn setup() -> (PocketIc, Principal) {
     let subnet_rental_canister = pic.create_canister_with_id(None, None, SRC_ID).unwrap();
     let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
-    pic.add_cycles(subnet_rental_canister, 1_000 * 1_000_000_000_000);
+    pic.add_cycles(subnet_rental_canister, 1_000 * TRILLION);
     (pic, subnet_rental_canister)
 }
 
