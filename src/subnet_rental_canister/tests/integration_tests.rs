@@ -27,8 +27,8 @@ const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 const XRC_WASM: &str = "./tests/exchange-rate-canister.wasm.gz";
-const SRC_ID: Principal = Principal::from_slice(b"\xFF\xFF\xFF\xFF\xFF\xE0\x00\x00\x01\x01"); // lxzze-o7777-77777-aaaaa-cai
-const NANOS_IN_SECOND: u64 = 1_000_000_000;
+const SRC_ID: Principal = Principal::from_slice(b"\x00\x00\x00\x00\x00\x00\x00\x0D\x01\x01"); // qvhpv-4qaaa-aaaaa-aaagq-cai
+const NANOS_PER_SECOND: u64 = 1_000_000_000;
 const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const USER_1: Principal = Principal::from_slice(b"user1");
 const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000_000_000 * E8S);
@@ -200,7 +200,7 @@ fn test_initial_proposal() {
     let user_principal = USER_1;
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
     let price1 = get_todays_price(&pic, src_principal);
 
@@ -208,7 +208,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
     let price2 = get_todays_price(&pic, src_principal);
 
@@ -216,7 +216,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
     let price3 = get_todays_price(&pic, src_principal);
 
@@ -228,7 +228,7 @@ fn test_initial_proposal() {
     make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
@@ -240,7 +240,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
     let price4 = get_todays_price(&pic, src_principal);
 
@@ -248,7 +248,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
     let price5 = get_todays_price(&pic, src_principal);
 
@@ -333,7 +333,7 @@ fn test_failed_initial_proposal() {
     let user_principal = USER_1;
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // transfer only half of the initial payment
@@ -350,7 +350,7 @@ fn test_failed_initial_proposal() {
     assert_eq!(user_history.events.len(), 0);
 
     // user creates proposal
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
@@ -390,14 +390,14 @@ fn test_duplicate_request_fails() {
     let user_principal = USER_1;
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // user performs preparations
     make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
@@ -433,12 +433,12 @@ fn test_locking() {
     let (pic, src_principal) = setup();
     let user_principal = USER_1;
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
     // transfer the initial payment
     let initial_amount_icp = make_initial_transfer(&pic, src_principal, user_principal, 1);
     // user creates proposal
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_IN_SECOND;
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
