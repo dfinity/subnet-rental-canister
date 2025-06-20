@@ -1,7 +1,8 @@
 // Exchange rate canister https://dashboard.internetcomputer.org/canister/uf6dk-hyaaa-aaaaq-qaaaq-cai
-use candid::{self, CandidType, Deserialize};
+use candid::{self, CandidType, Deserialize, Principal};
 
-pub static EXCHANGE_RATE_CANISTER_PRINCIPAL_STR: &str = "uf6dk-hyaaa-aaaaq-qaaaq-cai";
+pub const EXCHANGE_RATE_CANISTER_ID: Principal =
+    Principal::from_slice(b"\x00\x00\x00\x00\x02\x10\x00\x01\x01\x01"); // uf6dk-hyaaa-aaaaq-qaaaq-cai
 
 #[derive(CandidType, Deserialize, Debug)]
 pub enum AssetClass {

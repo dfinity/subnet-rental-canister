@@ -1,7 +1,7 @@
 # Subnet Rental Canister
 
 ## Running the Project
-If you want to test the project locally, install `dfx` version 0.20.0 or later and use the following commands:
+If you want to test the project locally, install `dfx` version 0.27.0 or later and use the following commands:
 
 ```bash
 # Starts the replica, running in the background
@@ -12,8 +12,7 @@ dfx deploy
 ```
 
 ## Testing
-To run the integration tests, first download PocketIC from [GitHub](https://github.com/dfinity/pocketic) and move the binary into [/src/subnet_rental_canister](/src/subnet_rental_canister/).
-Then, build the subnet rental canister Wasm by running:
+Build the subnet rental canister Wasm by running:
 
 ```bash
 ./scripts/build.sh

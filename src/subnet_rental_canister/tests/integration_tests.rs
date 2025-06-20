@@ -4,32 +4,31 @@ use ic_ledger_types::{
     DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
-
-use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
+use pocket_ic::{PocketIc, PocketIcBuilder};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 use subnet_rental_canister::{
     external_canister_interfaces::{
-        exchange_rate_canister::EXCHANGE_RATE_CANISTER_PRINCIPAL_STR,
+        exchange_rate_canister::EXCHANGE_RATE_CANISTER_ID,
         governance_canister::GOVERNANCE_CANISTER_PRINCIPAL_STR,
     },
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
     },
     EventPage, ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetRentalProposalPayload, E8S,
+    SubnetRentalProposalPayload, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 const XRC_WASM: &str = "./tests/exchange-rate-canister.wasm.gz";
-const SRC_ID: Principal =
-    Principal::from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE0, 0x00, 0x00, 0x01, 0x01]); // lxzze-o7777-77777-aaaaa-cai
+const SRC_ID: Principal = Principal::from_slice(b"\x00\x00\x00\x00\x00\x00\x00\x0D\x01\x01"); // qvhpv-4qaaa-aaaaa-aaagq-cai
+const NANOS_PER_SECOND: u64 = 1_000_000_000;
 const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
 const USER_1: Principal = Principal::from_slice(b"user1");
 const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000_000_000 * E8S);
@@ -59,11 +58,10 @@ fn install_cmc(pic: &PocketIc) {
 }
 
 fn install_xrc(pic: &PocketIc) {
-    let xrc_principal = Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap();
-    pic.create_canister_with_id(None, None, xrc_principal)
+    pic.create_canister_with_id(None, None, EXCHANGE_RATE_CANISTER_ID)
         .unwrap();
     let xrc_wasm = fs::read(XRC_WASM).expect("Failed to read XRC wasm");
-    pic.install_canister(xrc_principal, xrc_wasm, vec![], None);
+    pic.install_canister(EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
 }
 
 fn install_ledger(pic: &PocketIc) {
@@ -112,7 +110,7 @@ fn setup() -> (PocketIc, Principal) {
     let subnet_rental_canister = pic.create_canister_with_id(None, None, SRC_ID).unwrap();
     let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
-    pic.add_cycles(subnet_rental_canister, 1_000 * 1_000_000_000_000);
+    pic.add_cycles(subnet_rental_canister, 1_000 * TRILLION);
     (pic, subnet_rental_canister)
 }
 
@@ -187,7 +185,7 @@ fn set_mock_exchange_rate(
     let arg: Vec<(u64, (u64, u32))> = vec![(midnight, (exchange_rate_icp_per_xdr, decimals))];
     update::<()>(
         pic,
-        Principal::from_text(EXCHANGE_RATE_CANISTER_PRINCIPAL_STR).unwrap(),
+        EXCHANGE_RATE_CANISTER_ID,
         None,
         "set_exchange_rate_data",
         arg,
@@ -202,7 +200,7 @@ fn test_initial_proposal() {
     let user_principal = USER_1;
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
     let price1 = get_todays_price(&pic, src_principal);
 
@@ -210,7 +208,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
     let price2 = get_todays_price(&pic, src_principal);
 
@@ -218,7 +216,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
     let price3 = get_todays_price(&pic, src_principal);
 
@@ -230,7 +228,7 @@ fn test_initial_proposal() {
     make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
@@ -242,7 +240,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
     let price4 = get_todays_price(&pic, src_principal);
 
@@ -250,7 +248,7 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
     let price5 = get_todays_price(&pic, src_principal);
 
@@ -335,7 +333,7 @@ fn test_failed_initial_proposal() {
     let user_principal = USER_1;
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // transfer only half of the initial payment
@@ -352,7 +350,7 @@ fn test_failed_initial_proposal() {
     assert_eq!(user_history.events.len(), 0);
 
     // user creates proposal
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
@@ -392,14 +390,14 @@ fn test_duplicate_request_fails() {
     let user_principal = USER_1;
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
 
     // user performs preparations
     make_initial_transfer(&pic, src_principal, user_principal, 1);
 
     // user creates proposal
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
@@ -435,12 +433,12 @@ fn test_locking() {
     let (pic, src_principal) = setup();
     let user_principal = USER_1;
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
     // transfer the initial payment
     let initial_amount_icp = make_initial_transfer(&pic, src_principal, user_principal, 1);
     // user creates proposal
-    let now = pic.get_time().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
     let payload = SubnetRentalProposalPayload {
         user: user_principal,
         rental_condition_id: RentalConditionId::App13CH,
@@ -559,19 +557,15 @@ fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     method: &str,
     args: impl CandidType,
 ) -> T {
-    let res = pic
-        .query_call(
-            canister_id,
-            sender.unwrap_or(Principal::anonymous()),
-            method,
-            encode_one(args).unwrap(),
-        )
-        .unwrap();
-    let res = match res {
-        WasmResult::Reply(res) => res,
-        WasmResult::Reject(message) => panic!("Query expected Reply, got Reject: \n{}", message),
-    };
-    decode_one::<T>(&res).unwrap()
+    match pic.query_call(
+        canister_id,
+        sender.unwrap_or(Principal::anonymous()),
+        method,
+        encode_one(args).unwrap(),
+    ) {
+        Ok(res) => decode_one::<T>(&res).unwrap(),
+        Err(message) => panic!("Query expected Reply, got Reject: \n{}", message),
+    }
 }
 
 fn query_multi_arg<T: for<'a> Deserialize<'a> + candid::CandidType>(
@@ -581,19 +575,15 @@ fn query_multi_arg<T: for<'a> Deserialize<'a> + candid::CandidType>(
     method: &str,
     args: impl CandidType + ArgumentEncoder,
 ) -> T {
-    let res = pic
-        .query_call(
-            canister_id,
-            sender.unwrap_or(Principal::anonymous()),
-            method,
-            encode_args(args).unwrap(),
-        )
-        .unwrap();
-    let res = match res {
-        WasmResult::Reply(res) => res,
-        WasmResult::Reject(message) => panic!("Query expected Reply, got Reject: \n{}", message),
-    };
-    decode_one::<T>(&res).unwrap()
+    match pic.query_call(
+        canister_id,
+        sender.unwrap_or(Principal::anonymous()),
+        method,
+        encode_args(args).unwrap(),
+    ) {
+        Ok(res) => decode_one::<T>(&res).unwrap(),
+        Err(message) => panic!("Query expected Reply, got Reject: \n{}", message),
+    }
 }
 
 fn update<T: CandidType + for<'a> Deserialize<'a>>(
@@ -603,17 +593,14 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
     method: &str,
     args: impl CandidType,
 ) -> Result<T, String> {
-    let res = pic
-        .update_call(
-            canister_id,
-            sender.unwrap_or(Principal::anonymous()),
-            method,
-            encode_one(args).unwrap(),
-        )
-        .unwrap();
-    match res {
-        WasmResult::Reply(res) => Ok(decode_one::<T>(&res).unwrap()),
-        WasmResult::Reject(message) => Err(message),
+    match pic.update_call(
+        canister_id,
+        sender.unwrap_or(Principal::anonymous()),
+        method,
+        encode_one(args).unwrap(),
+    ) {
+        Ok(res) => Ok(decode_one::<T>(&res).unwrap()),
+        Err(message) => Err(message.to_string()),
     }
 }
 

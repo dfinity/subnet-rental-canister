@@ -8,6 +8,6 @@ license = "Apache-2.0"
 
 
 [dependencies]
-candid = "0.10.1"
-ic-cdk = "0.13.1"
-serde = "1.0.197"
+candid = "0.10.14"
+ic-cdk = "0.18.4"
+serde = "1.0.219"

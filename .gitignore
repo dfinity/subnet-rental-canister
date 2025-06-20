@@ -12,6 +12,7 @@
 
 # downloaded files
 ic-wasm
+candid-extractor
 
 # generated files
 src/declarations/

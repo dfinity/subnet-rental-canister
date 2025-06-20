@@ -1,6 +1,5 @@
-use std::{cell::RefCell, collections::HashMap};
-
 use ic_cdk::{println, update};
+use std::{cell::RefCell, collections::HashMap};
 
 pub const XRC_REQUEST_CYCLES_COST: u128 = 1_000_000_000;
 
@@ -20,7 +19,7 @@ pub fn set_exchange_rate_data(data: Vec<(u64, (u64, u32))>) {
 
 #[update]
 pub fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResult {
-    let payment = ic_cdk::api::call::msg_cycles_accept128(XRC_REQUEST_CYCLES_COST);
+    let payment = ic_cdk::api::msg_cycles_accept(XRC_REQUEST_CYCLES_COST);
     if payment < XRC_REQUEST_CYCLES_COST {
         return GetExchangeRateResult::Err(ExchangeRateError::NotEnoughCycles);
     }

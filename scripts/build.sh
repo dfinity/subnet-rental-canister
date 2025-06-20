@@ -8,16 +8,19 @@ CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPTS_DIR/.."
 
+IC_WASM_VERSION="0.9.3"
+CANDID_EXTRACTOR_VERSION="0.1.6"
+
 # Determine URLs for ic-wasm and candid-extractor
 OSTYPE=$(uname -s) || OSTYPE=$OSTYPE
 OSTYPE="$(echo $OSTYPE | tr '[:upper:]' '[:lower:]')"
 RUNNER_OS="${RUNNER_OS:-}"
 if [[ "$OSTYPE" == "linux"* || "$RUNNER_OS" == "Linux" ]]; then
-  URL_IC_WASM="https://github.com/dfinity/ic-wasm/releases/download/0.6.0/ic-wasm-linux64"
-  URL_CANDID_EXTRACTOR="https://github.com/dfinity/cdk-rs/releases/download/candid-extractor-v0.1.3/candid-extractor-x86_64-unknown-linux-gnu.tar.gz"
+  URL_IC_WASM="https://github.com/dfinity/ic-wasm/releases/download/${IC_WASM_VERSION}/ic-wasm-linux64"
+  URL_CANDID_EXTRACTOR="https://github.com/dfinity/candid-extractor/releases/download/${CANDID_EXTRACTOR_VERSION}/candid-extractor-x86_64-unknown-linux-gnu.tar.gz"
 elif [[ "$OSTYPE" == "darwin"* || "$RUNNER_OS" == "macOS" ]]; then
-  URL_IC_WASM="https://github.com/dfinity/ic-wasm/releases/download/0.6.0/ic-wasm-macos"
-  URL_CANDID_EXTRACTOR="https://github.com/dfinity/cdk-rs/releases/download/candid-extractor-v0.1.3/candid-extractor-x86_64-apple-darwin.tar.gz"
+  URL_IC_WASM="https://github.com/dfinity/ic-wasm/releases/download/${IC_WASM_VERSION}/ic-wasm-macos"
+  URL_CANDID_EXTRACTOR="https://github.com/dfinity/candid-extractor/releases/download/${CANDID_EXTRACTOR_VERSION}/candid-extractor-x86_64-apple-darwin.tar.gz"
 else
   echo "OS not supported: ${OSTYPE:-$RUNNER_OS}"
   exit 1
@@ -29,6 +32,7 @@ chmod +x ic-wasm
 
 curl -sL "${URL_CANDID_EXTRACTOR}" -o candid-extractor.tar.gz
 tar -xzf candid-extractor.tar.gz
+rm candid-extractor.tar.gz
 chmod +x candid-extractor
 
 # Build canister

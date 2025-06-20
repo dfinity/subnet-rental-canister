@@ -1,8 +1,8 @@
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM --platform=linux/amd64 ubuntu:24.04
 
 ENV RUSTUP_HOME=/opt/rustup
 ENV CARGO_HOME=/opt/cargo
-ENV RUST_VERSION=1.77.1
+ENV RUST_VERSION=1.87.0
 
 # Set the timezone to UTC
 ENV TZ=UTC
