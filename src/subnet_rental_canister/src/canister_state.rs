@@ -9,7 +9,6 @@ use crate::{
     Principal, RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
 };
 use ic_cdk::println;
-use ic_ledger_types::Tokens;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     DefaultMemoryImpl, StableBTreeMap,
@@ -204,43 +203,22 @@ pub fn get_history_page(
     (page, low_seq)
 }
 
-/// Create a RentalRequest with the current time as creation_time_nanos, insert into canister state
-/// and persist the corresponding event.
-#[allow(clippy::too_many_arguments)]
-pub fn create_rental_request(
-    user: Principal,
-    initial_cost_icp: Tokens,
-    refundable_icp: Tokens,
-    locked_amount_icp: Tokens,
-    locked_amount_cycles: u128,
-    initial_proposal_id: u64,
-    rental_condition_id: RentalConditionId,
-    last_locking_time_nanos: u64,
-) -> Result<(), String> {
-    let now = ic_cdk::api::time();
-    let rental_request = RentalRequest {
-        user,
-        initial_cost_icp,
-        refundable_icp,
-        locked_amount_icp,
-        locked_amount_cycles,
-        initial_proposal_id,
-        creation_time_nanos: now,
-        rental_condition_id,
-        last_locking_time_nanos,
-    };
+/// Create a RentalRequest if it does not already exist, and persist the corresponding event.
+pub fn persist_rental_request(rental_request: RentalRequest) -> Result<(), String> {
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
-        if requests.contains_key(&user) {
+        if requests.contains_key(&rental_request.user) {
             Err(format!(
                 "Principal {} already has an active RentalRequest",
-                &user
+                &rental_request.user
             ))
         } else {
-            requests.insert(user, rental_request.clone());
+            requests.insert(rental_request.user.clone(), rental_request.clone());
             println!("Created rental request: {:?}", &rental_request);
             persist_event(
-                EventType::RentalRequestCreated { rental_request },
-                Some(user),
+                EventType::RentalRequestCreated {
+                    rental_request: rental_request.clone(),
+                },
+                Some(rental_request.user),
             );
             Ok(())
         }
@@ -251,52 +229,25 @@ pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
     RENTAL_REQUESTS.with_borrow_mut(|requests| requests.remove(&user))
 }
 
-/// Create a RentalAgreement with the current time as creation_time_nanos, insert into canister state  
-/// and create the corresponding event.
-#[allow(clippy::too_many_arguments)]
-pub fn create_rental_agreement(
-    subnet_id: Principal,
-    user: Principal,
-    initial_proposal_id: u64,
-    subnet_creation_proposal_id: Option<u64>,
-    rental_condition_id: RentalConditionId,
-    cycles_balance: u128,
-) -> Result<(), String> {
-    let now = ic_cdk::api::time();
-    // unwrap safety: all rental_condition_id keys have a value
-    // in the static global HashMap at compile time.
-    let initial_rental_period_nanos = get_rental_conditions(rental_condition_id)
-        .unwrap()
-        .initial_rental_period_days
-        * 86_400
-        * 1_000_000_000;
-    let rental_agreement = RentalAgreement {
-        user,
-        initial_proposal_id,
-        subnet_creation_proposal_id,
-        rental_condition_id,
-        creation_time_nanos: now,
-        covered_until_nanos: now + initial_rental_period_nanos,
-        cycles_balance,
-        last_burned: now,
-    };
+/// Create a RentalAgreement if it does not already exist, and persist the corresponding event.
+pub fn persist_rental_agreement(rental_agreement: RentalAgreement) -> Result<(), String> {
     RENTAL_AGREEMENTS.with_borrow_mut(|agreements| {
-        if agreements.contains_key(&subnet_id) {
+        if agreements.contains_key(&rental_agreement.subnet_id) {
             Err(format!(
                 "Subnet_id {:?} already has an active RentalAgreement",
-                subnet_id
+                rental_agreement.subnet_id
             ))
         } else {
-            agreements.insert(subnet_id, rental_agreement.clone());
+            agreements.insert(rental_agreement.subnet_id, rental_agreement.clone());
             println!("Created rental agreement: {:?}", &rental_agreement);
             persist_event(
                 EventType::RentalAgreementCreated {
-                    user,
-                    initial_proposal_id,
-                    subnet_creation_proposal_id,
-                    rental_condition_id,
+                    user: rental_agreement.user,
+                    rental_request_proposal_id: rental_agreement.rental_request_proposal_id,
+                    subnet_creation_proposal_id: rental_agreement.subnet_creation_proposal_id,
+                    rental_condition_id: rental_agreement.rental_condition_id,
                 },
-                Some(subnet_id),
+                Some(rental_agreement.subnet_id),
             );
             Ok(())
         }
@@ -305,9 +256,9 @@ pub fn create_rental_agreement(
 
 #[cfg(test)]
 mod canister_state_test {
-    use crate::history::EventType;
-
     use super::*;
+    use crate::history::EventType;
+    use ic_ledger_types::Tokens;
 
     #[test]
     fn test_history_pagination() {

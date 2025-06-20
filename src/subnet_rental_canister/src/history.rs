@@ -76,7 +76,7 @@ pub enum EventType {
     /// After successfull polling for a CreateSubnet proposal, a RentalAgreement is created
     RentalAgreementCreated {
         user: Principal,
-        initial_proposal_id: u64,
+        rental_request_proposal_id: u64,
         subnet_creation_proposal_id: Option<u64>,
         rental_condition_id: RentalConditionId,
     },

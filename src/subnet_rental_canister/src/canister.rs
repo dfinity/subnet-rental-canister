@@ -1,16 +1,18 @@
 use crate::{
     canister_state::{
-        self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
-        get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
-        persist_event, remove_rental_request, update_rental_request, CallerGuard,
+        self, get_cached_rate, get_rental_agreement, get_rental_conditions, get_rental_request,
+        insert_rental_condition, iter_rental_conditions, iter_rental_requests, persist_event,
+        persist_rental_agreement, persist_rental_request, remove_rental_request,
+        update_rental_request, CallerGuard,
     },
     external_calls::{
         check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
         refund_user,
     },
     history::EventType,
-    EventPage, ExecuteProposalError, PriceCalculationData, RentalConditionId, RentalConditions,
-    RentalRequest, SubnetRentalProposalPayload, BILLION, TRILLION,
+    CreateRentalAgreementPayload, EventPage, ExecuteProposalError, PriceCalculationData,
+    RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
+    SubnetRentalProposalPayload, BILLION, TRILLION,
 };
 use candid::Principal;
 use ic_cdk::{
@@ -44,11 +46,10 @@ fn set_initial_conditions() {
     let initial_conditions = [(
         RentalConditionId::App13CH,
         RentalConditions {
-            description: "All nodes must be in Switzerland.".to_string(),
+            description: "All nodes must be in Switzerland or Liechtenstein.".to_string(),
             subnet_id: None,
             daily_cost_cycles: 820 * TRILLION,
             initial_rental_period_days: 180,
-            billing_period_days: 30,
         },
     )];
     for (k, v) in initial_conditions.iter() {
@@ -66,9 +67,7 @@ fn set_initial_conditions() {
 }
 
 fn start_timers() {
-    // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
-
-    // check if any ICP should be locked
+    // Check if any ICP should be locked.
     ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60 * 24), || {
         ic_cdk::futures::spawn(locking())
     });
@@ -204,11 +203,9 @@ pub fn get_payment_account(user: Principal) -> String {
 #[update]
 pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     let Some(RentalConditions {
-        description: _,
-        subnet_id: _,
         daily_cost_cycles,
         initial_rental_period_days,
-        billing_period_days: _,
+        ..
     }) = get_rental_conditions(id)
     else {
         return Err("RentalConditionId not found".to_string());
@@ -344,11 +341,10 @@ pub async fn execute_rental_request_proposal_(
     // unwrap safety:
     // The rental_condition_id key must have a value in the rental conditions map due to `init` and `post_upgrade`.
     let RentalConditions {
-        description: _,
         subnet_id,
         daily_cost_cycles,
         initial_rental_period_days,
-        billing_period_days: _,
+        ..
     } = get_rental_conditions(rental_condition_id).expect("Fatal: Rental conditions not found");
 
     // Fail if the provided subnet is already being rented:
@@ -428,19 +424,23 @@ pub async fn execute_rental_request_proposal_(
     let lock_time = ic_cdk::api::time();
 
     let refundable_icp = available_icp - lock_amount_icp;
-    // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
-    create_rental_request(
+
+    let now = ic_cdk::api::time();
+    let rental_request = RentalRequest {
         user,
-        needed_icp,
+        initial_cost_icp: needed_icp,
         refundable_icp,
-        lock_amount_icp,
-        locked_cycles,
-        proposal_id,
+        locked_amount_icp: lock_amount_icp,
+        locked_amount_cycles: locked_cycles,
+        initial_proposal_id: proposal_id,
+        creation_time_nanos: now,
         rental_condition_id,
-        lock_time,
-    )
-    .unwrap();
-    println!("Created rental request for user {}", user);
+        last_locking_time_nanos: lock_time,
+    };
+
+    // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
+    persist_rental_request(rental_request).unwrap();
+    println!("Created rental request for user {}", &user);
 
     // Either proceed with existing subnet_id, or start polling for future subnet creation.
     if let Some(subnet_id) = subnet_id {
@@ -451,6 +451,64 @@ pub async fn execute_rental_request_proposal_(
         // Poll on an internal data structure. The governance canister will notify
         // the SRC by writing there. An SRC timer should still pick it up automatically.
     }
+
+    Ok(())
+}
+
+#[update(manual_reply = true)]
+pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPayload) {
+    if let Err(e) = execute_create_rental_agreement_(payload).await {
+        msg_reject(format!("Creating rental agreement failed: {:?}", e));
+    } else {
+        msg_reply(candid::encode_one(()).unwrap());
+    }
+}
+
+pub async fn execute_create_rental_agreement_(
+    payload: CreateRentalAgreementPayload,
+) -> Result<(), ExecuteProposalError> {
+    verify_caller_is_governance()?;
+    let _guard = CallerGuard::new(Principal::anonymous(), "create_rental_agreement").unwrap();
+
+    // Fail if the user has no open rental request.
+    let rental_request =
+        get_rental_request(&payload.user).ok_or(ExecuteProposalError::RentalRequestNotFound)?;
+
+    // Fail if the user has an active rental agreement.
+    if get_rental_agreement(&payload.user).is_some() {
+        return Err(ExecuteProposalError::UserAlreadyHasAgreement);
+    }
+
+    // Remove the rental request. This will stop the locking process.
+    remove_rental_request(&payload.user).unwrap(); // Safe because we checked above that the user has a rental request.
+
+    let rental_condition = get_rental_conditions(rental_request.rental_condition_id).unwrap();
+    let initial_rental_period_nanos =
+        rental_condition.initial_rental_period_days * 24 * 60 * 60 * 1_000_000_000;
+
+    // Convert all remaining ICP to cycles.
+    let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
+    let converted_cycles =
+        convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
+    let total_cycles = converted_cycles + rental_request.locked_amount_cycles;
+
+    // Create the rental agreement.
+    let now_nanos = ic_cdk::api::time();
+    let rental_agreement = RentalAgreement {
+        user: payload.user,
+        subnet_id: payload.subnet_id,
+        rental_request_proposal_id: rental_request.initial_proposal_id,
+        subnet_creation_proposal_id: Some(payload.proposal_id),
+        rental_condition_id: rental_request.rental_condition_id,
+        creation_time_nanos: now_nanos,
+        paid_until_nanos: now_nanos + initial_rental_period_nanos,
+        total_cycles,
+        total_cycles_burned: 0,
+    };
+
+    persist_rental_agreement(rental_agreement).unwrap(); // Safe because we checked above that the user has no rental agreement.
+
+    // TODO: Whitelist the user on the CMC.
 
     Ok(())
 }
@@ -475,14 +533,10 @@ pub async fn refund() -> Result<u64, String> {
         Some(
             rental_request @ RentalRequest {
                 user,
-                initial_cost_icp: _,
                 refundable_icp,
-                locked_amount_icp: _,
                 locked_amount_cycles,
                 initial_proposal_id,
-                creation_time_nanos: _,
-                rental_condition_id: _,
-                last_locking_time_nanos: _,
+                ..
             },
         ) => {
             println!("Refund requested for user principal {}", &caller);

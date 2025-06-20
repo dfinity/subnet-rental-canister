@@ -14,7 +14,7 @@ use std::{
 use subnet_rental_canister::{
     external_canister_interfaces::{
         exchange_rate_canister::EXCHANGE_RATE_CANISTER_ID,
-        governance_canister::GOVERNANCE_CANISTER_PRINCIPAL_STR,
+        governance_canister::GOVERNANCE_CANISTER_ID,
     },
     external_types::{
         CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
@@ -260,7 +260,7 @@ fn test_initial_proposal() {
     update::<()>(
         &pic,
         src_principal,
-        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        Some(GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -290,14 +290,9 @@ fn test_initial_proposal() {
     assert_eq!(rental_requests.len(), 1);
     let RentalRequest {
         user,
-        initial_cost_icp: _,
         refundable_icp,
-        locked_amount_icp: _,
-        locked_amount_cycles: _,
-        initial_proposal_id: _,
-        creation_time_nanos: _,
         rental_condition_id,
-        last_locking_time_nanos: _,
+        ..
     } = rental_requests[0];
     assert_eq!(user, user_principal);
     assert_eq!(rental_condition_id, RentalConditionId::App13CH);
@@ -361,7 +356,7 @@ fn test_failed_initial_proposal() {
     update::<()>(
         &pic,
         src_principal,
-        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        Some(GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -408,7 +403,7 @@ fn test_duplicate_request_fails() {
     update::<()>(
         &pic,
         src_principal,
-        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        Some(GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -418,7 +413,7 @@ fn test_duplicate_request_fails() {
     let res = update::<()>(
         &pic,
         src_principal,
-        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        Some(GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload,
     );
@@ -449,7 +444,7 @@ fn test_locking() {
     update::<()>(
         &pic,
         src_principal,
-        Some(Principal::from_text(GOVERNANCE_CANISTER_PRINCIPAL_STR).unwrap()),
+        Some(GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
