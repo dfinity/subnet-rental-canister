@@ -83,7 +83,7 @@ pub async fn transfer_to_src_main(
 pub async fn refund_user(
     user_principal: Principal,
     amount: Tokens,
-    proposal_id: u64,
+    memo: u64,
 ) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
@@ -92,7 +92,7 @@ pub async fn refund_user(
             fee: DEFAULT_FEE,
             from_subaccount: Some(Subaccount::from(user_principal)),
             amount,
-            memo: Memo(proposal_id),
+            memo: Memo(memo),
             created_at_time: None,
         },
     )
