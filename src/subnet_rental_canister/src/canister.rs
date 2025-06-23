@@ -455,10 +455,9 @@ pub async fn execute_rental_request_proposal_(
 pub async fn refund() -> Result<u64, String> {
     // Before removing the rental request, acquire a lock on it, so that the
     // polling process cannot concurrently convert the request into a rental agreement.
-    let guard_res = CallerGuard::new(Principal::anonymous(), "rental_request");
-    if guard_res.is_err() {
+    let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "rental_request") else {
         return Err("Failed to acquire lock. Try again.".to_string());
-    }
+    };
 
     let caller = ic_cdk::api::msg_caller();
     let balance = check_subaccount_balance(Subaccount::from(caller)).await;
