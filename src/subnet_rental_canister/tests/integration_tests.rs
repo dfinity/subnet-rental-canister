@@ -299,17 +299,17 @@ fn test_initial_proposal() {
     let res = update::<Result<u64, String>>(&pic, SRC_ID, Some(user_principal), "refund", ());
     assert!(res.unwrap().is_ok());
 
-    // check that transfer has succeeded
-    let refundable_icp = total_amount_sent_to_src + additional_src_payment
-        - Tokens::from_e8s(final_price.e8s() / 10) // 10% are locked immediately
-        - DEFAULT_FEE; // withdraw cost
+    let immediately_locked_amount = Tokens::from_e8s(final_price.e8s() / 10); // 10% of ICP are locked immediately
+
+    let refundable_icp =
+        total_amount_sent_to_src + additional_src_payment - immediately_locked_amount - DEFAULT_FEE; // withdraw cost
     let balance_after_refund = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
     assert_eq!(balance_after_refund, balance_before_refund + refundable_icp);
 
     // check total costs
     assert_eq!(
         initial_user_balance
-        - Tokens::from_e8s(final_price.e8s() / 10) // 10% locked
+        - immediately_locked_amount
         - DEFAULT_FEE // initial transfer to SRC
         - DEFAULT_FEE // additional transfer to SRC
         - DEFAULT_FEE, // withdraw cost
