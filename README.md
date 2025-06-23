@@ -24,7 +24,7 @@ Next, download the necessary NNS canister Wasms with:
 ```bash
 ./scripts/download_wasms.sh
 ```
-A patched version of the CMC is already included in the project.
+A patched version of the CMC is already included in the project, based off of commit `0fbd33e753c02d37734e77ee50a56638fd266843` (June 23, 2025), [PR #5652](https://github.com/dfinity/ic/pull/5652).
 
 Finally, run the tests with:
 
