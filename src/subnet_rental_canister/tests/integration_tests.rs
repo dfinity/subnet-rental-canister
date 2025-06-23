@@ -213,10 +213,10 @@ fn test_initial_proposal() {
     assert!(price1 > price2);
     assert!(price2 > final_price);
 
-    let extra_amount = Tokens::from_e8s(200 * E8S);
-    // transfer the initial payment plus some extra amount
-    pay_src(&pic, user_principal, final_price + extra_amount);
+    let extra_amount = Tokens::from_e8s(200 * E8S); // Users might send more than is actually needed
     let total_amount_sent_to_src = final_price + extra_amount;
+    // transfer the initial payment plus some extra amount
+    pay_src(&pic, user_principal, total_amount_sent_to_src);
 
     // user creates proposal
     let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
@@ -440,7 +440,7 @@ fn test_locking() {
 
     // transfer the initial payment
     let initial_payment = get_todays_price(&pic);
-    let payment_on_top = Tokens::from_e8s(100 * E8S);
+    let payment_on_top = Tokens::from_e8s(100 * E8S); // Users might send more than is actually needed
     pay_src(&pic, user_principal, initial_payment + payment_on_top);
 
     // user creates proposal
