@@ -12,6 +12,7 @@
 
 # downloaded files
 ic-wasm
+candid-extractor
 
 # generated files
 src/declarations/
@@ -19,6 +20,7 @@ src/declarations/
 src/subnet_rental_canister/tests/ledger-canister.wasm.gz
 src/subnet_rental_canister/subnet_rental_canister.did
 src/subnet_rental_canister/tests/exchange-rate-canister.wasm.gz
+src/subnet_rental_canister/tests/cycles-minting-canister.wasm.gz
 
 # rust
 target/

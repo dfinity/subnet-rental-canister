@@ -1,30 +1,28 @@
-use std::time::Duration;
-
-use crate::canister_state::{
-    self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
-    get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
-    remove_rental_request, update_rental_request, CallerGuard,
-};
-use crate::external_calls::{
-    check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
-    refund_user,
-};
 use crate::{
-    canister_state::persist_event, history::EventType, EventPage, RentalConditionId,
-    RentalConditions, TRILLION,
-};
-use crate::{
-    ExecuteProposalError, PriceCalculationData, RentalRequest, SubnetRentalProposalPayload, BILLION,
+    canister_state::{
+        self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
+        get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
+        persist_event, remove_rental_request, update_rental_request, CallerGuard,
+    },
+    external_calls::{
+        check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
+        refund_user,
+    },
+    history::EventType,
+    EventPage, ExecuteProposalError, PriceCalculationData, RentalConditionId, RentalConditions,
+    RentalRequest, SubnetRentalProposalPayload, BILLION, TRILLION,
 };
 use candid::Principal;
-use ic_cdk::api::call::{reject, reply};
-use ic_cdk::{init, post_upgrade, query};
-use ic_cdk::{println, update};
+use ic_cdk::{
+    api::{msg_reject, msg_reply},
+    init, post_upgrade, println, query, update,
+};
 use ic_ledger_types::{
     account_balance, transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens,
     TransferArgs, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
     MAINNET_LEDGER_CANISTER_ID,
 };
+use std::time::Duration;
 
 ////////// CANISTER METHODS //////////
 
@@ -72,7 +70,7 @@ fn start_timers() {
 
     // check if any ICP should be locked
     ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60 * 24), || {
-        ic_cdk::spawn(locking())
+        ic_cdk::futures::spawn(locking())
     });
 }
 
@@ -192,7 +190,7 @@ pub fn get_rental_conditions_history_page(older_than: Option<u64>) -> EventPage 
 /// Derive the account into which a user must transfer ICP for renting a subnet.
 #[query]
 pub fn get_payment_account(user: Principal) -> String {
-    AccountIdentifier::new(&ic_cdk::id(), &Subaccount::from(user)).to_hex()
+    AccountIdentifier::new(&ic_cdk::api::canister_self(), &Subaccount::from(user)).to_hex()
 }
 
 // #[query]
@@ -294,9 +292,9 @@ fn calculate_subnet_price(
 #[update(manual_reply = true)]
 pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayload) {
     if let Err(e) = execute_rental_request_proposal_(payload).await {
-        reject(&format!("Subnet rental request proposal failed: {:?}", e));
+        msg_reject(format!("Subnet rental request proposal failed: {:?}", e));
     } else {
-        reply(((),));
+        msg_reply(candid::encode_one(()).unwrap());
     }
 }
 
@@ -465,7 +463,7 @@ pub async fn refund() -> Result<u64, String> {
     if overall_guard.is_err() {
         return Err("Only one refund may execute at a time. Try again".to_string());
     }
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::msg_caller();
     // Before removing the rental request, acquire a lock on it, so that the
     // polling process cannot concurrently convert the request into a rental agreement.
     let guard_res = CallerGuard::new(caller, "rental_request");
@@ -523,10 +521,10 @@ pub async fn refund() -> Result<u64, String> {
         }
         None => {
             println!("Caller has no open rental request. Refunding all funds on the caller subaccount of the SRC.");
-            let src_principal = ic_cdk::id();
+            let src_principal = ic_cdk::api::canister_self();
             let res = account_balance(
                 MAINNET_LEDGER_CANISTER_ID,
-                AccountBalanceArgs {
+                &AccountBalanceArgs {
                     account: AccountIdentifier::new(&src_principal, &Subaccount::from(caller)),
                 },
             )
@@ -542,7 +540,7 @@ pub async fn refund() -> Result<u64, String> {
             }
             let res = transfer(
                 MAINNET_LEDGER_CANISTER_ID,
-                TransferArgs {
+                &TransferArgs {
                     to: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
                     fee: DEFAULT_FEE,
                     from_subaccount: Some(Subaccount::from(caller)),
@@ -576,7 +574,7 @@ pub async fn refund() -> Result<u64, String> {
 // Misc
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
-    if ic_cdk::caller() != MAINNET_GOVERNANCE_CANISTER_ID {
+    if ic_cdk::api::msg_caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         println!("Caller is not the governance canister");
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }

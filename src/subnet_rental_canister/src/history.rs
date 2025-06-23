@@ -1,10 +1,9 @@
-use std::borrow::Cow;
-
 use crate::{Principal, RentalConditionId, RentalConditions, RentalRequest};
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Deserialize;
+use std::borrow::Cow;
 
 /// Important events are persisted for auditing by the community.
 /// Create events via EventType::SomeVariant.into()
