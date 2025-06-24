@@ -65,8 +65,8 @@ fn set_initial_conditions() {
 }
 
 fn start_timers() {
-    // check if any ICP should be locked
-    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60 * 24), || {
+    // Check if any ICP should be locked every hour.
+    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), || {
         ic_cdk::futures::spawn(locking())
     });
 }
@@ -98,7 +98,7 @@ async fn locking() {
             continue;
         }
 
-        let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "rental_request") else {
+        let Ok(_guard_res) = CallerGuard::new(user, "rental_request") else {
             println!("Busy processing another request. Skipping.");
             continue;
         };
@@ -451,13 +451,16 @@ pub async fn execute_rental_request_proposal_(
 /// Returns the block index of the refund transaction.
 #[update]
 pub async fn refund() -> Result<u64, String> {
-    // Before removing the rental request, acquire a lock on it, so that the
-    // polling process cannot concurrently convert the request into a rental agreement.
-    let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "rental_request") else {
+    let caller = msg_caller();
+    // To not flood the ledger canister, we only do one refund at a time.
+    let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "refund") else {
+        return Err("Busy processing another request. Try again.".to_string());
+    };
+    // We might remove a rental request, so we need to acquire a lock on it.
+    let Ok(_guard_res) = CallerGuard::new(caller, "rental_request") else {
         return Err("Busy processing another request. Try again.".to_string());
     };
 
-    let caller = msg_caller();
     let balance = check_subaccount_balance(Subaccount::from(caller)).await;
     if balance < DEFAULT_FEE {
         return Err(format!(
