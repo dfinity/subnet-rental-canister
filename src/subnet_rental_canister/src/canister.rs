@@ -45,7 +45,7 @@ fn set_initial_conditions() {
     let initial_conditions = [(
         RentalConditionId::App13CH,
         RentalConditions {
-            description: "All nodes must be in Switzerland.".to_string(),
+            description: "All nodes must be in Switzerland or Liechtenstein.".to_string(),
             subnet_id: None,
             daily_cost_cycles: 820 * TRILLION,
             initial_rental_period_days: 180,
@@ -67,8 +67,6 @@ fn set_initial_conditions() {
 }
 
 fn start_timers() {
-    // ic_cdk_timers::set_timer_interval(BILLING_INTERVAL, || ic_cdk::spawn(billing()));
-
     // check if any ICP should be locked
     ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60 * 24), || {
         ic_cdk::futures::spawn(locking())
