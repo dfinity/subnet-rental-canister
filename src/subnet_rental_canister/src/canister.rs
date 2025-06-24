@@ -494,6 +494,10 @@ pub async fn refund() -> Result<u64, String> {
 
     // Burn the locked cycles.
     ic_cdk::api::cycles_burn(rental_request.locked_amount_cycles);
+    println!(
+        "Burned {} locked cycles after refunding",
+        rental_request.locked_amount_cycles
+    );
 
     // Remove the rental request from the global map.
     remove_rental_request(&caller);
@@ -503,6 +507,10 @@ pub async fn refund() -> Result<u64, String> {
             rental_request: rental_request.clone(),
         },
         Some(caller),
+    );
+    println!(
+        "SRC refunded {} ICP to {}, block_id: {}",
+        to_be_refunded, caller, block_id
     );
 
     Ok(block_id)

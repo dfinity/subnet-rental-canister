@@ -301,6 +301,7 @@ fn test_initial_proposal() {
 
     let immediately_locked_amount = Tokens::from_e8s(final_price.e8s() / 10); // 10% of ICP are locked immediately
 
+    // check that transfer has succeeded and has correct amount
     let refundable_icp =
         total_amount_sent_to_src + additional_src_payment - immediately_locked_amount - DEFAULT_FEE; // withdraw cost
     let balance_after_refund = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
