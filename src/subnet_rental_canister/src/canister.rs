@@ -89,61 +89,70 @@ async fn locking() {
             rental_condition_id,
             last_locking_time_nanos,
         } = rental_request;
-        if (now - last_locking_time_nanos) / BILLION / 60 / 60 / 24 >= 30 {
-            let lock_amount_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
-            // Only try to lock if we haven't already locked 100% or more.
-            // Use multiplication result to account for rounding errors.
-            if locked_amount_icp >= Tokens::from_e8s(lock_amount_icp.e8s() * 10) {
-                println!("Rental request for {} is already fully locked.", user);
-                continue;
-            }
 
+        // If the last locking time is less than 30 days ago, skip.
+        if (now - last_locking_time_nanos) / BILLION / 60 / 60 / 24 < 30 {
+            continue;
+        }
+
+        let lock_amount_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
+        // Only try to lock if we haven't already locked 100% or more.
+        // Use multiplication result to account for rounding errors.
+        if locked_amount_icp >= Tokens::from_e8s(lock_amount_icp.e8s() * 10) {
+            println!("Rental request for {} is already fully locked.", user);
+            continue;
+        }
+
+        let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "rental_request") else {
+            println!("Busy processing another request. Skipping.");
+            continue;
+        };
+
+        println!(
+            "SRC will lock {} ICP for rental request of user {}.",
+            lock_amount_icp, user
+        );
+        let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
+        let Ok(locked_cycles) = res else {
             println!(
-                "SRC will lock {} ICP for rental request of user {}.",
-                lock_amount_icp, user
+                "Failed to convert ICP to cycles for rental request of user {}",
+                user
             );
-            let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
-            let Ok(locked_cycles) = res else {
-                println!(
-                    "Failed to convert ICP to cycles for rental request of user {}",
-                    user
-                );
-                let e = res.unwrap_err();
-                persist_event(
-                    EventType::LockingFailure {
-                        user,
-                        reason: format!("{:?}", e),
-                    },
-                    Some(user),
-                );
-                continue;
-            };
-            println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
+            let e = res.unwrap_err();
             persist_event(
-                EventType::LockingSuccess {
+                EventType::LockingFailure {
                     user,
-                    amount: lock_amount_icp,
-                    cycles: locked_cycles,
+                    reason: format!("{:?}", e),
                 },
                 Some(user),
             );
-            let refundable_icp = refundable_icp - lock_amount_icp;
-            let locked_amount_icp = locked_amount_icp + lock_amount_icp;
-            let locked_amount_cycles = locked_amount_cycles + locked_cycles;
-            let new_rental_request = RentalRequest {
+            continue;
+        };
+        println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
+        persist_event(
+            EventType::LockingSuccess {
                 user,
-                initial_cost_icp,
-                refundable_icp,
-                locked_amount_icp,
-                locked_amount_cycles,
-                initial_proposal_id,
-                creation_time_nanos,
-                rental_condition_id,
-                // we risk not accounting for a few days in case this function does not run as scheduled
-                last_locking_time_nanos: now,
-            };
-            update_rental_request(user, move |_| new_rental_request).unwrap();
-        }
+                amount: lock_amount_icp,
+                cycles: locked_cycles,
+            },
+            Some(user),
+        );
+        let refundable_icp = refundable_icp - lock_amount_icp;
+        let locked_amount_icp = locked_amount_icp + lock_amount_icp;
+        let locked_amount_cycles = locked_amount_cycles + locked_cycles;
+        let new_rental_request = RentalRequest {
+            user,
+            initial_cost_icp,
+            refundable_icp,
+            locked_amount_icp,
+            locked_amount_cycles,
+            initial_proposal_id,
+            creation_time_nanos,
+            rental_condition_id,
+            // we risk not accounting for a few days in case this function does not run as scheduled
+            last_locking_time_nanos: now,
+        };
+        update_rental_request(user, move |_| new_rental_request).unwrap();
     }
 }
 
