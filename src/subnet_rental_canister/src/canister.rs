@@ -107,7 +107,7 @@ async fn locking() {
         let locked_cycles = match convert_icp_to_cycles(ten_percent, Subaccount::from(user)).await {
             Ok(locked_cycles) => locked_cycles,
             Err(error) => {
-                println!("Failed to convert ICP to cycles for rental request of user {user}");
+                println!("Failed to convert ICP to cycles for rental request of user {user}.");
                 persist_event(
                     EventType::LockingFailure {
                         user,
