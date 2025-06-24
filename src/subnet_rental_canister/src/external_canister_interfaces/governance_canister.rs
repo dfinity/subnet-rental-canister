@@ -3,7 +3,8 @@
 #![allow(clippy::large_enum_variant)]
 use candid::{self, CandidType, Deserialize, Principal};
 
-pub static GOVERNANCE_CANISTER_PRINCIPAL_STR: &str = "rrkah-fqaaa-aaaaa-aaaaq-cai";
+pub const GOVERNANCE_CANISTER_ID: Principal =
+    Principal::from_slice(b"\x00\x00\x00\x00\x00\x00\x00\x01\x01\x01"); // rrkah-fqaaa-aaaaa-aaaaq-cai
 
 #[derive(CandidType, Copy, Clone, Debug, Deserialize)]
 pub struct NeuronId {

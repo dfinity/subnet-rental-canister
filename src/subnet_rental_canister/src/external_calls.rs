@@ -80,11 +80,7 @@ pub async fn transfer_to_src_main(
     .expect("Failed to call ledger canister")
 }
 
-pub async fn refund_user(
-    user_principal: Principal,
-    amount: Tokens,
-    proposal_id: u64,
-) -> Result<u64, TransferError> {
+pub async fn refund_user(user_principal: Principal, amount: Tokens) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
         &TransferArgs {
@@ -92,7 +88,7 @@ pub async fn refund_user(
             fee: DEFAULT_FEE,
             from_subaccount: Some(Subaccount::from(user_principal)),
             amount,
-            memo: Memo(proposal_id),
+            memo: Memo(0),
             created_at_time: None,
         },
     )

@@ -210,7 +210,6 @@ pub fn get_history_page(
 pub fn create_rental_request(
     user: Principal,
     initial_cost_icp: Tokens,
-    refundable_icp: Tokens,
     locked_amount_icp: Tokens,
     locked_amount_cycles: u128,
     initial_proposal_id: u64,
@@ -221,7 +220,6 @@ pub fn create_rental_request(
     let rental_request = RentalRequest {
         user,
         initial_cost_icp,
-        refundable_icp,
         locked_amount_icp,
         locked_amount_cycles,
         initial_proposal_id,
@@ -318,7 +316,6 @@ mod canister_state_test {
                     rental_request: RentalRequest {
                         user: Principal::anonymous(),
                         initial_cost_icp: Tokens::from_e8s(100),
-                        refundable_icp: Tokens::from_e8s(100),
                         locked_amount_icp: Tokens::from_e8s(10),
                         locked_amount_cycles: 99,
                         initial_proposal_id: 99,
