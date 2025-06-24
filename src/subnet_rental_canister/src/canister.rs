@@ -14,7 +14,7 @@ use crate::{
 };
 use candid::Principal;
 use ic_cdk::{
-    api::{msg_reject, msg_reply},
+    api::{msg_caller, msg_reject, msg_reply},
     init, post_upgrade, println, query, update,
 };
 use ic_ledger_types::{
@@ -448,18 +448,20 @@ pub async fn execute_rental_request_proposal_(
     Ok(())
 }
 
-/// If the calling user has a rental request, the rental request will be deleted, the locked cycles will be burned, and the user will be refunded the remaining ICP.
-/// If the calling user has no rental request, the SRC will refund the entire balance on the caller subaccount.
+/// If the calling user has a rental request, the rental request will be deleted,
+/// the locked cycles will be burned, and the user will be refunded the remaining ICP.
+/// If the calling user has no rental request, the SRC will refund the entire balance
+/// on the caller subaccount.
 /// Returns the block index of the refund transaction.
 #[update]
 pub async fn refund() -> Result<u64, String> {
     // Before removing the rental request, acquire a lock on it, so that the
     // polling process cannot concurrently convert the request into a rental agreement.
     let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "rental_request") else {
-        return Err("Failed to acquire lock. Try again.".to_string());
+        return Err("Busy processing another request. Try again.".to_string());
     };
 
-    let caller = ic_cdk::api::msg_caller();
+    let caller = msg_caller();
     let balance = check_subaccount_balance(Subaccount::from(caller)).await;
     if balance < DEFAULT_FEE {
         return Err(format!(
@@ -468,51 +470,33 @@ pub async fn refund() -> Result<u64, String> {
     }
     let to_be_refunded = balance - DEFAULT_FEE;
 
-    let Some(rental_request) = get_rental_request(&caller) else {
-        // User has no rental request, refund all funds on the caller subaccount of the SRC.
-        let response = refund_user(caller, to_be_refunded, 0).await.map_err(|e| {
-            format!(
-                "Failed to refund {} ICP to {}: {:?}",
-                to_be_refunded, caller, e
-            )
-        });
-        return response;
-    };
-
-    // User has rental request, refund remaining ICP to the user.
-    let refund_result =
-        refund_user(caller, to_be_refunded, rental_request.initial_proposal_id).await;
-
-    let Ok(block_id) = refund_result else {
-        return Err(format!(
+    let block_id = refund_user(caller, to_be_refunded).await.map_err(|e| {
+        format!(
             "Failed to refund {} ICP to {}: {:?}",
-            to_be_refunded,
-            caller,
-            refund_result.unwrap_err()
-        ));
+            to_be_refunded, caller, e
+        )
+    })?;
+
+    // If the user has a rental request, burn the locked cycles and remove the request.
+    if let Some(rental_request) = get_rental_request(&caller) {
+        ic_cdk::api::cycles_burn(rental_request.locked_amount_cycles);
+        println!(
+            "Burned {} locked cycles after refunding",
+            rental_request.locked_amount_cycles
+        );
+        remove_rental_request(&caller);
+        persist_event(
+            EventType::RentalRequestCancelled {
+                rental_request: rental_request.clone(),
+            },
+            Some(caller),
+        );
     };
 
-    // Burn the locked cycles.
-    ic_cdk::api::cycles_burn(rental_request.locked_amount_cycles);
-    println!(
-        "Burned {} locked cycles after refunding",
-        rental_request.locked_amount_cycles
-    );
-
-    // Remove the rental request from the global map.
-    remove_rental_request(&caller);
-
-    persist_event(
-        EventType::RentalRequestCancelled {
-            rental_request: rental_request.clone(),
-        },
-        Some(caller),
-    );
     println!(
         "SRC refunded {} ICP to {}, block_id: {}",
         to_be_refunded, caller, block_id
     );
-
     Ok(block_id)
 }
 
@@ -520,7 +504,7 @@ pub async fn refund() -> Result<u64, String> {
 // Misc
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
-    if ic_cdk::api::msg_caller() != MAINNET_GOVERNANCE_CANISTER_ID {
+    if msg_caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         println!("Caller is not the governance canister");
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
