@@ -1,8 +1,9 @@
 use crate::{
     canister_state::{
         self, create_rental_request, get_cached_rate, get_rental_agreement, get_rental_conditions,
-        get_rental_request, insert_rental_condition, iter_rental_conditions, iter_rental_requests,
-        persist_event, remove_rental_request, update_rental_request, CallerGuard,
+        get_rental_request, insert_rental_condition, iter_rental_agreements,
+        iter_rental_conditions, iter_rental_requests, persist_event, remove_rental_request,
+        update_rental_request, CallerGuard,
     },
     external_calls::{
         check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
@@ -96,6 +97,7 @@ async fn locking() {
                 println!("Rental request for {} is already fully locked.", user);
                 continue;
             }
+
             println!(
                 "SRC will lock {} ICP for rental request of user {}.",
                 lock_amount_icp, user
@@ -335,7 +337,7 @@ pub async fn execute_rental_request_proposal_(
     }
 
     // Fail if user has an active rental agreement
-    if get_rental_agreement(&user).is_some() {
+    if iter_rental_agreements().iter().any(|(_, v)| v.user == user) {
         println!("Fatal: User already has an active rental agreement.");
         let e = ExecuteProposalError::UserAlreadyHasAgreement;
         return with_error(user, proposal_id, e);
@@ -344,11 +346,10 @@ pub async fn execute_rental_request_proposal_(
     // unwrap safety:
     // The rental_condition_id key must have a value in the rental conditions map due to `init` and `post_upgrade`.
     let RentalConditions {
-        description: _,
         subnet_id,
         daily_cost_cycles,
         initial_rental_period_days,
-        billing_period_days: _,
+        ..
     } = get_rental_conditions(rental_condition_id).expect("Fatal: Rental conditions not found");
 
     // Fail if the provided subnet is already being rented:
@@ -441,16 +442,6 @@ pub async fn execute_rental_request_proposal_(
     )
     .unwrap();
     println!("Created rental request for user {}", user);
-
-    // Either proceed with existing subnet_id, or start polling for future subnet creation.
-    if let Some(subnet_id) = subnet_id {
-        println!("Reusing existing subnet {}", subnet_id);
-        // TODO: Create rental agreement
-    } else {
-        // TODO:
-        // Poll on an internal data structure. The governance canister will notify
-        // the SRC by writing there. An SRC timer should still pick it up automatically.
-    }
 
     Ok(())
 }
