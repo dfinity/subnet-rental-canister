@@ -90,11 +90,11 @@ async fn locking() {
             continue;
         }
 
-        let lock_amount_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
+        let ten_percent = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
         // Only try to lock if we haven't already locked 100% or more.
         // Use multiplication result to account for rounding errors.
-        if locked_amount_icp >= Tokens::from_e8s(lock_amount_icp.e8s() * 10) {
-            println!("Rental request for {} is already fully locked.", user);
+        if locked_amount_icp >= Tokens::from_e8s(ten_percent.e8s() * 10) {
+            println!("Rental request for {user} is already fully locked.");
             continue;
         }
 
@@ -103,37 +103,33 @@ async fn locking() {
             continue;
         };
 
-        println!(
-            "SRC will lock {} ICP for rental request of user {}.",
-            lock_amount_icp, user
-        );
-        let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
-        let Ok(locked_cycles) = res else {
-            println!(
-                "Failed to convert ICP to cycles for rental request of user {}",
-                user
-            );
-            let e = res.unwrap_err();
-            persist_event(
-                EventType::LockingFailure {
-                    user,
-                    reason: format!("{:?}", e),
-                },
-                Some(user),
-            );
-            continue;
+        // Convert ICP to cycles.
+        let locked_cycles = match convert_icp_to_cycles(ten_percent, Subaccount::from(user)).await {
+            Ok(locked_cycles) => locked_cycles,
+            Err(error) => {
+                println!("Failed to convert ICP to cycles for rental request of user {user}");
+                persist_event(
+                    EventType::LockingFailure {
+                        user,
+                        reason: format!("{error:?}"),
+                    },
+                    Some(user),
+                );
+                continue;
+            }
         };
-        println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
+
+        println!("SRC gained {locked_cycles} cycles from the locked ICP.");
         persist_event(
             EventType::LockingSuccess {
                 user,
-                amount: lock_amount_icp,
+                amount: ten_percent,
                 cycles: locked_cycles,
             },
             Some(user),
         );
 
-        let locked_amount_icp = locked_amount_icp + lock_amount_icp;
+        let locked_amount_icp = locked_amount_icp + ten_percent;
         let locked_amount_cycles = locked_amount_cycles + locked_cycles;
         let new_rental_request = RentalRequest {
             user,
