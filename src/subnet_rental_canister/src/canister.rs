@@ -72,7 +72,7 @@ fn start_timers() {
 }
 
 async fn locking() {
-    let now = ic_cdk::api::time();
+    let now_nanos = ic_cdk::api::time();
     for rental_request in iter_rental_requests().into_iter().map(|(_, v)| v) {
         let RentalRequest {
             user,
@@ -86,14 +86,14 @@ async fn locking() {
         } = rental_request;
 
         // If the last locking time is less than 30 days ago, skip.
-        if (now - last_locking_time_nanos) / BILLION / 60 / 60 / 24 < 30 {
+        if (now_nanos - last_locking_time_nanos) / BILLION / 60 / 60 / 24 < 30 {
             continue;
         }
 
-        let ten_percent = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
+        let ten_percent_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
         // Only try to lock if we haven't already locked 100% or more.
         // Use multiplication result to account for rounding errors.
-        if locked_amount_icp >= Tokens::from_e8s(ten_percent.e8s() * 10) {
+        if locked_amount_icp >= Tokens::from_e8s(ten_percent_icp.e8s() * 10) {
             println!("Rental request for {user} is already fully locked.");
             continue;
         }
@@ -104,32 +104,33 @@ async fn locking() {
         };
 
         // Convert ICP to cycles.
-        let locked_cycles = match convert_icp_to_cycles(ten_percent, Subaccount::from(user)).await {
-            Ok(locked_cycles) => locked_cycles,
-            Err(error) => {
-                println!("Failed to convert ICP to cycles for rental request of user {user}.");
-                persist_event(
-                    EventType::LockingFailure {
-                        user,
-                        reason: format!("{error:?}"),
-                    },
-                    Some(user),
-                );
-                continue;
-            }
-        };
+        let locked_cycles =
+            match convert_icp_to_cycles(ten_percent_icp, Subaccount::from(user)).await {
+                Ok(locked_cycles) => locked_cycles,
+                Err(error) => {
+                    println!("Failed to convert ICP to cycles for rental request of user {user}.");
+                    persist_event(
+                        EventType::LockingFailure {
+                            user,
+                            reason: format!("{error:?}"),
+                        },
+                        Some(user),
+                    );
+                    continue;
+                }
+            };
 
         println!("SRC gained {locked_cycles} cycles from the locked ICP.");
         persist_event(
             EventType::LockingSuccess {
                 user,
-                amount: ten_percent,
+                amount: ten_percent_icp,
                 cycles: locked_cycles,
             },
             Some(user),
         );
 
-        let locked_amount_icp = locked_amount_icp + ten_percent;
+        let locked_amount_icp = locked_amount_icp + ten_percent_icp;
         let locked_amount_cycles = locked_amount_cycles + locked_cycles;
         let new_rental_request = RentalRequest {
             user,
@@ -140,7 +141,7 @@ async fn locking() {
             creation_time_nanos,
             rental_condition_id,
             // we risk not accounting for a few days in case this function does not run as scheduled
-            last_locking_time_nanos: now,
+            last_locking_time_nanos: now_nanos,
         };
         update_rental_request(user, move |_| new_rental_request).unwrap();
     }
