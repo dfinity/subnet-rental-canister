@@ -3,7 +3,7 @@
 The subnet rental canister is deployed on [ICP](https://dashboard.internetcomputer.org/canister/qvhpv-4qaaa-aaaaa-aaagq-cai) with the canister ID `qvhpv-4qaaa-aaaaa-aaagq-cai`.
 
 ## Running the Project
-If you want to test the project locally, install `dfx` version 0.27.0 or later and use the following commands:
+If you want to test the project locally, install `dfx` version 0.27.0 or later and the [Candid Extractor](https://github.com/dfinity/candid-extractor/releases/tag/0.1.6) and use the following commands:
 
 ```bash
 # Starts the replica, running in the background
