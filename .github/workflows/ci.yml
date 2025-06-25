@@ -11,8 +11,33 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-deploy-and-test:
-    name: Build, deploy and test
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install PocketIC server
+        uses: dfinity/pocketic@main
+        with:
+          pocket-ic-server-version: "9.0.3"
+
+      - name: Docker build subnet rental canister
+        run: |
+          ./scripts/docker_build.sh
+
+      - name: Get Wasm dependencies
+        run: ./scripts/get_wasms.sh
+
+      - name: Run tests
+        run: cargo test --all-targets --all-features -- --nocapture
+        env:
+          RUST_BACKTRACE: 1
+
+  dfx-deploy:
+    name: Dfx deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -27,26 +52,11 @@ jobs:
       - name: Start dfx
         run: dfx start --background
 
-      - name: Install PocketIC server
-        uses: dfinity/pocketic@main
-        with:
-          pocket-ic-server-version: "9.0.3"
-
-      - name: Build subnet rental canister
-        run: ./scripts/build.sh
-
-      - name: Get Wasm dependencies
-        run: ./scripts/get_wasms.sh
-
-      - name: Test deploy
+      - name: Docker build and deploy subnet rental canister
         run: |
+          ./scripts/docker_build.sh
           dfx canister create --specified-id qvhpv-4qaaa-aaaaa-aaagq-cai subnet_rental_canister
           dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm
-
-      - name: Run tests
-        run: cargo test --all-targets --all-features -- --nocapture
-        env:
-          RUST_BACKTRACE: 1
 
   lint:
     name: Lint
