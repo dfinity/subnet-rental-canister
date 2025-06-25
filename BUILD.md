@@ -9,8 +9,8 @@ Then, run the `docker_build.sh` script which builds the Wasm module and puts it 
 
 ## Verify the Build
 
-To verify the build, you can use the `shasum` command to calculate the hash of the `.wasm` file:
+To verify the build, you can use the `shasum` command to calculate the hash of the `.wasm.gz` file:
 
 ```bash
-shasum -a 256 subnet_rental_canister.wasm
+shasum -a 256 subnet_rental_canister.wasm.gz
 ```

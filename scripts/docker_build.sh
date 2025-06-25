@@ -11,6 +11,6 @@ docker build -t localhost/subnet-rental-canister .
 # Run the container and execute dfx build inside it
 docker run --name subnet-rental-canister-build --platform="linux/amd64" -v "$(pwd):/app" localhost/subnet-rental-canister bash -c "dfx build --ic"
 # Copy the Wasm file to the root directory
-docker cp subnet-rental-canister-build:/app/target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm ./subnet_rental_canister.wasm
+docker cp subnet-rental-canister-build:/app/.dfx/ic/canisters/subnet_rental_canister/subnet_rental_canister.wasm.gz ./subnet_rental_canister.wasm.gz
 # Cleanup
 docker rm -f subnet-rental-canister-build > /dev/null

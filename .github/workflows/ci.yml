@@ -58,7 +58,7 @@ jobs:
       - name: Deploy subnet rental canister
         run: |
           dfx canister create --specified-id qvhpv-4qaaa-aaaaa-aaagq-cai subnet_rental_canister
-          dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm
+          dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm.gz
 
   lint:
     name: Lint
@@ -98,4 +98,4 @@ jobs:
         uses: softprops/action-gh-release@master
         with:
           files: |
-            subnet_rental_canister.wasm
+            subnet_rental_canister.wasm.gz

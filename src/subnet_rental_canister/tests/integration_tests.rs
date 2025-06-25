@@ -23,7 +23,7 @@ use subnet_rental_canister::{
     SubnetRentalProposalPayload, E8S, TRILLION,
 };
 
-const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
+const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 const XRC_WASM: &str = "./tests/exchange-rate-canister.wasm";
