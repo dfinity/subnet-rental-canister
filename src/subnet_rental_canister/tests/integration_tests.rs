@@ -60,15 +60,16 @@ fn install_cmc(pic: &PocketIc) {
 fn install_xrc(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, EXCHANGE_RATE_CANISTER_ID)
         .unwrap();
-    let xrc_wasm = fs::read(XRC_WASM).expect("Failed to read XRC wasm");
+    let xrc_wasm =
+        fs::read(XRC_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
     pic.install_canister(EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
 }
 
 fn install_ledger(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, MAINNET_LEDGER_CANISTER_ID)
         .unwrap();
-    let icp_ledger_canister_wasm = fs::read(LEDGER_WASM)
-        .expect("Download the test wasm files with ./scripts/download_wasms.sh");
+    let icp_ledger_canister_wasm =
+        fs::read(LEDGER_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
 
     let minter = AccountIdentifier::new(&MAINNET_GOVERNANCE_CANISTER_ID, &DEFAULT_SUBACCOUNT);
     let user_1 = AccountIdentifier::new(&USER_1, &DEFAULT_SUBACCOUNT);

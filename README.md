@@ -23,10 +23,10 @@ Build the subnet rental canister Wasm by running:
 ```
 which will be placed in the root folder of the project.
 
-Next, download the necessary NNS canister Wasms with:
+Next, get the necessary NNS canister Wasms with:
 
 ```bash
-./scripts/download_wasms.sh
+./scripts/get_wasms.sh
 ```
 Finally, run the tests with:
 

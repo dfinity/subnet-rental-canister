@@ -16,50 +16,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: |
-          rustup target add wasm32-unknown-unknown
-          ./scripts/build.sh
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dfx
+        uses: dfinity/setup-dfx@main
+        with:
+          dfx-version: "0.27.0"
+
+      - name: Start dfx
+        run: dfx start --background
 
       - name: Install PocketIC server
         uses: dfinity/pocketic@main
         with:
           pocket-ic-server-version: "9.0.3"
-      - name: Download wasms
-        run: ./scripts/download_wasms.sh
+
+      - name: Build subnet rental canister
+        run: ./scripts/build.sh
+
+      - name: Get Wasm dependencies
+        run: ./scripts/get_wasms.sh
+
+      - name: Test deploy
+        run: |
+          dfx canister create --specified-id qvhpv-4qaaa-aaaaa-aaagq-cai subnet_rental_canister
+          dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm
+
       - name: Run tests
         run: cargo test --all-targets --all-features -- --nocapture
         env:
           RUST_BACKTRACE: 1
-
-  dfx-deploy:
-    name: Dfx deploy
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install dfx
-        uses: dfinity/setup-dfx@main
-        with:
-          dfx-version: "0.27.0"
-      - name: Start dfx
-        run: dfx start --background
-      - name: Add wasm target
-        run: rustup target add wasm32-unknown-unknown
-      - name: Build canister candid interface and WASM
-        run: ./scripts/build.sh
-      - name: Deploy
-        run: |
-          dfx canister create --specified-id qvhpv-4qaaa-aaaaa-aaagq-cai subnet_rental_canister
-          dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -68,7 +64,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Run fmt
         run: cargo fmt --all -- --check
 
@@ -77,10 +75,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Docker build
         run: |
           ./scripts/docker_build.sh
+
       - name: Upload artifacts to release page
         uses: softprops/action-gh-release@master
         with:
