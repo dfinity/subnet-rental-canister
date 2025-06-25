@@ -19,11 +19,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install PocketIC server
-        uses: dfinity/pocketic@main
-        with:
-          pocket-ic-server-version: "9.0.3"
-
       - name: Docker build subnet rental canister
         run: |
           ./scripts/docker_build.sh
