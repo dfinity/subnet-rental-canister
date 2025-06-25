@@ -28,7 +28,10 @@ jobs:
         run: dfx start --background
 
       - name: Docker build subnet rental canister
-        run: ./scripts/docker_build.sh
+        run: |
+          ./scripts/docker_build.sh
+          # Fix permissions after Docker build
+          sudo chown -R $(whoami):$(whoami) . || true
 
       - name: Get Wasm dependencies
         run: ./scripts/get_wasms.sh
