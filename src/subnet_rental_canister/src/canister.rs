@@ -85,12 +85,16 @@ async fn locking() {
             last_locking_time_nanos,
         } = rental_request;
 
+        let days_since_last_locking =
+            (now_nanos - last_locking_time_nanos) / BILLION / 60 / 60 / 24;
         // If the last locking time is less than 30 days ago, skip.
-        if (now_nanos - last_locking_time_nanos) / BILLION / 60 / 60 / 24 < 30 {
+        if days_since_last_locking < 30 {
             continue;
         }
 
+        // The amount we want to lock is 10% of the initial cost
         let ten_percent_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
+
         // Only try to lock if we haven't already locked 100% or more.
         // Use multiplication result to account for rounding errors.
         if locked_amount_icp >= Tokens::from_e8s(ten_percent_icp.e8s() * 10) {
