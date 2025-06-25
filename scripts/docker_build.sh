@@ -14,3 +14,5 @@ docker run --name subnet-rental-canister-build --platform="linux/amd64" -v "$(pw
 docker cp subnet-rental-canister-build:/app/target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm ./subnet_rental_canister.wasm
 # Cleanup
 docker rm -f subnet-rental-canister-build > /dev/null
+# Fix permissions after Docker operations
+sudo chown -R $(whoami):$(whoami) . 2>/dev/null || true
