@@ -50,7 +50,9 @@ jobs:
       - name: Build canister candid interface and WASM
         run: ./scripts/build.sh
       - name: Deploy
-        run: dfx deploy
+        run: |
+          dfx canister create --specified-id qvhpv-4qaaa-aaaaa-aaagq-cai subnet_rental_canister
+          dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm
 
   lint:
     name: Lint
@@ -76,15 +78,11 @@ jobs:
     permissions: write-all
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+      - name: Docker build
         run: |
           ./scripts/docker_build.sh
-      - name: hash artifact
-        run: |
-          sha256sum subnet_rental_canister.wasm > src_sha256.txt
-      - name: upload artifacts to release page
+      - name: Upload artifacts to release page
         uses: softprops/action-gh-release@master
         with:
           files: |
             subnet_rental_canister.wasm
-            src_sha256.txt

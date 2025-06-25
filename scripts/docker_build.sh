@@ -8,6 +8,11 @@ cd "$SCRIPTS_DIR/.."
 
 # Build the Docker image and run it to build the canister
 docker build -t localhost/subnet-rental-canister .
-CONTAINER_ID=$(docker run --platform="linux/amd64" -d localhost/subnet-rental-canister)
-docker cp $CONTAINER_ID:/subnet-rental-canister/target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm . 
-docker rm -f $CONTAINER_ID
+# Run the container and execute dfx build inside it
+docker run --name subnet-rental-canister-build --platform="linux/amd64" -v "$(pwd):/app" localhost/subnet-rental-canister bash -c "dfx build --ic"
+# Copy the Wasm file to the root directory
+docker cp subnet-rental-canister-build:/app/target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm ./subnet_rental_canister.wasm
+# Cleanup
+docker rm -f subnet-rental-canister-build > /dev/null
+# Print the SHA-256 of the Wasm file
+shasum -a 256 subnet_rental_canister.wasm

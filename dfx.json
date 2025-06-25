@@ -2,11 +2,19 @@
   "canisters": {
     "subnet_rental_canister": {
       "candid": "src/subnet_rental_canister/subnet_rental_canister.did",
-      "package": "subnet_rental_canister",
       "type": "custom",
       "shrink": true,
-      "wasm": "subnet_rental_canister.wasm",
-      "build": "scripts/build.sh"
+      "gzip": true,
+      "wasm": "target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm",
+      "build": [
+        "cargo build -p subnet_rental_canister --locked --target wasm32-unknown-unknown --release",
+        "candid-extractor target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm > src/subnet_rental_canister/subnet_rental_canister.did"
+      ],
+      "metadata": [
+        {
+          "name": "candid:service"
+        }
+      ]
     }
   }
 }
