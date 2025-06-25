@@ -14,5 +14,3 @@ docker run --name subnet-rental-canister-build --platform="linux/amd64" -v "$(pw
 docker cp subnet-rental-canister-build:/app/target/wasm32-unknown-unknown/release/subnet_rental_canister.wasm ./subnet_rental_canister.wasm
 # Cleanup
 docker rm -f subnet-rental-canister-build > /dev/null
-# Print the SHA-256 of the Wasm file
-shasum -a 256 subnet_rental_canister.wasm
