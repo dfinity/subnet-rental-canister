@@ -95,7 +95,7 @@ jobs:
           ./scripts/docker_build.sh
 
       - name: Upload artifacts to release page
-        uses: softprops/action-gh-release@master
+        uses: softprops/action-gh-release@master # does not further compress the file
         with:
           files: |
             subnet_rental_canister.wasm.gz
