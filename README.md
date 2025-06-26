@@ -1,14 +1,18 @@
 # Subnet Rental Canister
 
+The subnet rental canister is deployed on [ICP](https://dashboard.internetcomputer.org/canister/qvhpv-4qaaa-aaaaa-aaagq-cai) with the canister ID `qvhpv-4qaaa-aaaaa-aaagq-cai`.
+
 ## Running the Project
-If you want to test the project locally, install `dfx` version 0.27.0 or later and use the following commands:
+If you want to test the project locally, install `dfx` version 0.27.0 or later and the [Candid Extractor](https://github.com/dfinity/candid-extractor) and use the following commands:
 
 ```bash
 # Starts the replica, running in the background
-dfx start --background
+dfx start --clean --background
 
 # Deploys your canisters to the replica and generates your candid interface
-dfx deploy
+./scripts/build.sh
+dfx canister create subnet_rental_canister
+dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm
 ```
 
 ## Testing
@@ -19,10 +23,10 @@ Build the subnet rental canister Wasm by running:
 ```
 which will be placed in the root folder of the project.
 
-Next, download the necessary NNS canister Wasms with:
+Next, get the necessary NNS canister Wasms with:
 
 ```bash
-./scripts/download_wasms.sh
+./scripts/get_wasms.sh
 ```
 Finally, run the tests with:
 

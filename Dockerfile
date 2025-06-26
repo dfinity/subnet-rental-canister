@@ -1,29 +1,17 @@
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM --platform=linux/amd64 rust:1.87.0
 
-ENV RUSTUP_HOME=/opt/rustup
-ENV CARGO_HOME=/opt/cargo
-ENV RUST_VERSION=1.87.0
+ENV DFX_VERSION=0.27.0
+ENV CANDID_EXTRACTOR_VERSION=0.1.6
 
-# Set the timezone to UTC
-ENV TZ=UTC
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+# Install dfx
+RUN DFXVM_INIT_YES=true sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+ENV PATH="/root/.local/share/dfx/bin:$PATH"
 
-# Install a basic environment needed for our build tools
-RUN apt -yq update && \
-    apt -yqq install --no-install-recommends curl ca-certificates build-essential
+# Install candid-extractor
+RUN curl -sL https://github.com/dfinity/candid-extractor/releases/download/${CANDID_EXTRACTOR_VERSION}/candid-extractor-x86_64-unknown-linux-gnu.tar.gz -o candid-extractor.tar.gz
+RUN tar -xzf candid-extractor.tar.gz
+RUN rm candid-extractor.tar.gz
+RUN chmod +x candid-extractor
+RUN mv candid-extractor /usr/local/bin/candid-extractor
 
-# Install Rust and Cargo
-ENV PATH=/opt/cargo/bin:${PATH}
-RUN curl --fail https://sh.rustup.rs -sSf \
-    | sh -s -- -y --default-toolchain ${RUST_VERSION}-x86_64-unknown-linux-gnu --no-modify-path && \
-    rustup default ${RUST_VERSION}-x86_64-unknown-linux-gnu && \
-    rustup target add wasm32-unknown-unknown
-
-COPY . /subnet-rental-canister
-WORKDIR /subnet-rental-canister
-
-# Build the canister
-RUN ./scripts/build.sh
-
-# Shrink the canister
-RUN ./ic-wasm subnet_rental_canister.wasm -o subnet_rental_canister.wasm shrink
+WORKDIR /app

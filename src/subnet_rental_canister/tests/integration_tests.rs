@@ -23,10 +23,10 @@ use subnet_rental_canister::{
     SubnetRentalProposalPayload, E8S, TRILLION,
 };
 
-const SRC_WASM: &str = "../../subnet_rental_canister.wasm";
+const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
 const LEDGER_WASM: &str = "./tests/ledger-canister.wasm.gz";
 const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
-const XRC_WASM: &str = "./tests/exchange-rate-canister.wasm.gz";
+const XRC_WASM: &str = "./tests/exchange-rate-canister.wasm";
 const SRC_ID: Principal = Principal::from_slice(b"\x00\x00\x00\x00\x00\x00\x00\x0D\x01\x01"); // qvhpv-4qaaa-aaaaa-aaagq-cai
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
 const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
@@ -60,15 +60,16 @@ fn install_cmc(pic: &PocketIc) {
 fn install_xrc(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, EXCHANGE_RATE_CANISTER_ID)
         .unwrap();
-    let xrc_wasm = fs::read(XRC_WASM).expect("Failed to read XRC wasm");
+    let xrc_wasm =
+        fs::read(XRC_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
     pic.install_canister(EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
 }
 
 fn install_ledger(pic: &PocketIc) {
     pic.create_canister_with_id(None, None, MAINNET_LEDGER_CANISTER_ID)
         .unwrap();
-    let icp_ledger_canister_wasm = fs::read(LEDGER_WASM)
-        .expect("Download the test wasm files with ./scripts/download_wasms.sh");
+    let icp_ledger_canister_wasm =
+        fs::read(LEDGER_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
 
     let minter = AccountIdentifier::new(&MAINNET_GOVERNANCE_CANISTER_ID, &DEFAULT_SUBACCOUNT);
     let user_1 = AccountIdentifier::new(&USER_1, &DEFAULT_SUBACCOUNT);
