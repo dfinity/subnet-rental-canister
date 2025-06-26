@@ -22,8 +22,6 @@ jobs:
       - name: Docker build subnet rental canister
         run: |
           ./scripts/docker_build.sh
-          # Fix permissions after Docker operations
-          sudo chown -R $(whoami):$(whoami) . || true
 
       - name: Get Wasm dependencies
         run: ./scripts/get_wasms.sh
@@ -52,8 +50,6 @@ jobs:
       - name: Docker build subnet rental canister
         run: |
           ./scripts/docker_build.sh
-          # Fix permissions after Docker operations
-          sudo chown -R $(whoami):$(whoami) . || true
 
       - name: Deploy subnet rental canister
         run: |
@@ -95,7 +91,7 @@ jobs:
           ./scripts/docker_build.sh
 
       - name: Upload artifacts to release page
-        uses: softprops/action-gh-release@master
+        uses: softprops/action-gh-release@master # does not further compress the file
         with:
           files: |
             subnet_rental_canister.wasm.gz
