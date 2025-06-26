@@ -10,9 +10,7 @@ If you want to test the project locally, install `dfx` version 0.27.0 or later a
 dfx start --clean --background
 
 # Deploys your canisters to the replica and generates your candid interface
-./scripts/build.sh
-dfx canister create --specified-id qvhpv-4qaaa-aaaaa-aaagq-cai subnet_rental_canister
-dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm.gz
+dfx deploy
 ```
 
 ## Testing
