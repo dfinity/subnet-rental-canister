@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 rust:1.87.0
+FROM rust:1.87.0
 
 ENV DFX_VERSION=0.27.0
 ENV CANDID_EXTRACTOR_VERSION=0.1.6
