@@ -12,7 +12,7 @@ dfx start --clean --background
 # Deploys your canisters to the replica and generates your candid interface
 ./scripts/build.sh
 dfx canister create subnet_rental_canister
-dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm
+dfx canister install subnet_rental_canister --wasm subnet_rental_canister.wasm.gz
 ```
 
 ## Testing
