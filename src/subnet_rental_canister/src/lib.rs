@@ -80,8 +80,6 @@ pub struct RentalRequest {
     /// The cost in ICP, calculated from the ICP/XDR exchange rate
     /// at UTC midnight before proposal creation time.
     pub initial_cost_icp: Tokens,
-    /// The amount of ICP in SRC's main account which remain refundable.
-    pub refundable_icp: Tokens,
     /// The amount that is currently locked and available only as cycles.
     pub locked_amount_icp: Tokens,
     /// The amount of cycles that are no longer refundable.

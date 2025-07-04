@@ -269,7 +269,6 @@ mod canister_state_test {
                     rental_request: RentalRequest {
                         user: Principal::anonymous(),
                         initial_cost_icp: Tokens::from_e8s(100),
-                        refundable_icp: Tokens::from_e8s(100),
                         locked_amount_icp: Tokens::from_e8s(10),
                         locked_amount_cycles: 99,
                         initial_proposal_id: 99,

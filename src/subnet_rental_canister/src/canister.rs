@@ -1,9 +1,9 @@
 use crate::{
     canister_state::{
         self, get_cached_rate, get_rental_agreement, get_rental_conditions, get_rental_request,
-        insert_rental_condition, iter_rental_conditions, iter_rental_requests, persist_event,
-        persist_rental_agreement, persist_rental_request, remove_rental_request,
-        update_rental_request, CallerGuard,
+        insert_rental_condition, iter_rental_agreements, iter_rental_conditions,
+        iter_rental_requests, persist_event, persist_rental_agreement, persist_rental_request,
+        remove_rental_request, update_rental_request, CallerGuard,
     },
     external_calls::{
         check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
@@ -16,13 +16,11 @@ use crate::{
 };
 use candid::Principal;
 use ic_cdk::{
-    api::{msg_reject, msg_reply},
+    api::{msg_caller, msg_reject, msg_reply},
     init, post_upgrade, println, query, update,
 };
 use ic_ledger_types::{
-    account_balance, transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens,
-    TransferArgs, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_GOVERNANCE_CANISTER_ID,
-    MAINNET_LEDGER_CANISTER_ID,
+    AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANISTER_ID,
 };
 use std::time::Duration;
 
@@ -67,19 +65,18 @@ fn set_initial_conditions() {
 }
 
 fn start_timers() {
-    // Check if any ICP should be locked.
-    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60 * 24), || {
+    // Check if any ICP should be locked every hour.
+    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), || {
         ic_cdk::futures::spawn(locking())
     });
 }
 
 async fn locking() {
-    let now = ic_cdk::api::time();
+    let now_nanos = ic_cdk::api::time();
     for rental_request in iter_rental_requests().into_iter().map(|(_, v)| v) {
         let RentalRequest {
             user,
             initial_cost_icp,
-            refundable_icp,
             locked_amount_icp,
             locked_amount_cycles,
             initial_proposal_id,
@@ -87,60 +84,70 @@ async fn locking() {
             rental_condition_id,
             last_locking_time_nanos,
         } = rental_request;
-        if (now - last_locking_time_nanos) / BILLION / 60 / 60 / 24 >= 30 {
-            let lock_amount_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
-            // Only try to lock if we haven't already locked 100% or more.
-            // Use multiplication result to account for rounding errors.
-            if locked_amount_icp >= Tokens::from_e8s(lock_amount_icp.e8s() * 10) {
-                println!("Rental request for {} is already fully locked.", user);
-                continue;
-            }
-            println!(
-                "SRC will lock {} ICP for rental request of user {}.",
-                lock_amount_icp, user
-            );
-            let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
-            let Ok(locked_cycles) = res else {
-                println!(
-                    "Failed to convert ICP to cycles for rental request of user {}",
-                    user
-                );
-                let e = res.unwrap_err();
-                persist_event(
-                    EventType::LockingFailure {
-                        user,
-                        reason: format!("{:?}", e),
-                    },
-                    Some(user),
-                );
-                continue;
-            };
-            println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
-            persist_event(
-                EventType::LockingSuccess {
-                    user,
-                    amount: lock_amount_icp,
-                    cycles: locked_cycles,
-                },
-                Some(user),
-            );
-            let refundable_icp = refundable_icp - lock_amount_icp;
-            let locked_amount_icp = locked_amount_icp + lock_amount_icp;
-            let locked_amount_cycles = locked_amount_cycles + locked_cycles;
-            let new_rental_request = RentalRequest {
-                user,
-                initial_cost_icp,
-                refundable_icp,
-                locked_amount_icp,
-                locked_amount_cycles,
-                initial_proposal_id,
-                creation_time_nanos,
-                rental_condition_id,
-                // we risk not accounting for a few days in case this function does not run as scheduled
-                last_locking_time_nanos: now,
-            };
-            update_rental_request(user, move |_| new_rental_request).unwrap();
+
+        let days_since_last_locking =
+            (now_nanos - last_locking_time_nanos) / BILLION / 60 / 60 / 24;
+        // If the last locking time is less than 30 days ago, skip.
+        if days_since_last_locking < 30 {
+            continue;
         }
+
+        // The amount we want to lock is 10% of the initial cost
+        let ten_percent_icp = Tokens::from_e8s(initial_cost_icp.e8s() / 10);
+
+        // Only try to lock if we haven't already locked 100% or more.
+        // Use multiplication result to account for rounding errors.
+        if locked_amount_icp >= Tokens::from_e8s(ten_percent_icp.e8s() * 10) {
+            println!("Rental request for {user} is already fully locked.");
+            continue;
+        }
+
+        let Ok(_guard_res) = CallerGuard::new(user, "rental_request") else {
+            println!("Busy processing another request. Skipping.");
+            continue;
+        };
+
+        // Convert ICP to cycles.
+        let locked_cycles =
+            match convert_icp_to_cycles(ten_percent_icp, Subaccount::from(user)).await {
+                Ok(locked_cycles) => locked_cycles,
+                Err(error) => {
+                    println!("Failed to convert ICP to cycles for rental request of user {user}.");
+                    persist_event(
+                        EventType::LockingFailure {
+                            user,
+                            reason: format!("{error:?}"),
+                        },
+                        Some(user),
+                    );
+                    continue;
+                }
+            };
+
+        println!("SRC gained {locked_cycles} cycles from the locked ICP.");
+        persist_event(
+            EventType::LockingSuccess {
+                user,
+                amount: ten_percent_icp,
+                cycles: locked_cycles,
+            },
+            Some(user),
+        );
+
+        let locked_amount_icp = locked_amount_icp + ten_percent_icp;
+        let locked_amount_cycles = locked_amount_cycles + locked_cycles;
+        let new_rental_request = RentalRequest {
+            user,
+            initial_cost_icp,
+            locked_amount_icp,
+            locked_amount_cycles,
+            initial_proposal_id,
+            creation_time_nanos,
+            rental_condition_id,
+            // we risk not accounting for a few days in case this function does not run as scheduled
+            last_locking_time_nanos: now_nanos,
+        };
+        update_rental_request(user, move |_| new_rental_request).unwrap();
     }
 }
 
@@ -322,7 +329,7 @@ pub async fn execute_rental_request_proposal_(
     verify_caller_is_governance()?;
 
     // make sure no concurrent calls to this method can exist, in addition to governance's check.
-    let _guard = CallerGuard::new(Principal::anonymous(), "rental_request").unwrap();
+    let _guard = CallerGuard::new(user, "rental_request").expect("Fatal: Concurrent call");
 
     // Fail if user has an existing rental request going on
     if get_rental_request(&user).is_some() {
@@ -332,7 +339,7 @@ pub async fn execute_rental_request_proposal_(
     }
 
     // Fail if user has an active rental agreement
-    if get_rental_agreement(&user).is_some() {
+    if iter_rental_agreements().iter().any(|(_, v)| v.user == user) {
         println!("Fatal: User already has an active rental agreement.");
         let e = ExecuteProposalError::UserAlreadyHasAgreement;
         return with_error(user, proposal_id, e);
@@ -423,13 +430,10 @@ pub async fn execute_rental_request_proposal_(
     println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
     let lock_time = ic_cdk::api::time();
 
-    let refundable_icp = available_icp - lock_amount_icp;
-
     let now = ic_cdk::api::time();
     let rental_request = RentalRequest {
         user,
         initial_cost_icp: needed_icp,
-        refundable_icp,
         locked_amount_icp: lock_amount_icp,
         locked_amount_cycles: locked_cycles,
         initial_proposal_id: proposal_id,
@@ -441,16 +445,6 @@ pub async fn execute_rental_request_proposal_(
     // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
     persist_rental_request(rental_request).unwrap();
     println!("Created rental request for user {}", &user);
-
-    // Either proceed with existing subnet_id, or start polling for future subnet creation.
-    if let Some(subnet_id) = subnet_id {
-        println!("Reusing existing subnet {}", subnet_id);
-        // TODO: Create rental agreement
-    } else {
-        // TODO:
-        // Poll on an internal data structure. The governance canister will notify
-        // the SRC by writing there. An SRC timer should still pick it up automatically.
-    }
 
     Ok(())
 }
@@ -513,122 +507,66 @@ pub async fn execute_create_rental_agreement_(
     Ok(())
 }
 
+/// If the calling user has a rental request, the rental request will be deleted,
+/// the locked cycles will be burned, and the user will be refunded the remaining ICP.
+/// If the calling user has no rental request, the SRC will refund the entire balance
+/// on the caller subaccount.
 /// Returns the block index of the refund transaction.
 #[update]
 pub async fn refund() -> Result<u64, String> {
-    // Overall guard to prevent spamming the ledger canister.
-    let overall_guard = CallerGuard::new(Principal::anonymous(), "refund");
-    if overall_guard.is_err() {
-        return Err("Only one refund may execute at a time. Try again".to_string());
+    let caller = msg_caller();
+    // To not flood the ledger canister, we only do one refund at a time.
+    let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "refund") else {
+        return Err("Busy processing another request. Try again.".to_string());
+    };
+    // We might remove a rental request, so we need to acquire a lock on it.
+    let Ok(_guard_res) = CallerGuard::new(caller, "rental_request") else {
+        return Err("Busy processing another request. Try again.".to_string());
+    };
+
+    let balance = check_subaccount_balance(Subaccount::from(caller)).await;
+    if balance < DEFAULT_FEE {
+        return Err(format!(
+            "Failed refund: {caller} has insufficient funds {balance}"
+        ));
     }
-    let caller = ic_cdk::api::msg_caller();
-    // Before removing the rental request, acquire a lock on it, so that the
-    // polling process cannot concurrently convert the request into a rental agreement.
-    let guard_res = CallerGuard::new(caller, "rental_request");
-    if guard_res.is_err() {
-        return Err("Failed to acquire lock. Try again.".to_string());
-    }
-    // Does the caller have an active rental request?
-    match get_rental_request(&caller) {
-        Some(
-            rental_request @ RentalRequest {
-                user,
-                refundable_icp,
-                locked_amount_cycles,
-                initial_proposal_id,
-                ..
+    let to_be_refunded = balance - DEFAULT_FEE;
+
+    let block_id = refund_user(caller, to_be_refunded).await.map_err(|e| {
+        format!(
+            "Failed to refund {} ICP to {}: {:?}",
+            to_be_refunded, caller, e
+        )
+    })?;
+
+    // If the user has a rental request, burn the locked cycles and remove the request.
+    if let Some(rental_request) = get_rental_request(&caller) {
+        ic_cdk::api::cycles_burn(rental_request.locked_amount_cycles);
+        println!(
+            "Burned {} locked cycles after refunding",
+            rental_request.locked_amount_cycles
+        );
+        remove_rental_request(&caller);
+        persist_event(
+            EventType::RentalRequestCancelled {
+                rental_request: rental_request.clone(),
             },
-        ) => {
-            println!("Refund requested for user principal {}", &caller);
-            // Refund the remaining ICP on the SRC/user subaccount to the user.
-            let res = refund_user(user, refundable_icp - DEFAULT_FEE, initial_proposal_id).await;
-            let Ok(block_id) = res else {
-                return Err(format!(
-                    "Failed to refund {} ICP to {}: {:?}",
-                    refundable_icp - DEFAULT_FEE,
-                    user,
-                    res.unwrap_err()
-                ));
-            };
-            println!(
-                "SRC refunded {} ICP to {}, block_id: {}",
-                refundable_icp - DEFAULT_FEE,
-                user,
-                block_id
-            );
-            ic_cdk::api::cycles_burn(locked_amount_cycles);
-            println!(
-                "SRC burned {} locked cycles after refunding.",
-                locked_amount_cycles
-            );
-            // remove rental request from global map
-            remove_rental_request(&caller);
+            Some(caller),
+        );
+    };
 
-            persist_event(
-                EventType::RentalRequestCancelled {
-                    rental_request: rental_request.clone(),
-                },
-                Some(user),
-            );
-
-            Ok(block_id)
-        }
-        None => {
-            println!("Caller has no open rental request. Refunding all funds on the caller subaccount of the SRC.");
-            let src_principal = ic_cdk::api::canister_self();
-            let res = account_balance(
-                MAINNET_LEDGER_CANISTER_ID,
-                &AccountBalanceArgs {
-                    account: AccountIdentifier::new(&src_principal, &Subaccount::from(caller)),
-                },
-            )
-            .await;
-            let Ok(balance) = res else {
-                return Err(format!("Failed to refund: {:?}", res.unwrap_err()));
-            };
-            if balance < DEFAULT_FEE {
-                return Err(format!(
-                    "Failed refund: {} has insufficient funds {}",
-                    caller, balance
-                ));
-            }
-            let res = transfer(
-                MAINNET_LEDGER_CANISTER_ID,
-                &TransferArgs {
-                    to: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
-                    fee: DEFAULT_FEE,
-                    from_subaccount: Some(Subaccount::from(caller)),
-                    amount: balance - DEFAULT_FEE,
-                    memo: Memo(0),
-                    created_at_time: None,
-                },
-            )
-            .await
-            .expect("Failed refund: Failed to call ledger canister");
-            let Ok(block_id) = res else {
-                return Err(format!(
-                    "Failed to refund {} ICP to {}: {:?}",
-                    balance - DEFAULT_FEE,
-                    caller,
-                    res.unwrap_err()
-                ));
-            };
-            println!(
-                "SRC refunded {} ICP to {}, block_id: {}",
-                balance - DEFAULT_FEE,
-                caller,
-                block_id
-            );
-            Ok(block_id)
-        }
-    }
+    println!(
+        "SRC refunded {} ICP to {}, block_id: {}",
+        to_be_refunded, caller, block_id
+    );
+    Ok(block_id)
 }
 
 // ============================================================================
 // Misc
 
 fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
-    if ic_cdk::api::msg_caller() != MAINNET_GOVERNANCE_CANISTER_ID {
+    if msg_caller() != MAINNET_GOVERNANCE_CANISTER_ID {
         println!("Caller is not the governance canister");
         return Err(ExecuteProposalError::UnauthorizedCaller);
     }
