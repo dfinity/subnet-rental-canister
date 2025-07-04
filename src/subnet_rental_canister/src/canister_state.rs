@@ -212,7 +212,7 @@ pub fn persist_rental_request(rental_request: RentalRequest) -> Result<(), Strin
                 &rental_request.user
             ))
         } else {
-            requests.insert(rental_request.user.clone(), rental_request.clone());
+            requests.insert(rental_request.user, rental_request.clone());
             println!("Created rental request: {:?}", &rental_request);
             persist_event(
                 EventType::RentalRequestCreated {
