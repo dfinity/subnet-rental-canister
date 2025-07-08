@@ -2772,7 +2772,6 @@ dependencies = [
  "candid",
  "ic-cdk",
  "ic-xrc-types",
- "serde",
 ]
 
 [[package]]

@@ -11,4 +11,3 @@ crate-type = ["cdylib"]
 candid = "0.10.14"
 ic-cdk = "0.18.4"
 ic-xrc-types = "1.2.0"
-serde = "1.0.219"
