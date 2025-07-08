@@ -19,7 +19,7 @@ async fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateRe
         .unwrap_or_else(|| (ic_cdk::api::time() / 1_000_000_000) + 6);
     let rates = RATES.with(|rates| rates.borrow().clone());
     let closest_rate = rates.iter().min_by_key(|(t, _)| t.abs_diff(timestamp));
-    let default_rate = (timestamp, 3_497_900_000);
+    let default_rate = (timestamp, 3_497_900_000); // 1 ICP = 3.4979 XDR
     let (_, rate) = closest_rate.unwrap_or(&default_rate);
     GetExchangeRateResult::Ok(ExchangeRate {
         base_asset: Asset {
