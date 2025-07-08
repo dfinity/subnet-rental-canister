@@ -12,13 +12,10 @@ use std::{
     time::Duration,
 };
 use subnet_rental_canister::{
-    external_canister_interfaces::{
-        exchange_rate_canister::EXCHANGE_RATE_CANISTER_ID,
-        governance_canister::GOVERNANCE_CANISTER_ID,
-    },
+    external_calls::EXCHANGE_RATE_CANISTER_ID,
     external_types::{
         CmcInitPayload, ExchangeRateCanister, FeatureFlags, NnsLedgerCanisterInitPayload,
-        NnsLedgerCanisterPayload,
+        NnsLedgerCanisterPayload, PrincipalsAuthorizedToCreateCanistersToSubnetsResponse,
     },
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, RentalAgreement,
     RentalConditionId, RentalConditions, RentalRequest, SubnetRentalProposalPayload, E8S, TRILLION,
@@ -272,7 +269,7 @@ fn test_initial_proposal() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -382,7 +379,7 @@ fn test_create_rental_agreement() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -462,11 +459,23 @@ fn test_create_rental_agreement() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_create_rental_agreement",
         payload.clone(),
     )
     .unwrap();
+
+    // check whitelisting on CMC
+    let cmc_whitelisted_subnets = query::<PrincipalsAuthorizedToCreateCanistersToSubnetsResponse>(
+        &pic,
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        None,
+        "get_principals_authorized_to_create_canisters_to_subnets",
+        (),
+    );
+    let entry = cmc_whitelisted_subnets.data[0].clone();
+    assert_eq!(entry.0, USER_1);
+    assert_eq!(entry.1, vec![SUBNET_FOR_RENT]);
 
     // check that the rental request is removed
     let rental_requests =
@@ -569,7 +578,7 @@ fn test_failed_initial_proposal() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -616,7 +625,7 @@ fn test_duplicate_request_fails() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -626,7 +635,7 @@ fn test_duplicate_request_fails() {
     let res = update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload,
     );
@@ -661,7 +670,7 @@ fn test_locking() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )

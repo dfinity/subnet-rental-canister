@@ -7,7 +7,6 @@ use std::borrow::Cow;
 pub mod canister;
 pub mod canister_state;
 pub mod external_calls;
-pub mod external_canister_interfaces;
 pub mod external_types;
 pub mod history;
 

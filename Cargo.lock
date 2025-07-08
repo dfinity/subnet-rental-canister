@@ -2001,6 +2001,7 @@ dependencies = [
  "ic-cdk-timers",
  "ic-ledger-types",
  "ic-stable-structures",
+ "ic-xrc-types",
  "icrc-ledger-types",
  "itertools 0.14.0",
  "pocket-ic",
