@@ -487,7 +487,7 @@ pub async fn execute_create_rental_agreement_(
     let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
     let converted_cycles =
         convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
-    let total_cycles_created = converted_cycles + rental_request.locked_amount_cycles;
+    let total_cycles_created = converted_cycles.saturating_add(rental_request.locked_amount_cycles);
 
     // Create the rental agreement.
     let now_nanos = ic_cdk::api::time();
