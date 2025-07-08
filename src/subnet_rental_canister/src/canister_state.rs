@@ -140,6 +140,19 @@ pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
     RENTAL_AGREEMENTS.with_borrow(|map| map.iter().collect())
 }
 
+pub fn update_rental_agreement(
+    subnet_id: Principal,
+    f: impl FnOnce(RentalAgreement) -> RentalAgreement,
+) -> Result<(), String> {
+    RENTAL_AGREEMENTS.with_borrow_mut(|map| match map.get(&subnet_id) {
+        None => Err("Subnet_id has no rental agreement.".to_string()),
+        Some(value) => {
+            map.insert(subnet_id, f(value));
+            Ok(())
+        }
+    })
+}
+
 pub fn get_cached_rate(time: u64) -> Option<(u64, u32)> {
     RATES.with_borrow(|map| map.get(&time))
 }

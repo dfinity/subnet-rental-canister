@@ -3,7 +3,7 @@ use crate::{
         self, get_cached_rate, get_rental_agreement, get_rental_conditions, get_rental_request,
         insert_rental_condition, iter_rental_agreements, iter_rental_conditions,
         iter_rental_requests, persist_event, persist_rental_agreement, persist_rental_request,
-        remove_rental_request, update_rental_request, CallerGuard,
+        remove_rental_request, update_rental_agreement, update_rental_request, CallerGuard,
     },
     external_calls::{
         check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
@@ -22,7 +22,9 @@ use ic_cdk::{
 use ic_ledger_types::{
     AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANISTER_ID,
 };
-use std::time::Duration;
+use std::{cmp::min, time::Duration};
+
+const CYCLES_BURN_INTERVAL_SECONDS: u64 = 60;
 
 ////////// CANISTER METHODS //////////
 
@@ -69,6 +71,57 @@ fn start_timers() {
     ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), || {
         ic_cdk::futures::spawn(locking())
     });
+
+    // Burn cycles every minute.
+    ic_cdk_timers::set_timer_interval(Duration::from_secs(CYCLES_BURN_INTERVAL_SECONDS), || {
+        ic_cdk::futures::spawn(burn_cycles())
+    });
+}
+
+async fn burn_cycles() {
+    for rental_agreement in iter_rental_agreements().into_iter().map(|(_, v)| v) {
+        let Ok(_guard_res) = CallerGuard::new(rental_agreement.user, "rental") else {
+            println!("Busy processing another request. Skipping.");
+            continue;
+        };
+
+        let total_cycles_burned = rental_agreement.total_cycles_burned;
+        let total_cycles_created = rental_agreement.total_cycles_created;
+        let total_cycles_remaining = total_cycles_created - total_cycles_burned;
+        let paid_until_nanos = rental_agreement.paid_until_nanos;
+        let now_nanos = ic_cdk::api::time();
+
+        // No more cycles left to burn.
+        if total_cycles_remaining == 0 {
+            continue;
+        }
+
+        // The rental agreement is not paid for anymore.
+        if now_nanos >= paid_until_nanos {
+            // Burn all remaining cycles.
+            let burned = ic_cdk::api::cycles_burn(total_cycles_remaining);
+            update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+                agreement.total_cycles_burned += burned;
+                agreement
+            })
+            .unwrap();
+            continue;
+        }
+
+        // The rental agreement is still paid for and has some cycles left to burn.
+        let time_remaining_nanos = paid_until_nanos - now_nanos; // guaranteed to be positive due to above check
+        let time_remaining_seconds = time_remaining_nanos / BILLION;
+        let amount_to_burn_per_minute = (total_cycles_remaining / time_remaining_seconds as u128)
+            * CYCLES_BURN_INTERVAL_SECONDS as u128;
+
+        let burned =
+            ic_cdk::api::cycles_burn(min(amount_to_burn_per_minute, total_cycles_remaining)); // don't burn more than we have
+        update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+            agreement.total_cycles_burned += burned;
+            agreement
+        })
+        .unwrap();
+    }
 }
 
 async fn locking() {
