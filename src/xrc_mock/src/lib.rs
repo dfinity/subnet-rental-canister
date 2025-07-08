@@ -5,7 +5,7 @@ use ic_xrc_types::{
 use std::cell::RefCell;
 
 thread_local! {
-    static RATES: RefCell<Vec<(u64, u64)>> = RefCell::new(vec![]); // (timestamp, rate)
+    static RATES: RefCell<Vec<(u64, u64)>> = const { RefCell::new(vec![]) } // (timestamp, rate)
 }
 
 const CALL_CYCLES_COST: u128 = 1_000_000_000;
