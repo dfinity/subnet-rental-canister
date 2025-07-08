@@ -87,7 +87,7 @@ async fn burn_cycles() {
 
         let total_cycles_burned = rental_agreement.total_cycles_burned;
         let total_cycles_created = rental_agreement.total_cycles_created;
-        let total_cycles_remaining = total_cycles_created - total_cycles_burned;
+        let total_cycles_remaining = total_cycles_created.saturating_sub(total_cycles_burned);
         let paid_until_nanos = rental_agreement.paid_until_nanos;
         let now_nanos = ic_cdk::api::time();
 
@@ -101,7 +101,8 @@ async fn burn_cycles() {
             // Burn all remaining cycles.
             let burned = ic_cdk::api::cycles_burn(total_cycles_remaining);
             update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
-                agreement.total_cycles_burned += burned;
+                agreement.total_cycles_burned =
+                    agreement.total_cycles_burned.saturating_add(burned);
                 agreement
             })
             .unwrap();
@@ -117,7 +118,7 @@ async fn burn_cycles() {
         let burned =
             ic_cdk::api::cycles_burn(min(amount_to_burn_per_minute, total_cycles_remaining)); // don't burn more than we have
         update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
-            agreement.total_cycles_burned += burned;
+            agreement.total_cycles_burned = agreement.total_cycles_burned.saturating_add(burned);
             agreement
         })
         .unwrap();
