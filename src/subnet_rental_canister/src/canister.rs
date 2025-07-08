@@ -467,6 +467,7 @@ pub async fn execute_create_rental_agreement_(
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
     let _guard = CallerGuard::new(payload.user, "rental").expect("Fatal: Concurrent call");
+    let _guard = CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call");
 
     // Check if the user has an active rental request.
     let Some(rental_request) = get_rental_request(&payload.user) else {
@@ -504,13 +505,14 @@ pub async fn execute_create_rental_agreement_(
         total_cycles_burned: 0,
     };
 
-    persist_rental_agreement(rental_agreement).expect("Fatal: Failed to persist rental agreement"); // Safe because we checked above that the subnet is not being rented.
-
     // Whitelist the user on the CMC.
     whitelist_user_on_cmc(&payload.user, &payload.subnet_id).await;
 
     // Remove the rental request. This will stop the locking process.
     remove_rental_request(&payload.user).expect("Fatal: Failed to remove rental request"); // Safe because we checked above that the user has a rental request.
+
+    // Persist the rental agreement.
+    persist_rental_agreement(rental_agreement).expect("Fatal: Failed to persist rental agreement"); // Safe because we checked above that the subnet is not being rented.
 
     Ok(())
 }
