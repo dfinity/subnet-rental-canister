@@ -14,14 +14,14 @@ use ic_ledger_types::{
     MAINNET_LEDGER_CANISTER_ID,
 };
 
-pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
+pub async fn whitelist_user_on_cmc(user: &Principal, subnet_id: &Principal) {
     Call::unbounded_wait(
         MAINNET_CYCLES_MINTING_CANISTER_ID,
         "set_authorized_subnetwork_list",
     )
     .with_arg(SetAuthorizedSubnetworkListArgs {
         who: Some(*user),
-        subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
+        subnets: vec![*subnet_id], // TODO: Add to the current list, don't overwrite
     })
     .await
     .expect("Failed to call CMC");

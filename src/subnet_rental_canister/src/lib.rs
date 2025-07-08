@@ -126,9 +126,11 @@ pub struct RentalAgreement {
     pub creation_time_nanos: u64,
     /// The time in nanos since epoch until which the rental agreement is paid for.
     pub paid_until_nanos: u64,
-    /// Total amount of cycles that the user has paid.
-    pub total_cycles: u128,
-    /// Total amount of cycles that have been burned.
+    /// Total amount of ICP that the user has paid.
+    pub total_icp_paid: Tokens,
+    /// Total amount of cycles that have been created for this agreement.
+    pub total_cycles_created: u128,
+    /// Total amount of cycles that have been burned for this agreement.
     pub total_cycles_burned: u128,
 }
 

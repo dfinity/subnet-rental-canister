@@ -7,7 +7,7 @@ use crate::{
     },
     external_calls::{
         check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
-        refund_user,
+        refund_user, whitelist_user_on_cmc,
     },
     history::EventType,
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, PriceCalculationData,
@@ -102,7 +102,7 @@ async fn locking() {
             continue;
         }
 
-        let Ok(_guard_res) = CallerGuard::new(user, "rental_request") else {
+        let Ok(_guard_res) = CallerGuard::new(user, "rental") else {
             println!("Busy processing another request. Skipping.");
             continue;
         };
@@ -199,10 +199,14 @@ pub fn get_payment_account(user: Principal) -> String {
     AccountIdentifier::new(&ic_cdk::api::canister_self(), &Subaccount::from(user)).to_hex()
 }
 
-// #[query]
-// pub fn list_rental_agreements() -> Vec<RentalAgreement> {
-//     RENTAL_AGREEMENTS.with(|map| map.borrow().iter().map(|(_, v)| v).collect())
-// }
+/// List all active rental agreements.
+#[query]
+pub fn list_rental_agreements() -> Vec<RentalAgreement> {
+    iter_rental_agreements()
+        .into_iter()
+        .map(|(_k, v)| v)
+        .collect()
+}
 
 ////////// UPDATE METHODS //////////
 
@@ -329,7 +333,7 @@ pub async fn execute_rental_request_proposal_(
     verify_caller_is_governance()?;
 
     // make sure no concurrent calls to this method can exist, in addition to governance's check.
-    let _guard = CallerGuard::new(user, "rental_request").expect("Fatal: Concurrent call");
+    let _guard = CallerGuard::new(user, "rental").expect("Fatal: Concurrent call");
 
     // Fail if user has an existing rental request going on
     if get_rental_request(&user).is_some() {
@@ -462,21 +466,20 @@ pub async fn execute_create_rental_agreement_(
     payload: CreateRentalAgreementPayload,
 ) -> Result<(), ExecuteProposalError> {
     verify_caller_is_governance()?;
-    let _guard = CallerGuard::new(Principal::anonymous(), "create_rental_agreement").unwrap();
+    let _guard = CallerGuard::new(payload.user, "rental").expect("Fatal: Concurrent call");
 
-    // Fail if the user has no open rental request.
-    let rental_request =
-        get_rental_request(&payload.user).ok_or(ExecuteProposalError::RentalRequestNotFound)?;
+    // Check if the user has an active rental request.
+    let Some(rental_request) = get_rental_request(&payload.user) else {
+        return Err(ExecuteProposalError::RentalRequestNotFound);
+    };
 
-    // Fail if the user has an active rental agreement.
-    if get_rental_agreement(&payload.user).is_some() {
-        return Err(ExecuteProposalError::UserAlreadyHasAgreement);
+    // Fail if the subnet is already being rented.
+    if get_rental_agreement(&payload.subnet_id).is_some() {
+        return Err(ExecuteProposalError::SubnetAlreadyRented);
     }
 
-    // Remove the rental request. This will stop the locking process.
-    remove_rental_request(&payload.user).unwrap(); // Safe because we checked above that the user has a rental request.
-
-    let rental_condition = get_rental_conditions(rental_request.rental_condition_id).unwrap();
+    let rental_condition = get_rental_conditions(rental_request.rental_condition_id)
+        .expect("Fatal: Rental condition not found");
     let initial_rental_period_nanos =
         rental_condition.initial_rental_period_days * 24 * 60 * 60 * 1_000_000_000;
 
@@ -484,7 +487,7 @@ pub async fn execute_create_rental_agreement_(
     let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
     let converted_cycles =
         convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
-    let total_cycles = converted_cycles + rental_request.locked_amount_cycles;
+    let total_cycles_created = converted_cycles + rental_request.locked_amount_cycles;
 
     // Create the rental agreement.
     let now_nanos = ic_cdk::api::time();
@@ -496,13 +499,18 @@ pub async fn execute_create_rental_agreement_(
         rental_condition_id: rental_request.rental_condition_id,
         creation_time_nanos: now_nanos,
         paid_until_nanos: now_nanos + initial_rental_period_nanos,
-        total_cycles,
+        total_icp_paid: rental_request.initial_cost_icp,
+        total_cycles_created,
         total_cycles_burned: 0,
     };
 
-    persist_rental_agreement(rental_agreement).unwrap(); // Safe because we checked above that the user has no rental agreement.
+    persist_rental_agreement(rental_agreement).expect("Fatal: Failed to persist rental agreement"); // Safe because we checked above that the subnet is not being rented.
 
-    // TODO: Whitelist the user on the CMC.
+    // Whitelist the user on the CMC.
+    whitelist_user_on_cmc(&payload.user, &payload.subnet_id).await;
+
+    // Remove the rental request. This will stop the locking process.
+    remove_rental_request(&payload.user).expect("Fatal: Failed to remove rental request"); // Safe because we checked above that the user has a rental request.
 
     Ok(())
 }
@@ -520,7 +528,7 @@ pub async fn refund() -> Result<u64, String> {
         return Err("Busy processing another request. Try again.".to_string());
     };
     // We might remove a rental request, so we need to acquire a lock on it.
-    let Ok(_guard_res) = CallerGuard::new(caller, "rental_request") else {
+    let Ok(_guard_res) = CallerGuard::new(caller, "rental") else {
         return Err("Busy processing another request. Try again.".to_string());
     };
 

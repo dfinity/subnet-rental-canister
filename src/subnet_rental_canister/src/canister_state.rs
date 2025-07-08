@@ -105,8 +105,8 @@ pub fn iter_rental_conditions() -> Vec<(RentalConditionId, RentalConditions)> {
     RENTAL_CONDITIONS.with_borrow(|map| map.iter().map(|(k, v)| (*k, v.clone())).collect())
 }
 
-pub fn get_rental_request(requester: &Principal) -> Option<RentalRequest> {
-    RENTAL_REQUESTS.with_borrow(|map| map.get(requester))
+pub fn get_rental_request(user: &Principal) -> Option<RentalRequest> {
+    RENTAL_REQUESTS.with_borrow(|map| map.get(user))
 }
 
 /// Used to mutate an existing rental request.
@@ -131,6 +131,7 @@ pub fn iter_rental_requests() -> Vec<(Principal, RentalRequest)> {
     RENTAL_REQUESTS.with_borrow(|map| map.iter().collect())
 }
 
+/// Returns the rental agreement for the given subnet_id.
 pub fn get_rental_agreement(subnet_id: &Principal) -> Option<RentalAgreement> {
     RENTAL_AGREEMENTS.with_borrow(|map| map.get(subnet_id))
 }
