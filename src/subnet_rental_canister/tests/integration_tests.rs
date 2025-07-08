@@ -67,7 +67,7 @@ fn install_xrc_and_cmc(pic: &PocketIc) {
     );
 
     // set initial exchange rate to CMC
-    set_cmc_exchange_rate(&pic, 3_497_900_000); // 1 ICP = 3.4979 XDR
+    set_cmc_exchange_rate(pic, 3_497_900_000); // 1 ICP = 3.4979 XDR
 }
 
 fn install_ledger(pic: &PocketIc) {
