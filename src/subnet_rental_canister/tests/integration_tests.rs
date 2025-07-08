@@ -351,7 +351,8 @@ fn test_create_rental_agreement() {
     let final_price = get_todays_price(&pic);
 
     // transfer the initial payment
-    pay_src(&pic, USER_1, final_price);
+    let paid_to_src = final_price + Tokens::from_e8s(100 * E8S); // 100 ICP extra
+    pay_src(&pic, USER_1, paid_to_src);
 
     // create rental request proposal
     let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
@@ -538,6 +539,22 @@ fn test_create_rental_agreement() {
         src_cycles_balance_after_execute_rental_agreement,
         INITIAL_SRC_CYCLES_BALANCE + expected_total_cycles - 1_000_000_000 // call of get_todays_price()
     );
+
+    // try a refund, should give back the 100 ICP extra - fee, and leave the agreement in place
+    let user_icp_balance_before_refund = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
+    update::<Result<u64, String>>(&pic, SRC_ID, Some(USER_1), "refund", ())
+        .unwrap()
+        .unwrap();
+    let user_icp_balance_after_refund = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
+    assert_eq!(
+        user_icp_balance_after_refund,
+        user_icp_balance_before_refund + Tokens::from_e8s(100 * E8S) - DEFAULT_FEE
+    );
+
+    // check that the rental agreement is still in place
+    let rental_agreements =
+        query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
+    assert_eq!(rental_agreements.len(), 1);
 }
 
 #[test]

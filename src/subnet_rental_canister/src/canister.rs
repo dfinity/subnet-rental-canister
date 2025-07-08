@@ -517,8 +517,8 @@ pub async fn execute_create_rental_agreement_(
 
 /// If the calling user has a rental request, the rental request will be deleted,
 /// the locked cycles will be burned, and the user will be refunded the remaining ICP.
-/// If the calling user has no rental request, the SRC will refund the entire balance
-/// on the caller subaccount.
+/// If the calling user has no rental request or an active rental agreement,
+/// the SRC will refund the entire balance on the caller subaccount.
 /// Returns the block index of the refund transaction.
 #[update]
 pub async fn refund() -> Result<u64, String> {
