@@ -1,4 +1,3 @@
-use candid::candid_method;
 use ic_xrc_types::{
     Asset, AssetClass, ExchangeRate, ExchangeRateMetadata, GetExchangeRateRequest,
     GetExchangeRateResult,
@@ -12,7 +11,6 @@ thread_local! {
 const CALL_CYCLES_COST: u128 = 1_000_000_000;
 
 #[ic_cdk::update]
-#[candid_method(update)]
 async fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateResult {
     ic_cdk::api::msg_cycles_accept(CALL_CYCLES_COST);
     // Find the closest rate to the request timestamp
@@ -47,7 +45,6 @@ async fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateRe
 }
 
 #[ic_cdk::update]
-#[candid_method(update)]
 fn set_exchange_rate_data(data: Vec<(u64, u64)>) {
     RATES.with_borrow_mut(|rates| {
         rates.extend(data);
