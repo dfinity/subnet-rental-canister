@@ -720,8 +720,7 @@ fn calculate_days_remaining(paid_until_nanos: u64, now_nanos: u64) -> u64 {
         return 0;
     }
     let remaining_nanos = paid_until_nanos - now_nanos;
-    let remaining_days = remaining_nanos / (24 * 60 * 60 * BILLION);
-    remaining_days
+    remaining_nanos / (24 * 60 * 60 * BILLION) // convert to days
 }
 
 // allow candid-extractor to derive candid interface from rust code
