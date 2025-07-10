@@ -460,8 +460,8 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
             return with_error(user, proposal_id, e);
         };
         println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
-        let now_nanos = ic_cdk::api::time();
 
+        let now_nanos = ic_cdk::api::time();
         let rental_request = RentalRequest {
             user,
             initial_cost_icp: needed_icp,
