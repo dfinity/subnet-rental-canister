@@ -80,7 +80,7 @@ fn start_timers() {
 
 async fn burn_cycles() {
     for rental_agreement in iter_rental_agreements().into_iter().map(|(_, v)| v) {
-        let Ok(_guard_res) = CallerGuard::new(rental_agreement.user, "rental") else {
+        let Ok(_guard_res) = CallerGuard::new(rental_agreement.subnet_id, "agreement") else {
             println!(
                 "Busy processing another request. Skipping cycles burn for subnet {}",
                 rental_agreement.subnet_id
@@ -174,7 +174,7 @@ async fn locking() {
             continue;
         }
 
-        let Ok(_guard_res) = CallerGuard::new(user, "rental") else {
+        let Ok(_guard_res) = CallerGuard::new(user, "request") else {
             println!("Busy processing another request. Skipping.");
             continue;
         };
@@ -404,7 +404,7 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
         verify_caller_is_governance()?;
 
         // make sure no concurrent calls to this method can exist, in addition to governance's check.
-        let _guard = CallerGuard::new(user, "rental").expect("Fatal: Concurrent call");
+        let _guard = CallerGuard::new(user, "request").expect("Fatal: Concurrent call");
 
         // Fail if user has an existing rental request going on
         if get_rental_request(&user).is_some() {
@@ -544,7 +544,7 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
         payload: CreateRentalAgreementPayload,
     ) -> Result<(), ExecuteProposalError> {
         verify_caller_is_governance()?;
-        let _guard = CallerGuard::new(payload.user, "rental").expect("Fatal: Concurrent call");
+        let _guard = CallerGuard::new(payload.user, "request").expect("Fatal: Concurrent call");
         let _guard = CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call");
 
         // Check if the user has an active rental request.
@@ -608,7 +608,7 @@ pub async fn refund() -> Result<u64, String> {
         return Err("Busy processing another request. Try again.".to_string());
     };
     // We might remove a rental request, so we need to acquire a lock on it.
-    let Ok(_guard_res) = CallerGuard::new(caller, "rental") else {
+    let Ok(_guard_res) = CallerGuard::new(caller, "request") else {
         return Err("Busy processing another request. Try again.".to_string());
     };
 
