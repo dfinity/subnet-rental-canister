@@ -126,7 +126,7 @@ fn get_todays_price(pic: &PocketIc) -> Tokens {
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
-    let (rental_condition_id, _rental_conditions) = res.get(0).unwrap();
+    let (rental_condition_id, _rental_conditions) = res.first().unwrap();
     // user finds current price by consulting SRC
     update::<Result<Tokens, String>>(pic, SRC_ID, None, "get_todays_price", rental_condition_id)
         .unwrap()
@@ -295,7 +295,7 @@ fn test_initial_proposal() {
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
     assert_eq!(rental_requests.len(), 1);
-    let rental_request = rental_requests.get(0).unwrap();
+    let rental_request = rental_requests.first().unwrap();
     assert_eq!(rental_request.user, user_principal);
     assert_eq!(
         rental_request.rental_condition_id,
@@ -389,7 +389,7 @@ fn test_create_rental_agreement() {
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
     assert_eq!(rental_requests.len(), 1);
-    let rental_request = rental_requests.get(0).unwrap();
+    let rental_request = rental_requests.first().unwrap();
     assert_eq!(rental_request.user, USER_1);
     assert_eq!(
         rental_request.rental_condition_id,
@@ -451,7 +451,7 @@ fn test_create_rental_agreement() {
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
     assert_eq!(rental_requests.len(), 1);
-    let rental_request = rental_requests.get(0).unwrap();
+    let rental_request = rental_requests.first().unwrap();
 
     let payload = CreateRentalAgreementPayload {
         user: USER_1,
@@ -479,7 +479,7 @@ fn test_create_rental_agreement() {
     );
     let entries = cmc_whitelisted_subnets.data;
     assert_eq!(entries.len(), 1);
-    let entry = entries.get(0).unwrap();
+    let entry = entries.first().unwrap();
     assert_eq!(entry.0, USER_1);
     assert_eq!(entry.1, vec![SUBNET_FOR_RENT]);
 
@@ -493,7 +493,7 @@ fn test_create_rental_agreement() {
         query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
     assert_eq!(rental_agreements.len(), 1);
 
-    let rental_agreement = rental_agreements.get(0).unwrap();
+    let rental_agreement = rental_agreements.first().unwrap();
 
     // get rental condition (should still be there)
     let rental_conditions = query::<Vec<(RentalConditionId, RentalConditions)>>(
@@ -503,7 +503,7 @@ fn test_create_rental_agreement() {
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
-    let rental_condition = rental_conditions.get(0).unwrap().1.clone();
+    let rental_condition = rental_conditions.first().unwrap().1.clone();
 
     // check total cycles created
     let remaining_icp_to_be_converted = final_subnet_price.e8s()
@@ -563,7 +563,7 @@ fn test_create_rental_agreement() {
     let rental_agreements =
         query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
     assert_eq!(rental_agreements.len(), 1);
-    let rental_agreement = rental_agreements.get(0).unwrap();
+    let rental_agreement = rental_agreements.first().unwrap();
     assert_eq!(rental_agreement, &expected_rental_agreement);
 }
 
