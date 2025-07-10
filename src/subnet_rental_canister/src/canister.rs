@@ -22,7 +22,9 @@ use ic_cdk::{
 use ic_ledger_types::{
     AccountIdentifier, Subaccount, Tokens, DEFAULT_FEE, MAINNET_GOVERNANCE_CANISTER_ID,
 };
-use std::time::Duration;
+use std::{cmp::min, time::Duration};
+
+const CYCLES_BURN_INTERVAL_SECONDS: u64 = 60;
 
 ////////// CANISTER METHODS //////////
 
@@ -69,6 +71,76 @@ fn start_timers() {
     ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), || {
         ic_cdk::futures::spawn(locking())
     });
+
+    // Burn cycles every minute.
+    ic_cdk_timers::set_timer_interval(Duration::from_secs(CYCLES_BURN_INTERVAL_SECONDS), || {
+        ic_cdk::futures::spawn(burn_cycles())
+    });
+}
+
+async fn burn_cycles() {
+    for rental_agreement in iter_rental_agreements().into_iter().map(|(_, v)| v) {
+        let Ok(_guard_res) = CallerGuard::new(rental_agreement.subnet_id, "agreement") else {
+            println!(
+                "Busy processing another request. Skipping cycles burn for subnet {}",
+                rental_agreement.subnet_id
+            );
+            continue;
+        };
+
+        // Because of the copy in the loop head, by the time we execute here, the rental agreement might not exist anymore.
+        let Some(rental_agreement) = get_rental_agreement(&rental_agreement.subnet_id) else {
+            println!(
+                "Rental agreement for subnet {} no longer exists. Skipping cycles burn.",
+                rental_agreement.subnet_id
+            );
+            continue;
+        };
+
+        // Now we are sure the rental agreement still exists and only we can modify it.
+
+        let total_cycles_burned = rental_agreement.total_cycles_burned;
+        let total_cycles_created = rental_agreement.total_cycles_created;
+        let total_cycles_remaining = total_cycles_created.saturating_sub(total_cycles_burned);
+        let paid_until_nanos = rental_agreement.paid_until_nanos;
+        let now_nanos = ic_cdk::api::time();
+
+        // No more cycles left to burn.
+        if total_cycles_remaining == 0 {
+            continue;
+        }
+
+        // The rental agreement is not paid for anymore.
+        if now_nanos >= paid_until_nanos {
+            // Burn all remaining cycles.
+            println!(
+                "Burning all remaining cycles for subnet {} (subnet is no longer paid for)",
+                rental_agreement.subnet_id
+            );
+            let burned = ic_cdk::api::cycles_burn(total_cycles_remaining);
+            update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+                agreement.total_cycles_burned =
+                    agreement.total_cycles_burned.saturating_add(burned);
+                agreement
+            })
+            .unwrap();
+            continue;
+        }
+
+        // The rental agreement is still paid for and has some cycles left to burn.
+        let time_remaining_nanos = paid_until_nanos - now_nanos; // guaranteed to be positive due to above check
+        let time_remaining_seconds = time_remaining_nanos / BILLION;
+        let amount_to_burn_per_minute = (total_cycles_remaining / time_remaining_seconds as u128)
+            * CYCLES_BURN_INTERVAL_SECONDS as u128;
+
+        let burned =
+            ic_cdk::api::cycles_burn(min(amount_to_burn_per_minute, total_cycles_remaining)); // don't burn more than we have
+        update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+            agreement.total_cycles_burned = agreement.total_cycles_burned.saturating_add(burned);
+            agreement
+        })
+        .unwrap();
+    }
 }
 
 async fn locking() {
@@ -102,7 +174,7 @@ async fn locking() {
             continue;
         }
 
-        let Ok(_guard_res) = CallerGuard::new(user, "rental") else {
+        let Ok(_guard_res) = CallerGuard::new(user, "request") else {
             println!("Busy processing another request. Skipping.");
             continue;
         };
@@ -358,7 +430,7 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
         verify_caller_is_governance()?;
 
         // make sure no concurrent calls to this method can exist, in addition to governance's check.
-        let _guard = CallerGuard::new(user, "rental").expect("Fatal: Concurrent call");
+        let _guard = CallerGuard::new(user, "request").expect("Fatal: Concurrent call");
 
         // Fail if user has an existing rental request going on
         if get_rental_request(&user).is_some() {
@@ -497,7 +569,7 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
         payload: CreateRentalAgreementPayload,
     ) -> Result<(), ExecuteProposalError> {
         verify_caller_is_governance()?;
-        let _guard = CallerGuard::new(payload.user, "rental").expect("Fatal: Concurrent call");
+        let _guard = CallerGuard::new(payload.user, "request").expect("Fatal: Concurrent call");
         let _guard = CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call");
 
         // Check if the user has an active rental request.
@@ -561,7 +633,7 @@ pub async fn refund() -> Result<u64, String> {
         return Err("Busy processing another request. Try again.".to_string());
     };
     // We might remove a rental request, so we need to acquire a lock on it.
-    let Ok(_guard_res) = CallerGuard::new(caller, "rental") else {
+    let Ok(_guard_res) = CallerGuard::new(caller, "request") else {
         return Err("Busy processing another request. Try again.".to_string());
     };
 
