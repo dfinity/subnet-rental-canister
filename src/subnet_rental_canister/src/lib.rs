@@ -146,6 +146,11 @@ impl Storable for RentalAgreement {
 }
 
 #[derive(CandidType, Debug, PartialEq, Eq, Clone, Deserialize)]
+pub struct RentalAgreementStatus {
+    pub description: String,
+}
+
+#[derive(CandidType, Debug, PartialEq, Eq, Clone, Deserialize)]
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
     CallXRCFailed(String),

@@ -3,10 +3,10 @@ use crate::{
         self, get_cached_rate, get_rental_agreement, get_rental_conditions, get_rental_request,
         insert_rental_condition, iter_rental_agreements, iter_rental_conditions,
         iter_rental_requests, persist_event, persist_rental_agreement, persist_rental_request,
-        remove_rental_request, update_rental_request, CallerGuard,
+        remove_rental_request, update_rental_agreement, update_rental_request, CallerGuard,
     },
     external_calls::{
-        check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
+        check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_icp_per_xdr_at_time,
         refund_user, whitelist_user_on_cmc,
     },
     history::EventType,
@@ -15,6 +15,7 @@ use crate::{
     SubnetRentalProposalPayload, BILLION, TRILLION,
 };
 use candid::Principal;
+use chrono::DateTime;
 use ic_cdk::{
     api::{msg_caller, msg_reject, msg_reply},
     init, post_upgrade, println, query, update,
@@ -208,17 +209,43 @@ pub fn list_rental_agreements() -> Vec<RentalAgreement> {
         .collect()
 }
 
+/// Returns the status of a rental agreement with dates/hours in UTC (rounded down to nearest hour).
+/// Returns TERMINATED, WARN (< 30 days), or COVERED (>= 30 days) with expiration date.
+#[query]
+pub fn rental_agreement_status(subnet_id: Principal) -> Result<String, String> {
+    let Some(rental_agreement) = get_rental_agreement(&subnet_id) else {
+        return Err("Rental agreement not found".to_string());
+    };
+
+    let now_nanos = ic_cdk::api::time();
+    let thirty_days_nanos = 30 * 24 * 60 * 60 * BILLION;
+    let paid_until_nanos = rental_agreement.paid_until_nanos;
+
+    if paid_until_nanos < now_nanos {
+        return Ok("TERMINATED: This rental agreement has been terminated".to_string());
+    }
+
+    let date = format_timestamp(paid_until_nanos);
+
+    if paid_until_nanos < now_nanos + thirty_days_nanos {
+        Ok(format!(
+            "WARN: This rental agreement is only covered until {}. Please top up the subnet.",
+            date
+        ))
+    } else {
+        Ok(format!(
+            "COVERED: This rental agreement is covered until {}.",
+            date
+        ))
+    }
+}
+
 ////////// UPDATE METHODS //////////
 
 /// Calculate the price of a subnet in ICP according to the exchange rate at the previous UTC midnight.
 #[update]
 pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
-    let Some(RentalConditions {
-        daily_cost_cycles,
-        initial_rental_period_days,
-        ..
-    }) = get_rental_conditions(id)
-    else {
+    let Some(conditions) = get_rental_conditions(id) else {
         return Err("RentalConditionId not found".to_string());
     };
     let now_secs = ic_cdk::api::time() / BILLION;
@@ -237,7 +264,7 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
             );
         }
         // Call exchange rate canister.
-        let res = get_exchange_rate_xdr_per_icp_at_time(prev_midnight).await;
+        let res = get_exchange_rate_icp_per_xdr_at_time(prev_midnight).await;
         let Ok(tup) = res else {
             return Err(format!(
                 "Failed to call the exchange rate canister: {:?}",
@@ -248,8 +275,8 @@ pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
         tup
     };
     let res = calculate_subnet_price(
-        daily_cost_cycles,
-        initial_rental_period_days,
+        conditions.daily_cost_cycles,
+        conditions.initial_rental_period_days,
         scaled_exchange_rate_xdr_per_icp,
         decimals,
     );
@@ -385,7 +412,7 @@ pub async fn execute_rental_request_proposal_(
     let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time_seconds);
 
     // Call exchange rate canister.
-    let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
+    let res = get_exchange_rate_icp_per_xdr_at_time(exchange_rate_query_time).await;
     let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
         let e = ExecuteProposalError::CallXRCFailed(format!("{:?}", res.unwrap_err()));
         return with_error(user, proposal_id, e);
@@ -482,7 +509,7 @@ pub async fn execute_create_rental_agreement_(
     let rental_condition = get_rental_conditions(rental_request.rental_condition_id)
         .expect("Fatal: Rental condition not found");
     let initial_rental_period_nanos =
-        rental_condition.initial_rental_period_days * 24 * 60 * 60 * 1_000_000_000;
+        rental_condition.initial_rental_period_days * 24 * 60 * 60 * BILLION;
 
     // Convert all remaining ICP to cycles.
     let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
@@ -572,6 +599,105 @@ pub async fn refund() -> Result<u64, String> {
     Ok(block_id)
 }
 
+/// Estimates how many cycles and days a given ICP amount would provide for a subnet rental.
+/// Uses the (potentially cached) exchange rate from the previous midnight to calculate the conversion.
+#[update]
+pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<String, String> {
+    let Some(rental_agreement) = get_rental_agreement(&subnet_id) else {
+        return Err("Rental agreement not found".to_string());
+    };
+
+    let now_secs = ic_cdk::api::time() / BILLION;
+    let prev_midnight = round_to_previous_midnight(now_secs);
+
+    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) =
+        get_exchange_rate_icp_per_xdr_at_time(prev_midnight).await
+    else {
+        return Err("Failed to get exchange rate".to_string());
+    };
+
+    if icp < DEFAULT_FEE {
+        return Err(format!(
+            "Must top up more than {} ICP to cover the default fee",
+            DEFAULT_FEE
+        ));
+    }
+
+    let to_be_topped_up = icp - DEFAULT_FEE;
+
+    // Calculate estimated cycles: ICP * 10_000 * 10^decimals / exchange_rate
+    let estimated_cycles = to_be_topped_up
+        .e8s()
+        .checked_mul(10_000)
+        .and_then(|x| x.checked_mul(10u64.pow(decimals)))
+        .and_then(|x| x.checked_div(scaled_exchange_rate_xdr_per_icp))
+        .ok_or("Calculation overflow")?;
+
+    let estimated_trillion_cycles = estimated_cycles / TRILLION as u64;
+
+    let rental_condition = get_rental_conditions(rental_agreement.rental_condition_id)
+        .ok_or("Rental condition not found")?;
+
+    let estimated_days = estimated_cycles / rental_condition.daily_cost_cycles as u64;
+
+    Ok(format!(
+        "Estimate: {} ICP would provide approximately {} trillion cycles (TC), extending the rental by {} days. Note that this is an estimate and the actual amount may vary.",
+        icp, estimated_trillion_cycles, estimated_days
+    ))
+}
+
+#[update]
+pub async fn process_subnet_topup(subnet_id: Principal) -> Result<(), String> {
+    let Some(rental_agreement) = get_rental_agreement(&subnet_id) else {
+        return Err("Rental agreement not found".to_string());
+    };
+
+    let _guard = CallerGuard::new(rental_agreement.user, "rental").expect("Fatal: Concurrent call");
+
+    let balance = check_subaccount_balance(Subaccount::from(rental_agreement.user)).await;
+
+    if balance < DEFAULT_FEE {
+        return Err(format!(
+            "Failed to top up: {} has insufficient funds {}",
+            rental_agreement.user, balance
+        ));
+    }
+
+    let to_be_topped_up = balance - DEFAULT_FEE;
+
+    let actual_cycles =
+        match convert_icp_to_cycles(to_be_topped_up, Subaccount::from(rental_agreement.user)).await
+        {
+            Ok(cycles) => cycles,
+            Err(e) => {
+                return Err(format!("Failed to convert ICP to cycles: {:?}", e));
+            }
+        };
+    println!(
+        "Converted {} ICP to {} cycles",
+        to_be_topped_up, actual_cycles
+    );
+
+    // calculate the new paid_until_nanos
+    let daily_cost_cycles = get_rental_conditions(rental_agreement.rental_condition_id)
+        .expect("Fatal: Rental Condition not found")
+        .daily_cost_cycles;
+    let days_charged = actual_cycles / daily_cost_cycles;
+    let nanos_charged = days_charged * 24 * 60 * 60 * BILLION as u128;
+    let new_paid_until_nanos = rental_agreement.paid_until_nanos + nanos_charged as u64;
+
+    // update rental agreement
+    update_rental_agreement(subnet_id, |mut agreement| {
+        agreement.total_cycles_created += actual_cycles;
+        agreement.total_icp_paid += balance;
+        agreement.paid_until_nanos = new_paid_until_nanos;
+        agreement
+    })
+    .unwrap(); // Safe because we checked above that the rental agreement exists.
+
+    Ok(())
+}
+
 // ============================================================================
 // Misc
 
@@ -585,6 +711,20 @@ fn verify_caller_is_governance() -> Result<(), ExecuteProposalError> {
 
 fn round_to_previous_midnight(time_secs: u64) -> u64 {
     time_secs - time_secs % 86400
+}
+
+fn format_timestamp(time_nanos: u64) -> String {
+    // Convert nanoseconds to seconds
+    let time_secs = time_nanos / BILLION;
+
+    // Round down to the nearest hour (3600 seconds)
+    let rounded_secs = (time_secs / 3600) * 3600;
+
+    // Convert to datetime and format
+    let datetime = DateTime::from_timestamp(rounded_secs as i64, 0)
+        .unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap());
+
+    datetime.format("%Y-%m-%d %H:00 UTC").to_string()
 }
 
 // allow candid-extractor to derive candid interface from rust code
