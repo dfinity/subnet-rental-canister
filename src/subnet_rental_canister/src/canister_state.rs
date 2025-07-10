@@ -220,22 +220,17 @@ pub fn get_history_page(
 /// Create a RentalRequest if it does not already exist, and persist the corresponding event.
 pub fn persist_rental_request(rental_request: RentalRequest) -> Result<(), String> {
     RENTAL_REQUESTS.with_borrow_mut(|requests| {
-        if requests.contains_key(&rental_request.user) {
-            Err(format!(
-                "Principal {} already has an active RentalRequest",
-                &rental_request.user
-            ))
-        } else {
-            requests.insert(rental_request.user, rental_request.clone());
-            println!("Created rental request: {:?}", &rental_request);
-            persist_event(
-                EventType::RentalRequestCreated {
-                    rental_request: rental_request.clone(),
-                },
-                Some(rental_request.user),
-            );
-            Ok(())
-        }
+        let user = rental_request.user;
+        if requests.contains_key(&user) {
+            return Err(format!("User {user} already has an active RentalRequest"));
+        };
+        requests.insert(user, rental_request.clone());
+        println!("Created rental request: {:?}", &rental_request);
+        persist_event(
+            EventType::RentalRequestCreated { rental_request },
+            Some(user),
+        );
+        Ok(())
     })
 }
 
@@ -246,25 +241,24 @@ pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
 /// Create a RentalAgreement if it does not already exist, and persist the corresponding event.
 pub fn persist_rental_agreement(rental_agreement: RentalAgreement) -> Result<(), String> {
     RENTAL_AGREEMENTS.with_borrow_mut(|agreements| {
-        if agreements.contains_key(&rental_agreement.subnet_id) {
-            Err(format!(
-                "Subnet_id {:?} already has an active RentalAgreement",
-                rental_agreement.subnet_id
-            ))
-        } else {
-            agreements.insert(rental_agreement.subnet_id, rental_agreement.clone());
-            println!("Created rental agreement: {:?}", &rental_agreement);
-            persist_event(
-                EventType::RentalAgreementCreated {
-                    user: rental_agreement.user,
-                    rental_request_proposal_id: rental_agreement.rental_request_proposal_id,
-                    subnet_creation_proposal_id: rental_agreement.subnet_creation_proposal_id,
-                    rental_condition_id: rental_agreement.rental_condition_id,
-                },
-                Some(rental_agreement.subnet_id),
-            );
-            Ok(())
+        let subnet_id = rental_agreement.subnet_id;
+        if agreements.contains_key(&subnet_id) {
+            return Err(format!(
+                "Subnet_id {subnet_id} already has an active RentalAgreement"
+            ));
         }
+        agreements.insert(subnet_id, rental_agreement.clone());
+        println!("Created rental agreement: {:?}", &rental_agreement);
+        persist_event(
+            EventType::RentalAgreementCreated {
+                user: rental_agreement.user,
+                rental_request_proposal_id: rental_agreement.rental_request_proposal_id,
+                subnet_creation_proposal_id: rental_agreement.subnet_creation_proposal_id,
+                rental_condition_id: rental_agreement.rental_condition_id,
+            },
+            Some(subnet_id),
+        );
+        Ok(())
     })
 }
 
