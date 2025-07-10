@@ -358,153 +358,155 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
     } else {
         msg_reply(candid::encode_one(()).unwrap());
     }
-}
 
-pub async fn execute_rental_request_proposal_(
-    SubnetRentalProposalPayload {
-        user,
-        rental_condition_id,
-        proposal_id,
-        proposal_creation_time_seconds,
-    }: SubnetRentalProposalPayload,
-) -> Result<(), ExecuteProposalError> {
-    /// This function makes sense locally only because EventType::RentalRequestFailed is fixed.
-    fn with_error(
-        user: Principal,
-        proposal_id: u64,
-        e: ExecuteProposalError,
+    pub async fn execute_rental_request_proposal_(
+        SubnetRentalProposalPayload {
+            user,
+            rental_condition_id,
+            proposal_id,
+            proposal_creation_time_seconds,
+        }: SubnetRentalProposalPayload,
     ) -> Result<(), ExecuteProposalError> {
-        persist_event(
-            EventType::RentalRequestFailed {
-                user,
-                proposal_id,
-                reason: format!("{:?}", e.clone()),
-            },
-            Some(user),
-        );
-        Err(e)
-    }
-    verify_caller_is_governance()?;
+        /// This function makes sense locally only because EventType::RentalRequestFailed is fixed.
+        fn with_error(
+            user: Principal,
+            proposal_id: u64,
+            e: ExecuteProposalError,
+        ) -> Result<(), ExecuteProposalError> {
+            persist_event(
+                EventType::RentalRequestFailed {
+                    user,
+                    proposal_id,
+                    reason: format!("{:?}", e.clone()),
+                },
+                Some(user),
+            );
+            Err(e)
+        }
+        verify_caller_is_governance()?;
 
-    // make sure no concurrent calls to this method can exist, in addition to governance's check.
-    let _guard = CallerGuard::new(user, "rental").expect("Fatal: Concurrent call");
+        // make sure no concurrent calls to this method can exist, in addition to governance's check.
+        let _guard = CallerGuard::new(user, "rental").expect("Fatal: Concurrent call");
 
-    // Fail if user has an existing rental request going on
-    if get_rental_request(&user).is_some() {
-        println!("Fatal: User already has an open SubnetRentalRequest waiting for completion.");
-        let e = ExecuteProposalError::UserAlreadyRequestingSubnetRental;
-        return with_error(user, proposal_id, e);
-    }
+        // Fail if user has an existing rental request going on
+        if get_rental_request(&user).is_some() {
+            println!("Fatal: User already has an open SubnetRentalRequest waiting for completion.");
+            let e = ExecuteProposalError::UserAlreadyRequestingSubnetRental;
+            return with_error(user, proposal_id, e);
+        }
 
-    // Fail if user has an active rental agreement
-    if iter_rental_agreements().iter().any(|(_, v)| v.user == user) {
-        println!("Fatal: User already has an active rental agreement.");
-        let e = ExecuteProposalError::UserAlreadyHasAgreement;
-        return with_error(user, proposal_id, e);
-    }
+        // Fail if user has an active rental agreement
+        if iter_rental_agreements().iter().any(|(_, v)| v.user == user) {
+            println!("Fatal: User already has an active rental agreement.");
+            let e = ExecuteProposalError::UserAlreadyHasAgreement;
+            return with_error(user, proposal_id, e);
+        }
 
-    // unwrap safety:
-    // The rental_condition_id key must have a value in the rental conditions map due to `init` and `post_upgrade`.
-    let RentalConditions {
-        subnet_id,
-        daily_cost_cycles,
-        initial_rental_period_days,
-        ..
-    } = get_rental_conditions(rental_condition_id).expect("Fatal: Rental conditions not found");
+        // unwrap safety:
+        // The rental_condition_id key must have a value in the rental conditions map due to `init` and `post_upgrade`.
+        let RentalConditions {
+            subnet_id,
+            daily_cost_cycles,
+            initial_rental_period_days,
+            ..
+        } = get_rental_conditions(rental_condition_id).expect("Fatal: Rental conditions not found");
 
-    // Fail if the provided subnet is already being rented:
-    match subnet_id {
-        None => {}
-        Some(subnet_id) => {
-            if get_rental_agreement(&subnet_id).is_some() {
-                println!("Fatal: Subnet is already being rented.");
-                let e = ExecuteProposalError::SubnetAlreadyRented;
+        // Fail if the provided subnet is already being rented:
+        match subnet_id {
+            None => {}
+            Some(subnet_id) => {
+                if get_rental_agreement(&subnet_id).is_some() {
+                    println!("Fatal: Subnet is already being rented.");
+                    let e = ExecuteProposalError::SubnetAlreadyRented;
+                    return with_error(user, proposal_id, e);
+                }
+            }
+        }
+        // Fail if the provided rental_condition_id (i.e., subnet) is already part of a pending rental request:
+        for (_, rental_request) in iter_rental_requests().iter() {
+            if rental_request.rental_condition_id == rental_condition_id {
+                println!(
+                    "Fatal: The given rental condition id is already part of a rental request."
+                );
+                let e = ExecuteProposalError::SubnetAlreadyRequested;
                 return with_error(user, proposal_id, e);
             }
         }
-    }
-    // Fail if the provided rental_condition_id (i.e., subnet) is already part of a pending rental request:
-    for (_, rental_request) in iter_rental_requests().iter() {
-        if rental_request.rental_condition_id == rental_condition_id {
-            println!("Fatal: The given rental condition id is already part of a rental request.");
-            let e = ExecuteProposalError::SubnetAlreadyRequested;
+        println!("Proceeding with rental request execution.");
+
+        // ------------------------------------------------------------------
+        // Attempt to transfer enough ICP to cover the initial rental period.
+        // Proposal creation time passed by NNS Governance is in seconds.
+        let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time_seconds);
+
+        // Call exchange rate canister.
+        let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
+        let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
+            let e = ExecuteProposalError::CallXRCFailed(format!("{:?}", res.unwrap_err()));
+            return with_error(user, proposal_id, e);
+        };
+
+        let res = calculate_subnet_price(
+            daily_cost_cycles,
+            initial_rental_period_days,
+            scaled_exchange_rate_xdr_per_icp,
+            decimals,
+        );
+        let Ok(needed_icp) = res else {
+            println!("Fatal: Failed to get exchange rate");
+            let e = res.unwrap_err();
+            return with_error(user, proposal_id, e);
+        };
+
+        // Check that the amount the user transferred to the SRC/user subaccount covers the initial cost.
+        let available_icp = check_subaccount_balance(Subaccount::from(user)).await;
+        println!(
+            "Available icp: {}; Needed icp: {}",
+            available_icp, needed_icp
+        );
+        if needed_icp > available_icp {
+            println!("Fatal: Not enough ICP on the user subaccount to cover the initial period.");
+            let e = ExecuteProposalError::InsufficientFunds {
+                have: available_icp,
+                need: needed_icp,
+            };
             return with_error(user, proposal_id, e);
         }
-    }
-    println!("Proceeding with rental request execution.");
 
-    // ------------------------------------------------------------------
-    // Attempt to transfer enough ICP to cover the initial rental period.
-    // Proposal creation time passed by NNS Governance is in seconds.
-    let exchange_rate_query_time = round_to_previous_midnight(proposal_creation_time_seconds);
+        // Lock 10% by converting to cycles
+        let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
+        println!(
+            "SRC will lock 10% of the initial cost: {} ICP.",
+            lock_amount_icp
+        );
 
-    // Call exchange rate canister.
-    let res = get_exchange_rate_xdr_per_icp_at_time(exchange_rate_query_time).await;
-    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) = res else {
-        let e = ExecuteProposalError::CallXRCFailed(format!("{:?}", res.unwrap_err()));
-        return with_error(user, proposal_id, e);
-    };
-
-    let res = calculate_subnet_price(
-        daily_cost_cycles,
-        initial_rental_period_days,
-        scaled_exchange_rate_xdr_per_icp,
-        decimals,
-    );
-    let Ok(needed_icp) = res else {
-        println!("Fatal: Failed to get exchange rate");
-        let e = res.unwrap_err();
-        return with_error(user, proposal_id, e);
-    };
-
-    // Check that the amount the user transferred to the SRC/user subaccount covers the initial cost.
-    let available_icp = check_subaccount_balance(Subaccount::from(user)).await;
-    println!(
-        "Available icp: {}; Needed icp: {}",
-        available_icp, needed_icp
-    );
-    if needed_icp > available_icp {
-        println!("Fatal: Not enough ICP on the user subaccount to cover the initial period.");
-        let e = ExecuteProposalError::InsufficientFunds {
-            have: available_icp,
-            need: needed_icp,
+        let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
+        let Ok(locked_cycles) = res else {
+            println!("Fatal: Failed to convert ICP to cycles");
+            let e = res.unwrap_err();
+            return with_error(user, proposal_id, e);
         };
-        return with_error(user, proposal_id, e);
+        println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
+        let lock_time = ic_cdk::api::time();
+
+        let now_nanos = ic_cdk::api::time();
+        let rental_request = RentalRequest {
+            user,
+            initial_cost_icp: needed_icp,
+            locked_amount_icp: lock_amount_icp,
+            locked_amount_cycles: locked_cycles,
+            initial_proposal_id: proposal_id,
+            creation_time_nanos: now_nanos,
+            rental_condition_id,
+            last_locking_time_nanos: lock_time,
+        };
+
+        // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
+        persist_rental_request(rental_request).unwrap();
+        println!("Created rental request for user {}", &user);
+
+        Ok(())
     }
-
-    // Lock 10% by converting to cycles
-    let lock_amount_icp = Tokens::from_e8s(needed_icp.e8s() / 10);
-    println!(
-        "SRC will lock 10% of the initial cost: {} ICP.",
-        lock_amount_icp
-    );
-
-    let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
-    let Ok(locked_cycles) = res else {
-        println!("Fatal: Failed to convert ICP to cycles");
-        let e = res.unwrap_err();
-        return with_error(user, proposal_id, e);
-    };
-    println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
-    let lock_time = ic_cdk::api::time();
-
-    let now = ic_cdk::api::time();
-    let rental_request = RentalRequest {
-        user,
-        initial_cost_icp: needed_icp,
-        locked_amount_icp: lock_amount_icp,
-        locked_amount_cycles: locked_cycles,
-        initial_proposal_id: proposal_id,
-        creation_time_nanos: now,
-        rental_condition_id,
-        last_locking_time_nanos: lock_time,
-    };
-
-    // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
-    persist_rental_request(rental_request).unwrap();
-    println!("Created rental request for user {}", &user);
-
-    Ok(())
 }
 
 #[update(manual_reply = true)]
@@ -514,59 +516,63 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
     } else {
         msg_reply(candid::encode_one(()).unwrap());
     }
-}
 
-pub async fn execute_create_rental_agreement_(
-    payload: CreateRentalAgreementPayload,
-) -> Result<(), ExecuteProposalError> {
-    verify_caller_is_governance()?;
-    let _guard = CallerGuard::new(payload.user, "rental").expect("Fatal: Concurrent call");
+    pub async fn execute_create_rental_agreement_(
+        payload: CreateRentalAgreementPayload,
+    ) -> Result<(), ExecuteProposalError> {
+        verify_caller_is_governance()?;
+        let _guard = CallerGuard::new(payload.user, "rental").expect("Fatal: Concurrent call");
+        let _guard = CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call");
 
-    // Check if the user has an active rental request.
-    let Some(rental_request) = get_rental_request(&payload.user) else {
-        return Err(ExecuteProposalError::RentalRequestNotFound);
-    };
+        // Check if the user has an active rental request.
+        let Some(rental_request) = get_rental_request(&payload.user) else {
+            return Err(ExecuteProposalError::RentalRequestNotFound);
+        };
 
-    // Fail if the subnet is already being rented.
-    if get_rental_agreement(&payload.subnet_id).is_some() {
-        return Err(ExecuteProposalError::SubnetAlreadyRented);
+        // Fail if the subnet is already being rented.
+        if get_rental_agreement(&payload.subnet_id).is_some() {
+            return Err(ExecuteProposalError::SubnetAlreadyRented);
+        }
+
+        let rental_condition = get_rental_conditions(rental_request.rental_condition_id)
+            .expect("Fatal: Rental condition not found");
+        let initial_rental_period_nanos =
+            rental_condition.initial_rental_period_days * 24 * 60 * 60 * 1_000_000_000;
+
+        // Convert all remaining ICP to cycles.
+        let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
+        let converted_cycles =
+            convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
+        let total_cycles_created =
+            converted_cycles.saturating_add(rental_request.locked_amount_cycles);
+
+        // Create the rental agreement.
+        let now_nanos = ic_cdk::api::time();
+        let rental_agreement = RentalAgreement {
+            user: payload.user,
+            subnet_id: payload.subnet_id,
+            rental_request_proposal_id: rental_request.initial_proposal_id,
+            subnet_creation_proposal_id: Some(payload.proposal_id),
+            rental_condition_id: rental_request.rental_condition_id,
+            creation_time_nanos: now_nanos,
+            paid_until_nanos: now_nanos + initial_rental_period_nanos,
+            total_icp_paid: rental_request.initial_cost_icp,
+            total_cycles_created,
+            total_cycles_burned: 0,
+        };
+
+        // Whitelist the user on the CMC.
+        whitelist_user_on_cmc(&payload.user, &payload.subnet_id).await;
+
+        // Remove the rental request. This will stop the locking process.
+        remove_rental_request(&payload.user).expect("Fatal: Failed to remove rental request"); // Safe because we checked above that the user has a rental request.
+
+        // Persist the rental agreement.
+        persist_rental_agreement(rental_agreement)
+            .expect("Fatal: Failed to persist rental agreement"); // Safe because we checked above that the subnet is not being rented.
+
+        Ok(())
     }
-
-    let rental_condition = get_rental_conditions(rental_request.rental_condition_id)
-        .expect("Fatal: Rental condition not found");
-    let initial_rental_period_nanos =
-        rental_condition.initial_rental_period_days * 24 * 60 * 60 * 1_000_000_000;
-
-    // Convert all remaining ICP to cycles.
-    let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
-    let converted_cycles =
-        convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
-    let total_cycles_created = converted_cycles + rental_request.locked_amount_cycles;
-
-    // Create the rental agreement.
-    let now_nanos = ic_cdk::api::time();
-    let rental_agreement = RentalAgreement {
-        user: payload.user,
-        subnet_id: payload.subnet_id,
-        rental_request_proposal_id: rental_request.initial_proposal_id,
-        subnet_creation_proposal_id: Some(payload.proposal_id),
-        rental_condition_id: rental_request.rental_condition_id,
-        creation_time_nanos: now_nanos,
-        paid_until_nanos: now_nanos + initial_rental_period_nanos,
-        total_icp_paid: rental_request.initial_cost_icp,
-        total_cycles_created,
-        total_cycles_burned: 0,
-    };
-
-    persist_rental_agreement(rental_agreement).expect("Fatal: Failed to persist rental agreement"); // Safe because we checked above that the subnet is not being rented.
-
-    // Whitelist the user on the CMC.
-    whitelist_user_on_cmc(&payload.user, &payload.subnet_id).await;
-
-    // Remove the rental request. This will stop the locking process.
-    remove_rental_request(&payload.user).expect("Fatal: Failed to remove rental request"); // Safe because we checked above that the user has a rental request.
-
-    Ok(())
 }
 
 /// If the calling user has a rental request, the rental request will be deleted,
