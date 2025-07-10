@@ -433,7 +433,6 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
             return with_error(user, proposal_id, e);
         };
         println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
-        let lock_time = ic_cdk::api::time();
 
         let now_nanos = ic_cdk::api::time();
         let rental_request = RentalRequest {
@@ -444,7 +443,7 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
             initial_proposal_id: proposal_id,
             creation_time_nanos: now_nanos,
             rental_condition_id,
-            last_locking_time_nanos: lock_time,
+            last_locking_time_nanos: now_nanos,
         };
 
         // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
