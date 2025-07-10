@@ -7,7 +7,7 @@ use crate::{
     },
     external_calls::{
         check_subaccount_balance, convert_icp_to_cycles, get_exchange_rate_xdr_per_icp_at_time,
-        refund_user, whitelist_user_on_cmc,
+        refund_user, set_authorized_subnetwork_list,
     },
     history::EventType,
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, PriceCalculationData,
@@ -455,6 +455,11 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
     }
 }
 
+/// This function is called by the NNS Governance canister to create a rental agreement from an existing rental request.
+/// 1. The remaining ICP is converted to cycles and added to the total cycles created.
+/// 2. The user is whitelisted on the CMC.
+/// 3. The rental request is removed, which will terminate the monthly locking process.
+/// 4. The rental agreement is persisted.
 #[update(manual_reply = true)]
 pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPayload) {
     if let Err(e) = execute_create_rental_agreement_(payload).await {
@@ -507,15 +512,12 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
             total_cycles_burned: 0,
         };
 
-        // Whitelist the user on the CMC.
-        whitelist_user_on_cmc(&payload.user, &payload.subnet_id).await;
+        set_authorized_subnetwork_list(&payload.user, &payload.subnet_id).await;
 
-        // Remove the rental request. This will stop the locking process.
-        remove_rental_request(&payload.user).expect("Fatal: Failed to remove rental request"); // Safe because we checked above that the user has a rental request.
+        // Removing the rental request will also stop the monthly locking process which locks 10% of the initial cost.
+        remove_rental_request(&payload.user).unwrap(); // Safe because we checked above that the user has a rental request.
 
-        // Persist the rental agreement.
-        persist_rental_agreement(rental_agreement)
-            .expect("Fatal: Failed to persist rental agreement"); // Safe because we checked above that the subnet is not being rented.
+        persist_rental_agreement(rental_agreement).unwrap(); // Safe because we checked above that the subnet is not being rented.
 
         Ok(())
     }
@@ -560,11 +562,9 @@ pub async fn refund() -> Result<u64, String> {
             "Burned {} locked cycles after refunding",
             rental_request.locked_amount_cycles
         );
-        remove_rental_request(&caller);
+        remove_rental_request(&caller).unwrap(); // Safe because we checked above that the user has a rental request.
         persist_event(
-            EventType::RentalRequestCancelled {
-                rental_request: rental_request.clone(),
-            },
+            EventType::RentalRequestCancelled { rental_request },
             Some(caller),
         );
     };
