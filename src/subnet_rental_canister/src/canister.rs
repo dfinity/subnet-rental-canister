@@ -758,15 +758,32 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<(), String> {
         .expect("Fatal: Rental Condition not found")
         .daily_cost_cycles;
     let second_cost_cycles = daily_cost_cycles / (24 * 60 * 60); // convert cost to cycles per second, rounding down
-    let seconds_charged = actual_cycles / second_cost_cycles;
-    let nanos_charged = seconds_charged * BILLION as u128; // convert to nanoseconds
-    let new_paid_until_nanos = rental_agreement.paid_until_nanos + nanos_charged as u64;
+    let seconds_charged = actual_cycles / second_cost_cycles; // calculate how many seconds the topup covers, rounding down to nearest second
+    let nanos_charged = seconds_charged.saturating_mul(BILLION as u128);
+    let new_paid_until_nanos =
+        (rental_agreement.paid_until_nanos as u128).saturating_add(nanos_charged);
+
+    let new_paid_until_nanos_u64 = match new_paid_until_nanos.try_into() {
+        Ok(val) => val,
+        Err(_) => {
+            // The user topped up the subnet beyond the year 2554.
+            // At that point, u64 is too small to represent the number of nanoseconds since 1970.
+            println!(
+                "Warning: Top-up amount causes a u64 overflow, capping at maximum possible u64 value"
+            );
+            u64::MAX
+        }
+    };
+
+    let new_total_cycles_created = rental_agreement
+        .total_cycles_created
+        .saturating_add(actual_cycles);
 
     // update rental agreement
     update_rental_agreement(subnet_id, |mut agreement| {
-        agreement.total_cycles_created += actual_cycles;
-        agreement.total_icp_paid += balance;
-        agreement.paid_until_nanos = new_paid_until_nanos;
+        agreement.total_cycles_created = new_total_cycles_created;
+        agreement.total_icp_paid += balance; // Tokens do saturating adds
+        agreement.paid_until_nanos = new_paid_until_nanos_u64;
         agreement
     })
     .unwrap(); // Safe because we checked above that the rental agreement exists.
