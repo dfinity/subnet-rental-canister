@@ -15,7 +15,6 @@ use crate::{
     SubnetRentalProposalPayload, BILLION, TRILLION,
 };
 use candid::Principal;
-use chrono::DateTime;
 use ic_cdk::{
     api::{msg_caller, msg_reject, msg_reply},
     init, post_upgrade, println, query, update,
@@ -225,17 +224,17 @@ pub fn rental_agreement_status(subnet_id: Principal) -> Result<String, String> {
         return Ok("TERMINATED: This rental agreement has been terminated".to_string());
     }
 
-    let date = format_timestamp(paid_until_nanos);
+    let days_remaining = calculate_days_remaining(paid_until_nanos, now_nanos);
 
     if paid_until_nanos < now_nanos + thirty_days_nanos {
         Ok(format!(
-            "WARN: This rental agreement is only covered until {}. Please top up the subnet.",
-            date
+            "WARN: This rental agreement is only covered for {} more days. Please top up the subnet.",
+            days_remaining
         ))
     } else {
         Ok(format!(
-            "COVERED: This rental agreement is covered until {}.",
-            date
+            "COVERED: This rental agreement is covered for {} more days.",
+            days_remaining
         ))
     }
 }
@@ -716,18 +715,13 @@ fn round_to_previous_midnight(time_secs: u64) -> u64 {
     time_secs - time_secs % 86400
 }
 
-fn format_timestamp(time_nanos: u64) -> String {
-    // Convert nanoseconds to seconds
-    let time_secs = time_nanos / BILLION;
-
-    // Round down to the nearest hour (3600 seconds)
-    let rounded_secs = (time_secs / 3600) * 3600;
-
-    // Convert to datetime and format
-    let datetime = DateTime::from_timestamp(rounded_secs as i64, 0)
-        .unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap());
-
-    datetime.format("%Y-%m-%d %H:00 UTC").to_string()
+fn calculate_days_remaining(paid_until_nanos: u64, now_nanos: u64) -> u64 {
+    if paid_until_nanos <= now_nanos {
+        return 0;
+    }
+    let remaining_nanos = paid_until_nanos - now_nanos;
+    let remaining_days = remaining_nanos / (24 * 60 * 60 * BILLION);
+    remaining_days
 }
 
 // allow candid-extractor to derive candid interface from rust code

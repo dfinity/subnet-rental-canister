@@ -9,7 +9,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 candid = "0.10.14"
-chrono = "0.4.38"
 hex = "0.4.3"
 ic-cdk = "0.18.4"
 ic-cdk-timers = "0.12.1"
