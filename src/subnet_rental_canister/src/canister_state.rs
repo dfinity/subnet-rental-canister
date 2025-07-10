@@ -112,12 +112,12 @@ pub fn get_rental_request(user: &Principal) -> Option<RentalRequest> {
 /// Used to mutate an existing rental request.
 pub fn update_rental_request(
     requester: Principal,
-    f: impl FnOnce(RentalRequest) -> RentalRequest,
+    transform_rental_request: impl FnOnce(RentalRequest) -> RentalRequest,
 ) -> Result<(), String> {
     RENTAL_REQUESTS.with_borrow_mut(|map| match map.get(&requester) {
         None => Err("Princial has no rental agreement.".to_string()),
         Some(value) => {
-            map.insert(requester, f(value));
+            map.insert(requester, transform_rental_request(value));
             Ok(())
         }
     })
@@ -142,12 +142,12 @@ pub fn iter_rental_agreements() -> Vec<(Principal, RentalAgreement)> {
 
 pub fn update_rental_agreement(
     subnet_id: Principal,
-    f: impl FnOnce(RentalAgreement) -> RentalAgreement,
+    transform_rental_agreement: impl FnOnce(RentalAgreement) -> RentalAgreement,
 ) -> Result<(), String> {
     RENTAL_AGREEMENTS.with_borrow_mut(|map| match map.get(&subnet_id) {
         None => Err("Subnet_id has no rental agreement.".to_string()),
         Some(value) => {
-            map.insert(subnet_id, f(value));
+            map.insert(subnet_id, transform_rental_agreement(value));
             Ok(())
         }
     })

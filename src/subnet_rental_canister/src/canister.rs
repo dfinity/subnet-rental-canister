@@ -81,9 +81,23 @@ fn start_timers() {
 async fn burn_cycles() {
     for rental_agreement in iter_rental_agreements().into_iter().map(|(_, v)| v) {
         let Ok(_guard_res) = CallerGuard::new(rental_agreement.user, "rental") else {
-            println!("Busy processing another request. Skipping.");
+            println!(
+                "Busy processing another request. Skipping cycles burn for subnet {}",
+                rental_agreement.subnet_id
+            );
             continue;
         };
+
+        // Because of the copy in the loop head, by the time we execute here, the rental agreement might not exist anymore.
+        let Some(rental_agreement) = get_rental_agreement(&rental_agreement.subnet_id) else {
+            println!(
+                "Rental agreement for subnet {} no longer exists. Skipping cycles burn.",
+                rental_agreement.subnet_id
+            );
+            continue;
+        };
+
+        // Now we are sure the rental agreement still exists and only we can modify it.
 
         let total_cycles_burned = rental_agreement.total_cycles_burned;
         let total_cycles_created = rental_agreement.total_cycles_created;
@@ -99,6 +113,10 @@ async fn burn_cycles() {
         // The rental agreement is not paid for anymore.
         if now_nanos >= paid_until_nanos {
             // Burn all remaining cycles.
+            println!(
+                "Burning all remaining cycles for subnet {} (subnet is no longer paid for)",
+                rental_agreement.subnet_id
+            );
             let burned = ic_cdk::api::cycles_burn(total_cycles_remaining);
             update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
                 agreement.total_cycles_burned =
