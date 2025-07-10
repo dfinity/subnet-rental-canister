@@ -5,7 +5,7 @@ use ic_xrc_types::{
 use std::cell::RefCell;
 
 thread_local! {
-    static RATES: RefCell<Vec<(u64, u64)>> = const { RefCell::new(vec![]) } // (timestamp, rate)
+    static RATES: RefCell<Vec<(u64, u64)>> = const { RefCell::new(vec![]) } // (timestamp, rate) where rate is 1 ICP = X XDR (10^9 precision)
 }
 
 const CALL_CYCLES_COST: u128 = 1_000_000_000;
@@ -27,7 +27,7 @@ async fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateRe
             class: AssetClass::Cryptocurrency,
         },
         quote_asset: Asset {
-            symbol: "CXDR".to_string(),
+            symbol: "CXDR".to_string(), // "C" stands for "computed" (and "XDR" is the standard symbol for standard drawing rights).
             class: AssetClass::FiatCurrency,
         },
         timestamp,
