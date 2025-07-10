@@ -726,7 +726,8 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<(), String> {
         return Err("Rental agreement not found".to_string());
     };
 
-    let _guard = CallerGuard::new(rental_agreement.user, "rental").expect("Fatal: Concurrent call");
+    let _guard =
+        CallerGuard::new(rental_agreement.subnet_id, "agreement").expect("Fatal: Concurrent call");
 
     let balance = check_subaccount_balance(Subaccount::from(rental_agreement.user)).await;
 
@@ -756,8 +757,9 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<(), String> {
     let daily_cost_cycles = get_rental_conditions(rental_agreement.rental_condition_id)
         .expect("Fatal: Rental Condition not found")
         .daily_cost_cycles;
-    let days_charged = actual_cycles / daily_cost_cycles;
-    let nanos_charged = days_charged * 24 * 60 * 60 * BILLION as u128;
+    let second_cost_cycles = daily_cost_cycles / (24 * 60 * 60); // convert cost to cycles per second, rounding down
+    let seconds_charged = actual_cycles / second_cost_cycles;
+    let nanos_charged = seconds_charged * BILLION as u128; // convert to nanoseconds
     let new_paid_until_nanos = rental_agreement.paid_until_nanos + nanos_charged as u64;
 
     // update rental agreement
