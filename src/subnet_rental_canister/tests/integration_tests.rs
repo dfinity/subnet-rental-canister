@@ -18,8 +18,8 @@ use subnet_rental_canister::{
         NnsLedgerCanisterPayload, PrincipalsAuthorizedToCreateCanistersToSubnetsResponse,
     },
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, RentalAgreement,
-    RentalConditionId, RentalConditions, RentalRequest, SubnetRentalProposalPayload, TopupData,
-    E8S, TRILLION,
+    RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
+    SubnetRentalProposalPayload, TopupData, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
@@ -541,6 +541,12 @@ fn test_create_rental_agreement() {
 
     assert_eq!(rental_agreement, &expected_rental_agreement);
 
+    // check status of subnet rental
+    let status_expired = check_subnet_status(&pic);
+    assert!(status_expired.description.contains("OK"));
+    assert_eq!(status_expired.cycles_left, expected_total_cycles);
+    assert_eq!(status_expired.days_left, 180);
+
     // check SRC cycles balance
     let src_cycles_balance_after_execute_rental_agreement =
         pic.canister_status(SRC_ID, None).unwrap().cycles;
@@ -617,6 +623,11 @@ fn test_create_rental_agreement() {
         total_cycles_burned_expected.abs_diff(rental_agreement.total_cycles_created) < TRILLION
     );
 
+    // check status of subnet rental
+    let status_ok = check_subnet_status(&pic);
+    assert!(status_ok.description.contains("OK"));
+    assert_eq!(status_ok.days_left, 180 - 1); // since we advaced time by a few minutes above and round down
+
     // do a topup
     // set exchange rates
     let exchange_rate_for_topup = 4_103_000_000; // 1 ICP = 4.103 XDR
@@ -692,18 +703,41 @@ fn test_create_rental_agreement() {
     assert_eq!(actual_topup.cycles_added, estimate.cycles_added);
     assert_eq!(actual_topup.days_added, estimate.days_added);
 
-    // advance time to after the 180 + expected_topup_days days
-    pic.advance_time(Duration::from_secs((180 + expected_topup_days) * 86400));
+    // check status of subnet rental
+    let status_ok = check_subnet_status(&pic);
+    assert!(status_ok.description.contains("OK"));
+    assert_eq!(status_ok.days_left, 180 - 1 + expected_topup_days); // since we advaced time by a few minutes above and rounding down
+
+    // advance time to after the 180 + expected_topup_days -1 days (to see warning)
+    pic.advance_time(Duration::from_secs((180 + expected_topup_days - 1) * 86400));
     for _ in 0..3 {
         pic.tick();
     }
+
+    // check status of subnet rental
+    let status_expired = check_subnet_status(&pic);
+    assert!(status_expired.description.contains("WARNING"));
+    assert!(status_expired.cycles_left > 0);
+    assert_eq!(status_expired.days_left, 0);
+
+    // advance time to after the 1 day (to see rental agreement end)
+    pic.advance_time(Duration::from_secs(1 * 86400));
+    for _ in 0..3 {
+        pic.tick();
+    }
+
+    // check status of subnet rental
+    let status_expired = check_subnet_status(&pic);
+    assert!(status_expired.description.contains("TERMINATED"));
+    assert_eq!(status_expired.cycles_left, 0);
+    assert_eq!(status_expired.days_left, 0);
 
     // all cycles should be burned
     // check that the SRC cycles balance is back to the initial balance minus the one call of get_todays_price() that was made
     let src_cycles_balance_after_burning = pic.canister_status(SRC_ID, None).unwrap().cycles;
     assert_eq!(
         src_cycles_balance_after_burning,
-        INITIAL_SRC_CYCLES_BALANCE - 1_000_000_000 * 2 // 2 calls of get_todays_price(), one in the beginning, one to get estimate for topup
+        INITIAL_SRC_CYCLES_BALANCE - 1_000_000_000 * 2 // 2 calls of get_todays_price(), one explicitly above in the test, one to get the estimate for the topup
     );
 
     // check that the rental agreement is updated, stating that all cycles are burned
@@ -1023,4 +1057,15 @@ fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> To
             account: AccountIdentifier::new(&owner, &subaccount),
         },
     )
+}
+
+fn check_subnet_status(pic: &PocketIc) -> RentalAgreementStatus {
+    query::<Result<RentalAgreementStatus, String>>(
+        &pic,
+        SRC_ID,
+        None,
+        "rental_agreement_status",
+        SUBNET_FOR_RENT,
+    )
+    .unwrap()
 }

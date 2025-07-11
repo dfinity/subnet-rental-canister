@@ -280,8 +280,7 @@ pub fn list_rental_agreements() -> Vec<RentalAgreement> {
         .collect()
 }
 
-/// Returns the status of a rental agreement with dates/hours in UTC (rounded down to nearest hour).
-/// Returns TERMINATED, WARN (< 30 days), or COVERED (>= 30 days) with expiration date.
+/// Returns the status of a rental agreement w.r.t. payment coverage.
 #[query]
 pub fn rental_agreement_status(subnet_id: Principal) -> Result<RentalAgreementStatus, String> {
     let Some(rental_agreement) = get_rental_agreement(&subnet_id) else {
@@ -295,12 +294,12 @@ pub fn rental_agreement_status(subnet_id: Principal) -> Result<RentalAgreementSt
         .saturating_sub(rental_agreement.total_cycles_burned);
     let days_left = calculate_days_remaining(paid_until_nanos, now_nanos);
 
-    let description = if days_left == 0 {
+    let description = if now_nanos > rental_agreement.paid_until_nanos {
         "TERMINATED: This rental agreement has ended".to_string()
     } else if days_left <= 30 {
         format!("WARNING: This rental agreement is only covered for {days_left} more days. Please top up the subnet.")
     } else {
-        format!("COVERED: This rental agreement is covered for {days_left} more days.")
+        format!("OK: This rental agreement is covered for {days_left} more days.")
     };
 
     Ok(RentalAgreementStatus {
