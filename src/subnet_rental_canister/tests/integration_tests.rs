@@ -1,10 +1,12 @@
-use candid::{decode_one, encode_args, encode_one, utils::ArgumentEncoder, CandidType, Principal};
+use candid::{
+    decode_one, encode_args, encode_one, utils::ArgumentEncoder, CandidType, Encode, Principal,
+};
 use ic_ledger_types::{
     AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferResult,
     DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
-use pocket_ic::{PocketIc, PocketIcBuilder, Time};
+use pocket_ic::{common::rest::Topology, PocketIc, PocketIcBuilder, Time};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -18,7 +20,8 @@ use subnet_rental_canister::{
         NnsLedgerCanisterPayload, PrincipalsAuthorizedToCreateCanistersToSubnetsResponse,
     },
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, RentalAgreement,
-    RentalConditionId, RentalConditions, RentalRequest, SubnetRentalProposalPayload, E8S, TRILLION,
+    RentalConditionId, RentalConditions, RentalRequest, SubnetRentalProposalPayload, TopupData,
+    E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
@@ -616,17 +619,83 @@ fn test_create_rental_agreement() {
         total_cycles_burned_expected.abs_diff(rental_agreement.total_cycles_created) < TRILLION
     );
 
-    // advance time to after the 180 days
-    pic.advance_time(Duration::from_secs(180 * 86400));
+    // do a topup
+    // set exchange rates
+    let exchange_rate_for_topup = 4_103_000_000; // 1 ICP = 4.103 XDR
+    set_cmc_exchange_rate(&pic, exchange_rate_for_topup);
+    set_xrc_exchange_rate_last_midnight(&pic, exchange_rate_for_topup);
+
+    // get estimate for topup
+    let estimate = update_multi_arg::<Result<TopupData, String>>(
+        &pic,
+        SRC_ID,
+        None,
+        "subnet_topup_estimate",
+        (SUBNET_FOR_RENT, Tokens::from_e8s(1_000 * E8S)),
+    )
+    .unwrap()
+    .unwrap();
+
+    // try to do topup with insufficient funds
+    let res = update::<Result<TopupData, String>>(
+        &pic,
+        SRC_ID,
+        Some(USER_1),
+        "process_subnet_topup",
+        SUBNET_FOR_RENT,
+    )
+    .unwrap();
+
+    // the conversion should fail as the user does not have any ICP
+    assert!(res.unwrap_err().contains("insufficient funds"));
+
+    // top up SRC account with 1000 ICP
+    let topup = Tokens::from_e8s(1_000 * E8S);
+    pay_src(&pic, USER_1, topup);
+
+    let actual_topup = update::<Result<TopupData, String>>(
+        &pic,
+        SRC_ID,
+        Some(USER_1),
+        "process_subnet_topup",
+        SUBNET_FOR_RENT,
+    )
+    .unwrap()
+    .unwrap();
+
+    // check that the topup is correct, and the estimate yields the same as the actual topup if the price stayed the same
+    let expected_topup_cycles = (topup - DEFAULT_FEE - DEFAULT_FEE).e8s() as u128 // transfer to the SRC and transfer to the CMC
+        * exchange_rate_for_topup as u128
+        / 100_000;
+
+    let expected_topup_days = (expected_topup_cycles / rental_condition.daily_cost_cycles) as u64;
+    assert_eq!(actual_topup.cycles, expected_topup_cycles);
+    assert_eq!(actual_topup.days, expected_topup_days);
+    assert!(actual_topup
+        .description
+        .contains(&format!("{expected_topup_cycles} cycles")));
+    assert!(actual_topup
+        .description
+        .contains(&format!("by {expected_topup_days} days")));
+    assert!(actual_topup
+        .description
+        .contains(&format!("subnet {}", SUBNET_FOR_RENT)));
+
+    assert_eq!(actual_topup.cycles, estimate.cycles);
+    assert_eq!(actual_topup.days, estimate.days);
+
+    // advance time to after the 180 + expected_topup_days days
+    pic.advance_time(Duration::from_secs((180 + expected_topup_days) * 86400));
     for _ in 0..3 {
         pic.tick();
     }
 
+    // all cycles should be burned
     // check that the SRC cycles balance is back to the initial balance minus the one call of get_todays_price() that was made
     let src_cycles_balance_after_burning = pic.canister_status(SRC_ID, None).unwrap().cycles;
     assert_eq!(
         src_cycles_balance_after_burning,
-        INITIAL_SRC_CYCLES_BALANCE - 1_000_000_000 // call of get_todays_price()
+        INITIAL_SRC_CYCLES_BALANCE - 1_000_000_000 * 2 // 2 calls of get_todays_price(), one in the beginning, one to get estimate for topup
     );
 
     // check that the rental agreement is updated, stating that all cycles are burned
@@ -912,6 +981,24 @@ fn update<T: CandidType + for<'a> Deserialize<'a>>(
         sender.unwrap_or(Principal::anonymous()),
         method,
         encode_one(args).unwrap(),
+    ) {
+        Ok(res) => Ok(decode_one::<T>(&res).unwrap()),
+        Err(message) => Err(message.to_string()),
+    }
+}
+
+fn update_multi_arg<T: CandidType + for<'a> Deserialize<'a>>(
+    pic: &PocketIc,
+    canister_id: Principal,
+    sender: Option<Principal>,
+    method: &str,
+    args: impl CandidType + ArgumentEncoder,
+) -> Result<T, String> {
+    match pic.update_call(
+        canister_id,
+        sender.unwrap_or(Principal::anonymous()),
+        method,
+        encode_args(args).unwrap(),
     ) {
         Ok(res) => Ok(decode_one::<T>(&res).unwrap()),
         Err(message) => Err(message.to_string()),

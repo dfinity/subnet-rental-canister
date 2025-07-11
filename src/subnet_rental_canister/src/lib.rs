@@ -181,6 +181,13 @@ pub struct PriceCalculationData {
     decimals: u32,
 }
 
+#[derive(CandidType, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
+pub struct TopupData {
+    pub description: String,
+    pub cycles: u128,
+    pub days: u64,
+}
+
 /// The return type of the query methods `get_history_page` and
 /// `get_rental_conditions_history_page`.
 #[derive(CandidType, Debug, Clone, Deserialize)]

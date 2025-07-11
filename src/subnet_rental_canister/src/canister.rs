@@ -12,7 +12,7 @@ use crate::{
     history::EventType,
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, PriceCalculationData,
     RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetRentalProposalPayload, BILLION, TRILLION,
+    SubnetRentalProposalPayload, TopupData, BILLION, TRILLION,
 };
 use candid::Principal;
 use ic_cdk::{
@@ -676,7 +676,7 @@ pub async fn refund() -> Result<u64, String> {
 /// Estimates how many cycles and days a given ICP amount would provide for a subnet rental.
 /// Uses the (potentially cached) exchange rate from the previous midnight to calculate the conversion.
 #[update]
-pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<String, String> {
+pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<TopupData, String> {
     let Some(rental_agreement) = get_rental_agreement(&subnet_id) else {
         return Err("Rental agreement not found".to_string());
     };
@@ -684,7 +684,7 @@ pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<
     let now_secs = ic_cdk::api::time() / BILLION;
     let prev_midnight = round_to_previous_midnight(now_secs);
 
-    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) =
+    let Ok((scaled_exchange_rate_xdr_per_icp, _decimals)) =
         get_exchange_rate_icp_per_xdr_at_time(prev_midnight).await
     else {
         return Err("Failed to get exchange rate".to_string());
@@ -700,34 +700,40 @@ pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<
     let to_be_topped_up = icp - DEFAULT_FEE;
 
     // Calculate estimated cycles: ICP * 10_000 * 10^decimals / exchange_rate
-    let estimated_cycles = to_be_topped_up
-        .e8s()
-        .checked_mul(10_000)
-        .and_then(|x| x.checked_mul(10u64.pow(decimals)))
-        .and_then(|x| x.checked_div(scaled_exchange_rate_xdr_per_icp))
-        .ok_or("Calculation overflow")?;
-
-    let estimated_trillion_cycles = estimated_cycles / TRILLION as u64;
+    let estimated_cycles = (to_be_topped_up - DEFAULT_FEE).e8s() as u128 // account for internal transfer to CMC cost
+        * scaled_exchange_rate_xdr_per_icp as u128
+        / 100_000;
 
     let rental_condition = get_rental_conditions(rental_agreement.rental_condition_id)
         .ok_or("Rental condition not found")?;
 
-    let estimated_days = estimated_cycles / rental_condition.daily_cost_cycles as u64;
+    let estimated_days = (estimated_cycles / rental_condition.daily_cost_cycles) as u64;
 
-    Ok(format!(
-        "Estimate: {} ICP would provide approximately {} trillion cycles (TC), extending the rental by {} days. Note that this is an estimate and the actual amount may vary.",
-        icp, estimated_trillion_cycles, estimated_days
-    ))
+    let description = format!(
+        "Estimate: {} ICP would provide approximately {} cycles, extending the rental for subnet {} by about {} days. Note that this is an estimate and the actual amount will vary.",
+        icp, estimated_cycles, subnet_id, estimated_days
+    );
+
+    Ok(TopupData {
+        description,
+        cycles: estimated_cycles,
+        days: estimated_days,
+    })
 }
 
 #[update]
-pub async fn process_subnet_topup(subnet_id: Principal) -> Result<(), String> {
+pub async fn process_subnet_topup(subnet_id: Principal) -> Result<TopupData, String> {
+    let Ok(_guard) = CallerGuard::new(subnet_id, "agreement") else {
+        return Err("Concurrent call, aborting".to_string());
+    };
+
     let Some(rental_agreement) = get_rental_agreement(&subnet_id) else {
         return Err("Rental agreement not found".to_string());
     };
 
-    let _guard =
-        CallerGuard::new(rental_agreement.subnet_id, "agreement").expect("Fatal: Concurrent call");
+    if msg_caller() != rental_agreement.user {
+        return Err("Caller is not the user of the rental agreement".to_string());
+    }
 
     let balance = check_subaccount_balance(Subaccount::from(rental_agreement.user)).await;
 
@@ -779,6 +785,8 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<(), String> {
         .total_cycles_created
         .saturating_add(actual_cycles);
 
+    let days_charged = (seconds_charged / (24 * 60 * 60)) as u64;
+
     // update rental agreement
     update_rental_agreement(subnet_id, |mut agreement| {
         agreement.total_cycles_created = new_total_cycles_created;
@@ -788,7 +796,16 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<(), String> {
     })
     .unwrap(); // Safe because we checked above that the rental agreement exists.
 
-    Ok(())
+    let description = format!(
+        "Topped up subnet {} with {} ICP = {} cycles, extending the rental by {} days",
+        subnet_id, balance, actual_cycles, days_charged,
+    );
+
+    Ok(TopupData {
+        description,
+        cycles: actual_cycles,
+        days: days_charged,
+    })
 }
 
 // ============================================================================
