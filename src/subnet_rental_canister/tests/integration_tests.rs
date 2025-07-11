@@ -1,12 +1,10 @@
-use candid::{
-    decode_one, encode_args, encode_one, utils::ArgumentEncoder, CandidType, Encode, Principal,
-};
+use candid::{decode_one, encode_args, encode_one, utils::ArgumentEncoder, CandidType, Principal};
 use ic_ledger_types::{
     AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs, TransferResult,
     DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
-use pocket_ic::{common::rest::Topology, PocketIc, PocketIcBuilder, Time};
+use pocket_ic::{PocketIc, PocketIcBuilder, Time};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -625,6 +623,9 @@ fn test_create_rental_agreement() {
     set_cmc_exchange_rate(&pic, exchange_rate_for_topup);
     set_xrc_exchange_rate_last_midnight(&pic, exchange_rate_for_topup);
 
+    // get user's ICP balance
+    let user_balance_before_topup = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
+
     // get estimate for topup
     let estimate = update_multi_arg::<Result<TopupData, String>>(
         &pic,
@@ -663,14 +664,21 @@ fn test_create_rental_agreement() {
     .unwrap()
     .unwrap();
 
+    // check that the user's balance has decreased by exactly the amount for the topup plus the fee
+    let users_balance_after_topup = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
+    assert_eq!(
+        users_balance_after_topup,
+        user_balance_before_topup - topup - DEFAULT_FEE
+    );
+
     // check that the topup is correct, and the estimate yields the same as the actual topup if the price stayed the same
     let expected_topup_cycles = (topup - DEFAULT_FEE - DEFAULT_FEE).e8s() as u128 // transfer to the SRC and transfer to the CMC
         * exchange_rate_for_topup as u128
         / 100_000;
 
     let expected_topup_days = (expected_topup_cycles / rental_condition.daily_cost_cycles) as u64;
-    assert_eq!(actual_topup.cycles, expected_topup_cycles);
-    assert_eq!(actual_topup.days, expected_topup_days);
+    assert_eq!(actual_topup.cycles_added, expected_topup_cycles);
+    assert_eq!(actual_topup.days_added, expected_topup_days);
     assert!(actual_topup
         .description
         .contains(&format!("{expected_topup_cycles} cycles")));
@@ -681,8 +689,8 @@ fn test_create_rental_agreement() {
         .description
         .contains(&format!("subnet {}", SUBNET_FOR_RENT)));
 
-    assert_eq!(actual_topup.cycles, estimate.cycles);
-    assert_eq!(actual_topup.days, estimate.days);
+    assert_eq!(actual_topup.cycles_added, estimate.cycles_added);
+    assert_eq!(actual_topup.days_added, estimate.days_added);
 
     // advance time to after the 180 + expected_topup_days days
     pic.advance_time(Duration::from_secs((180 + expected_topup_days) * 86400));

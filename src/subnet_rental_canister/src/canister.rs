@@ -11,7 +11,7 @@ use crate::{
     },
     history::EventType,
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, PriceCalculationData,
-    RentalAgreement, RentalConditionId, RentalConditions, RentalRequest,
+    RentalAgreement, RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
     SubnetRentalProposalPayload, TopupData, BILLION, TRILLION,
 };
 use candid::Principal;
@@ -283,32 +283,31 @@ pub fn list_rental_agreements() -> Vec<RentalAgreement> {
 /// Returns the status of a rental agreement with dates/hours in UTC (rounded down to nearest hour).
 /// Returns TERMINATED, WARN (< 30 days), or COVERED (>= 30 days) with expiration date.
 #[query]
-pub fn rental_agreement_status(subnet_id: Principal) -> Result<String, String> {
+pub fn rental_agreement_status(subnet_id: Principal) -> Result<RentalAgreementStatus, String> {
     let Some(rental_agreement) = get_rental_agreement(&subnet_id) else {
         return Err("Rental agreement not found".to_string());
     };
-
     let now_nanos = ic_cdk::api::time();
-    let thirty_days_nanos = 30 * 24 * 60 * 60 * BILLION;
     let paid_until_nanos = rental_agreement.paid_until_nanos;
 
-    if paid_until_nanos < now_nanos {
-        return Ok("TERMINATED: This rental agreement has been terminated".to_string());
-    }
+    let cycles_left = rental_agreement
+        .total_cycles_created
+        .saturating_sub(rental_agreement.total_cycles_burned);
+    let days_left = calculate_days_remaining(paid_until_nanos, now_nanos);
 
-    let days_remaining = calculate_days_remaining(paid_until_nanos, now_nanos);
-
-    if paid_until_nanos < now_nanos + thirty_days_nanos {
-        Ok(format!(
-            "WARN: This rental agreement is only covered for {} more days. Please top up the subnet.",
-            days_remaining
-        ))
+    let description = if days_left == 0 {
+        "TERMINATED: This rental agreement has ended".to_string()
+    } else if days_left <= 30 {
+        format!("WARNING: This rental agreement is only covered for {days_left} more days. Please top up the subnet.")
     } else {
-        Ok(format!(
-            "COVERED: This rental agreement is covered for {} more days.",
-            days_remaining
-        ))
-    }
+        format!("COVERED: This rental agreement is covered for {days_left} more days.")
+    };
+
+    Ok(RentalAgreementStatus {
+        description,
+        cycles_left,
+        days_left,
+    })
 }
 
 ////////// UPDATE METHODS //////////
@@ -716,8 +715,8 @@ pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<
 
     Ok(TopupData {
         description,
-        cycles: estimated_cycles,
-        days: estimated_days,
+        cycles_added: estimated_cycles,
+        days_added: estimated_days,
     })
 }
 
@@ -731,8 +730,9 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<TopupData, Str
         return Err("Rental agreement not found".to_string());
     };
 
-    if msg_caller() != rental_agreement.user {
-        return Err("Caller is not the user of the rental agreement".to_string());
+    let now_nanos = ic_cdk::api::time();
+    if now_nanos >= rental_agreement.paid_until_nanos {
+        return Err("Rental agreement has expired".to_string());
     }
 
     let balance = check_subaccount_balance(Subaccount::from(rental_agreement.user)).await;
@@ -746,6 +746,7 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<TopupData, Str
 
     let to_be_topped_up = balance - DEFAULT_FEE;
 
+    // If the user were to withdraw before this call, the function would return an error.
     let actual_cycles =
         match convert_icp_to_cycles(to_be_topped_up, Subaccount::from(rental_agreement.user)).await
         {
@@ -785,7 +786,7 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<TopupData, Str
         .total_cycles_created
         .saturating_add(actual_cycles);
 
-    let days_charged = (seconds_charged / (24 * 60 * 60)) as u64;
+    let days_added = (seconds_charged / (24 * 60 * 60)) as u64;
 
     // update rental agreement
     update_rental_agreement(subnet_id, |mut agreement| {
@@ -797,14 +798,14 @@ pub async fn process_subnet_topup(subnet_id: Principal) -> Result<TopupData, Str
     .unwrap(); // Safe because we checked above that the rental agreement exists.
 
     let description = format!(
-        "Topped up subnet {} with {} ICP = {} cycles, extending the rental by {} days",
-        subnet_id, balance, actual_cycles, days_charged,
+        "Topped up subnet {} with {} ICP corresponding to {} cycles, extending the rental agreement by {} days",
+        subnet_id, balance, actual_cycles, days_added,
     );
 
     Ok(TopupData {
         description,
-        cycles: actual_cycles,
-        days: days_charged,
+        cycles_added: actual_cycles,
+        days_added,
     })
 }
 
