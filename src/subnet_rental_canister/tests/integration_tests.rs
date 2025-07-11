@@ -721,7 +721,7 @@ fn test_create_rental_agreement() {
     assert_eq!(status_expired.days_left, 0);
 
     // advance time to after the 1 day (to see rental agreement end)
-    pic.advance_time(Duration::from_secs(1 * 86400));
+    pic.advance_time(Duration::from_secs(86400));
     for _ in 0..3 {
         pic.tick();
     }
@@ -1061,7 +1061,7 @@ fn check_balance(pic: &PocketIc, owner: Principal, subaccount: Subaccount) -> To
 
 fn check_subnet_status(pic: &PocketIc) -> RentalAgreementStatus {
     query::<Result<RentalAgreementStatus, String>>(
-        &pic,
+        pic,
         SRC_ID,
         None,
         "rental_agreement_status",
