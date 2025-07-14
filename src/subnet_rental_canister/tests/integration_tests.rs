@@ -126,6 +126,7 @@ fn get_todays_price(pic: &PocketIc) -> Tokens {
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
+    assert_eq!(res.len(), 1);
     let (rental_condition_id, _rental_conditions) = res.first().unwrap();
     // user finds current price by consulting SRC
     update::<Result<Tokens, String>>(pic, SRC_ID, None, "get_todays_price", rental_condition_id)
@@ -402,7 +403,8 @@ fn test_create_rental_agreement() {
     let locked_cycles = rental_request.locked_amount_cycles;
     let initial_cost_icp = rental_request.initial_cost_icp;
 
-    let icp_to_be_locked = (final_subnet_price.e8s() as u128 / 10) - DEFAULT_FEE.e8s() as u128; // 10% of the initial cost is converted to cycles, minus the fee
+    // 10% of the initial cost is converted to cycles, minus the fee
+    let icp_to_be_locked = (final_subnet_price.e8s() as u128 / 10) - DEFAULT_FEE.e8s() as u128;
     let expected_locked_cycles_first_locking =
         (icp_to_be_locked * cmc_exchange_rate_at_proposal_execution as u128) / 100_000;
 

@@ -283,6 +283,7 @@ pub fn list_rental_agreements() -> Vec<RentalAgreement> {
 ////////// UPDATE METHODS //////////
 
 /// Calculate the price of a subnet in ICP according to the exchange rate at the previous UTC midnight.
+/// The first call per day will cost 1_000_000_000 cycles.
 #[update]
 pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     let Some(RentalConditions {
@@ -505,7 +506,6 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
             return with_error(user, proposal_id, e);
         };
         println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
-        let lock_time = ic_cdk::api::time();
 
         let now_nanos = ic_cdk::api::time();
         let rental_request = RentalRequest {
@@ -516,7 +516,7 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
             initial_proposal_id: proposal_id,
             creation_time_nanos: now_nanos,
             rental_condition_id,
-            last_locking_time_nanos: lock_time,
+            last_locking_time_nanos: now_nanos,
         };
 
         // unwrap safety: The user cannot have an open rental request, as ensured at the start of this function.
@@ -587,9 +587,9 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
         set_authorized_subnetwork_list(&payload.user, &payload.subnet_id).await;
 
         // Removing the rental request will also stop the monthly locking process which locks 10% of the initial cost.
-        remove_rental_request(&payload.user).unwrap(); // Safe because we checked above that the user has a rental request.
+        remove_rental_request(&payload.user).unwrap(); // It is checked above that the user has a rental request.
 
-        persist_rental_agreement(rental_agreement).unwrap(); // Safe because we checked above that the subnet is not being rented.
+        persist_rental_agreement(rental_agreement).unwrap(); // It is checked above that the subnet is not being rented.
 
         Ok(())
     }
