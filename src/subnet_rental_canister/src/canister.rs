@@ -709,7 +709,7 @@ pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<
 
     let estimated_cycles = (to_be_topped_up - DEFAULT_FEE).e8s() as u128 // account for internal transfer to CMC cost
         * scaled_exchange_rate_xdr_per_icp as u128
-        / 100_000;
+        / 100_000; // Make sure units check out
 
     let rental_condition = get_rental_conditions(rental_agreement.rental_condition_id)
         .ok_or("Rental condition not found")?;
