@@ -707,7 +707,6 @@ pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<
 
     let to_be_topped_up = icp - DEFAULT_FEE;
 
-    // Calculate estimated cycles: ICP * 10_000 * 10^decimals / exchange_rate
     let estimated_cycles = (to_be_topped_up - DEFAULT_FEE).e8s() as u128 // account for internal transfer to CMC cost
         * scaled_exchange_rate_xdr_per_icp as u128
         / 100_000;
@@ -729,6 +728,7 @@ pub async fn subnet_topup_estimate(subnet_id: Principal, icp: Tokens) -> Result<
     })
 }
 
+/// Callable by anyone to trigger the conversion of ICP to cycles and the extension of the rental agreement.
 #[update]
 pub async fn process_subnet_topup(subnet_id: Principal) -> Result<TopupData, String> {
     let Ok(_guard) = CallerGuard::new(subnet_id, "agreement") else {

@@ -650,6 +650,8 @@ fn test_create_rental_agreement() {
     .unwrap()
     .unwrap();
 
+    println!("estimate: {:?}", estimate);
+
     // try to do topup with insufficient funds
     let res = update::<Result<TopupData, String>>(
         &pic,
