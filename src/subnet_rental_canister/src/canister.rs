@@ -118,12 +118,16 @@ async fn burn_cycles() {
                 rental_agreement.subnet_id
             );
             let burned = ic_cdk::api::cycles_burn(total_cycles_remaining);
-            update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+            if let Err(e) = update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
                 agreement.total_cycles_burned =
                     agreement.total_cycles_burned.saturating_add(burned);
                 agreement
-            })
-            .unwrap();
+            }) {
+                println!(
+                    "Failed to update rental agreement for subnet {}: {}. Skipping.",
+                    rental_agreement.subnet_id, e
+                );
+            }
             continue;
         }
 
@@ -135,11 +139,16 @@ async fn burn_cycles() {
 
         let burned =
             ic_cdk::api::cycles_burn(min(amount_to_burn_per_minute, total_cycles_remaining)); // don't burn more than we have
-        update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+        if let Err(e) = update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
             agreement.total_cycles_burned = agreement.total_cycles_burned.saturating_add(burned);
             agreement
-        })
-        .unwrap();
+        }) {
+            println!(
+                "Failed to update rental agreement for subnet {}: {}. Skipping.",
+                rental_agreement.subnet_id, e
+            );
+            continue;
+        }
     }
 }
 
