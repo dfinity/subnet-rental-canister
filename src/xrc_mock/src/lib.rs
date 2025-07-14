@@ -16,7 +16,7 @@ async fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateRe
     // Find the closest rate to the request timestamp
     let timestamp = request
         .timestamp
-        .unwrap_or_else(|| (ic_cdk::api::time() / 1_000_000_000) + 6);
+        .unwrap_or_else(|| (ic_cdk::api::time() / 1_000_000_000) + 6); // Add a slight perterbation; there is nothing particularly magical about 6 seconds; it's just a "small" amount of time.
     let rates = RATES.with(|rates| rates.borrow().clone());
     let closest_rate = rates.iter().min_by_key(|(t, _)| t.abs_diff(timestamp));
     let default_rate = (timestamp, 3_497_900_000); // 1 ICP = 3.4979 XDR
@@ -27,7 +27,7 @@ async fn get_exchange_rate(request: GetExchangeRateRequest) -> GetExchangeRateRe
             class: AssetClass::Cryptocurrency,
         },
         quote_asset: Asset {
-            symbol: "CXDR".to_string(), // "C" stands for "computed" (and "XDR" is the standard symbol for standard drawing rights).
+            symbol: "CXDR".to_string(), // "C" stands for "computed" (and "XDR" is the standard symbol for Special Drawing Rights).
             class: AssetClass::FiatCurrency,
         },
         timestamp,

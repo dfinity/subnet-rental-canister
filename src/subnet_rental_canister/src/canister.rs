@@ -118,12 +118,16 @@ async fn burn_cycles() {
                 rental_agreement.subnet_id
             );
             let burned = ic_cdk::api::cycles_burn(total_cycles_remaining);
-            update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+            if let Err(e) = update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
                 agreement.total_cycles_burned =
                     agreement.total_cycles_burned.saturating_add(burned);
                 agreement
-            })
-            .unwrap();
+            }) {
+                println!(
+                    "Failed to update rental agreement for subnet {}: {}. Skipping.",
+                    rental_agreement.subnet_id, e
+                );
+            }
             continue;
         }
 
@@ -135,11 +139,16 @@ async fn burn_cycles() {
 
         let burned =
             ic_cdk::api::cycles_burn(min(amount_to_burn_per_minute, total_cycles_remaining)); // don't burn more than we have
-        update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
+        if let Err(e) = update_rental_agreement(rental_agreement.subnet_id, |mut agreement| {
             agreement.total_cycles_burned = agreement.total_cycles_burned.saturating_add(burned);
             agreement
-        })
-        .unwrap();
+        }) {
+            println!(
+                "Failed to update rental agreement for subnet {}: {}. Skipping.",
+                rental_agreement.subnet_id, e
+            );
+            continue;
+        }
     }
 }
 
@@ -312,6 +321,7 @@ pub fn rental_agreement_status(subnet_id: Principal) -> Result<RentalAgreementSt
 ////////// UPDATE METHODS //////////
 
 /// Calculate the price of a subnet in ICP according to the exchange rate at the previous UTC midnight.
+/// The first call per day will cost 1_000_000_000 cycles.
 #[update]
 pub async fn get_todays_price(id: RentalConditionId) -> Result<Tokens, String> {
     let Some(conditions) = get_rental_conditions(id) else {
@@ -610,9 +620,9 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
         set_authorized_subnetwork_list(&payload.user, &payload.subnet_id).await;
 
         // Removing the rental request will also stop the monthly locking process which locks 10% of the initial cost.
-        remove_rental_request(&payload.user).unwrap(); // Safe because we checked above that the user has a rental request.
+        remove_rental_request(&payload.user).unwrap(); // It is checked above that the user has a rental request.
 
-        persist_rental_agreement(rental_agreement).unwrap(); // Safe because we checked above that the subnet is not being rented.
+        persist_rental_agreement(rental_agreement).unwrap(); // It is checked above that the subnet is not being rented.
 
         Ok(())
     }
