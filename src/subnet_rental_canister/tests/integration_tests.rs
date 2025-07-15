@@ -993,7 +993,9 @@ fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
         encode_one(args).unwrap(),
     ) {
         Ok(res) => decode_one::<T>(&res).unwrap(),
-        Err(message) => panic!("Query expected Reply, got Reject: \n{}", message),
+        Err(message) => {
+            panic!("Query expected Reply, got Reject: \n{}", message)
+        }
     }
 }
 
@@ -1011,7 +1013,9 @@ fn query_multi_arg<T: for<'a> Deserialize<'a> + candid::CandidType>(
         encode_args(args).unwrap(),
     ) {
         Ok(res) => decode_one::<T>(&res).unwrap(),
-        Err(message) => panic!("Query expected Reply, got Reject: \n{}", message),
+        Err(message) => {
+            panic!("Query expected Reply, got Reject: \n{}", message)
+        }
     }
 }
 
