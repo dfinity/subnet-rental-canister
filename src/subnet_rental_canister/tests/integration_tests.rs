@@ -374,8 +374,11 @@ fn test_create_rental_agreement() {
     }
 
     // set a different current exchange rate the CMC
-    let cmc_exchange_rate_at_proposal_execution = 3_497_900_000; // 1 ICP = 3.4979 XDR
-    set_cmc_exchange_rate(&pic, cmc_exchange_rate_at_proposal_execution);
+    let cmc_exchange_rate_xdr_per_billion_icp_at_proposal_execution = 3_497_900_000; // 1 ICP = 3.4979 XDR
+    set_cmc_exchange_rate(
+        &pic,
+        cmc_exchange_rate_xdr_per_billion_icp_at_proposal_execution,
+    );
 
     // run proposal
     update::<()>(
@@ -406,8 +409,9 @@ fn test_create_rental_agreement() {
 
     // 10% of the initial cost is converted to cycles, minus the fee
     let icp_to_be_locked = (final_subnet_price.e8s() as u128 / 10) - DEFAULT_FEE.e8s() as u128;
-    let expected_locked_cycles_first_locking =
-        (icp_to_be_locked * cmc_exchange_rate_at_proposal_execution as u128) / 100_000;
+    let expected_locked_cycles_first_locking = (icp_to_be_locked
+        * cmc_exchange_rate_xdr_per_billion_icp_at_proposal_execution as u128)
+        / 100_000;
 
     assert_eq!(initial_cost_icp, final_subnet_price); // initial cost is the final price
     assert_eq!(locked_icp.e8s(), final_subnet_price.e8s() / 10); // 10% of the initial cost is locked
