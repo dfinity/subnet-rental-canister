@@ -16,6 +16,7 @@ use ic_xrc_types::{
 pub const EXCHANGE_RATE_CANISTER_ID: Principal =
     Principal::from_slice(b"\x00\x00\x00\x00\x02\x10\x00\x01\x01\x01"); // uf6dk-hyaaa-aaaaq-qaaaq-cai
 
+/// Override/set the authorized subnetwork list of the CMC of a user to one specific subnet.
 pub async fn set_authorized_subnetwork_list(user: &Principal, subnet_id: &Principal) {
     Call::unbounded_wait(
         MAINNET_CYCLES_MINTING_CANISTER_ID,

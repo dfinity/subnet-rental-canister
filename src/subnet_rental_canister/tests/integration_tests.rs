@@ -19,7 +19,7 @@ use subnet_rental_canister::{
     },
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, RentalAgreement,
     RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetRentalProposalPayload, TopupData, E8S, TRILLION,
+    SubnetRentalProposalPayload, TopUpSummary, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
@@ -34,6 +34,7 @@ const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000_000_000 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
 const INITIAL_SRC_CYCLES_BALANCE: u128 = 100 * TRILLION;
+const SECONDS_PER_DAY: u64 = 60 * 60 * 24;
 
 fn install_xrc_and_cmc(pic: &PocketIc) {
     // install XRC
@@ -169,7 +170,7 @@ fn pay_src(pic: &PocketIc, user_principal: Principal, amount: Tokens) -> Tokens 
 
 fn set_xrc_exchange_rate_last_midnight(pic: &PocketIc, exchange_rate_xdr_per_icp: u64) {
     let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    let midnight = now - now % 86400;
+    let midnight = now - now % SECONDS_PER_DAY;
     update::<()>(
         pic,
         EXCHANGE_RATE_CANISTER_ID,
@@ -216,14 +217,14 @@ fn test_initial_proposal() {
     let price1 = get_todays_price(&pic);
 
     // advance time by one day
-    pic.advance_time(Duration::from_secs(86400));
+    pic.advance_time(Duration::from_secs(SECONDS_PER_DAY));
 
     // set an exchange rate for the current time on the XRC mock
     set_xrc_exchange_rate_last_midnight(&pic, 10_000_000_000); // 1 ICP = 10 XDR
     let price2 = get_todays_price(&pic);
 
     // advance time by one day
-    pic.advance_time(Duration::from_secs(86400));
+    pic.advance_time(Duration::from_secs(SECONDS_PER_DAY));
 
     // set an exchange rate for the current time on the XRC mock
     set_xrc_exchange_rate_last_midnight(&pic, 12_503_823_284); // 1 ICP = 12.503823284 XDR
@@ -248,14 +249,14 @@ fn test_initial_proposal() {
     };
 
     // advance time by one day
-    pic.advance_time(Duration::from_secs(86400));
+    pic.advance_time(Duration::from_secs(SECONDS_PER_DAY));
 
     // set an exchange rate for the current time on the XRC mock
     set_xrc_exchange_rate_last_midnight(&pic, 10_000_000_000); // 1 ICP = 10 XDR
     let price4 = get_todays_price(&pic);
 
     // advance time by one day
-    pic.advance_time(Duration::from_secs(86400));
+    pic.advance_time(Duration::from_secs(SECONDS_PER_DAY));
 
     // set an exchange rate for the current time on the XRC mock
     set_xrc_exchange_rate_last_midnight(&pic, 5_000_000_000); // 1 ICP = 5 XDR
@@ -368,7 +369,7 @@ fn test_create_rental_agreement() {
     };
 
     // 1 day passes ...
-    pic.advance_time(Duration::from_secs(86400));
+    pic.advance_time(Duration::from_secs(SECONDS_PER_DAY));
     for _ in 0..3 {
         pic.tick();
     }
@@ -429,7 +430,7 @@ fn test_create_rental_agreement() {
     set_cmc_exchange_rate(&pic, cmc_exchange_rate_at_second_locking);
 
     // advance time by 31 days
-    pic.advance_time(Duration::from_secs(31 * 86400));
+    pic.advance_time(Duration::from_secs(31 * SECONDS_PER_DAY));
     for _ in 0..3 {
         pic.tick();
     }
@@ -539,7 +540,7 @@ fn test_create_rental_agreement() {
         rental_condition_id: RentalConditionId::App13CH,
         creation_time_nanos: now_nanos,
         paid_until_nanos: rental_agreement.creation_time_nanos
-            + rental_condition.initial_rental_period_days * 86400 * NANOS_PER_SECOND,
+            + rental_condition.initial_rental_period_days * SECONDS_PER_DAY * NANOS_PER_SECOND,
         total_icp_paid: final_subnet_price,
         total_cycles_created: expected_total_cycles,
         total_cycles_burned: 0,
@@ -644,7 +645,7 @@ fn test_create_rental_agreement() {
     let user_balance_before_topup = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
 
     // get estimate for topup
-    let estimate = update_multi_arg::<Result<TopupData, String>>(
+    let estimate = update_multi_arg::<Result<TopUpSummary, String>>(
         &pic,
         SRC_ID,
         None,
@@ -654,14 +655,12 @@ fn test_create_rental_agreement() {
     .unwrap()
     .unwrap();
 
-    println!("estimate: {:?}", estimate);
-
     // try to do topup with insufficient funds
-    let res = update::<Result<TopupData, String>>(
+    let res = update::<Result<TopUpSummary, String>>(
         &pic,
         SRC_ID,
-        Some(USER_1),
-        "process_subnet_topup",
+        None,
+        "top_up_subnet",
         SUBNET_FOR_RENT,
     )
     .unwrap();
@@ -673,11 +672,11 @@ fn test_create_rental_agreement() {
     let topup = Tokens::from_e8s(1_000 * E8S);
     pay_src(&pic, USER_1, topup);
 
-    let actual_topup = update::<Result<TopupData, String>>(
+    let actual_topup = update::<Result<TopUpSummary, String>>(
         &pic,
         SRC_ID,
-        Some(USER_1),
-        "process_subnet_topup",
+        None,
+        "top_up_subnet",
         SUBNET_FOR_RENT,
     )
     .unwrap()
@@ -712,33 +711,35 @@ fn test_create_rental_agreement() {
     assert_eq!(actual_topup.days_added, estimate.days_added);
 
     // check status of subnet rental
-    let status_ok = check_subnet_status(&pic);
-    assert!(status_ok.description.contains("OK"));
-    assert_eq!(status_ok.days_left, 180 - 1 + expected_topup_days); // since we advaced time by a few minutes above and rounding down
+    let subnet_status = check_subnet_status(&pic);
+    assert!(subnet_status.description.contains("OK"));
+    assert_eq!(subnet_status.days_left, 180 - 1 + expected_topup_days); // since we advaced time by a few minutes above and rounding down
 
     // advance time to after the 180 + expected_topup_days -1 days (to see warning)
-    pic.advance_time(Duration::from_secs((180 + expected_topup_days - 1) * 86400));
+    pic.advance_time(Duration::from_secs(
+        (180 + expected_topup_days - 1) * SECONDS_PER_DAY,
+    ));
     for _ in 0..3 {
         pic.tick();
     }
 
     // check status of subnet rental
-    let status_expired = check_subnet_status(&pic);
-    assert!(status_expired.description.contains("WARNING"));
-    assert!(status_expired.cycles_left > 0);
-    assert_eq!(status_expired.days_left, 0);
+    let subnet_status = check_subnet_status(&pic);
+    assert!(subnet_status.description.contains("WARNING"));
+    assert!(subnet_status.cycles_left > 0);
+    assert_eq!(subnet_status.days_left, 0);
 
     // advance time to after the 1 day (to see rental agreement end)
-    pic.advance_time(Duration::from_secs(86400));
+    pic.advance_time(Duration::from_secs(SECONDS_PER_DAY));
     for _ in 0..3 {
         pic.tick();
     }
 
     // check status of subnet rental
-    let status_expired = check_subnet_status(&pic);
-    assert!(status_expired.description.contains("TERMINATED"));
-    assert_eq!(status_expired.cycles_left, 0);
-    assert_eq!(status_expired.days_left, 0);
+    let subnet_status = check_subnet_status(&pic);
+    assert!(subnet_status.description.contains("PAST DUE"));
+    assert_eq!(subnet_status.cycles_left, 0);
+    assert_eq!(subnet_status.days_left, 0);
 
     // all cycles should be burned
     // check that the SRC cycles balance is back to the initial balance minus the one call of get_todays_price() that was made

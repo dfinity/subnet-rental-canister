@@ -177,7 +177,7 @@ pub struct PriceCalculationData {
 }
 
 #[derive(CandidType, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
-pub struct TopupData {
+pub struct TopUpSummary {
     /// A human-readable description of the topup
     pub description: String,
     pub cycles_added: u128,
