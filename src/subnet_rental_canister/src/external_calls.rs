@@ -100,6 +100,10 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(
         quote_asset: xdr_asset,
         base_asset: icp_asset,
     };
+
+    // Since the SRC is not "privileged" on the XRC, we need to pay 1B cycles to call the XRC.
+    // See https://github.com/dfinity/exchange-rate-canister/blob/2f2a08f36fa6d043da9751d61d77952b36a59006/src/xrc/src/lib.rs#L56
+    // for the constant.
     let response: GetExchangeRateResult =
         Call::unbounded_wait(EXCHANGE_RATE_CANISTER_ID, "get_exchange_rate")
             .with_arg(request)
