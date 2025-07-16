@@ -36,6 +36,11 @@ pub struct IcpXdrConversionRateResponse {
     pub hash_tree: serde_bytes::ByteBuf,
 }
 
+#[derive(CandidType, Deserialize, Debug)]
+pub struct PrincipalsAuthorizedToCreateCanistersToSubnetsResponse {
+    pub data: Vec<(Principal, Vec<Principal>)>,
+}
+
 #[derive(CandidType, Debug)]
 pub struct SetAuthorizedSubnetworkListArgs {
     pub who: Option<Principal>,

@@ -7,7 +7,6 @@ use std::borrow::Cow;
 pub mod canister;
 pub mod canister_state;
 pub mod external_calls;
-pub mod external_canister_interfaces;
 pub mod external_types;
 pub mod history;
 
@@ -37,7 +36,6 @@ pub struct RentalConditions {
     pub subnet_id: Option<Principal>,
     pub daily_cost_cycles: u128,
     pub initial_rental_period_days: u64,
-    pub billing_period_days: u64,
 }
 
 impl Storable for RentalConditions {
@@ -61,6 +59,17 @@ pub struct SubnetRentalProposalPayload {
     pub rental_condition_id: RentalConditionId,
     pub proposal_id: u64,
     pub proposal_creation_time_seconds: u64,
+}
+
+/// The governance canister calls the SRC's method to turn the rental request into an agreement.
+#[derive(Clone, CandidType, Deserialize)]
+pub struct CreateRentalAgreementPayload {
+    /// The user who will be whitelisted on the CMC.
+    pub user: Principal,
+    /// The proposal id of the create subnet proposal.
+    pub proposal_id: u64,
+    /// The newly formed subnet's id.
+    pub subnet_id: Principal,
 }
 
 /// Successful proposal execution leads to a RentalRequest.
@@ -101,28 +110,27 @@ impl Storable for RentalRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
 pub struct RentalAgreement {
-    // ===== Immutable data =====
     /// The principal which paid the deposit and will be whitelisted.
     pub user: Principal,
     /// The id of the SubnetRentalRequest proposal.
-    pub initial_proposal_id: u64,
+    pub rental_request_proposal_id: u64,
     /// The id of the proposal that created the subnet. Optional in case
     /// the subnet already existed at initial proposal time.
     pub subnet_creation_proposal_id: Option<u64>,
+    /// The subnet's id.
+    pub subnet_id: Principal,
     /// A key into the global RENTAL_CONDITIONS HashMap.
     pub rental_condition_id: RentalConditionId,
     /// Rental agreement creation time in nanoseconds since epoch.
     pub creation_time_nanos: u64,
-    // ===== Mutable data =====
     /// The time in nanos since epoch until which the rental agreement is paid for.
-    pub covered_until_nanos: u64,
-    /// This subnet's share of cycles among the SRC's cycles.
-    /// Increased by the locking mechanism, monthly.
-    /// Increased by the payment process (via timer).
-    /// Decreased by the burning process (via heartbeat).
-    pub cycles_balance: u128,
-    /// The last point in time in nanos since epoch when cycles were burned in a heartbeat.
-    pub last_burned: u64,
+    pub paid_until_nanos: u64,
+    /// Total amount of ICP that the user has paid.
+    pub total_icp_paid: Tokens,
+    /// Total amount of cycles that have been created for this agreement.
+    pub total_cycles_created: u128,
+    /// Total amount of cycles that have been burned for this agreement.
+    pub total_cycles_burned: u128,
 }
 
 impl Storable for RentalAgreement {
@@ -137,7 +145,7 @@ impl Storable for RentalAgreement {
     }
 }
 
-#[derive(CandidType, Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ExecuteProposalError {
     CallGovernanceFailed,
     CallXRCFailed(String),
@@ -151,6 +159,7 @@ pub enum ExecuteProposalError {
     TransferSrcToCmcError(String),
     NotifyTopUpError(String),
     SubnetNotRented,
+    RentalRequestNotFound,
 }
 
 /// The data in this struct was used in a failed attempt to calculate an ICP/XDR

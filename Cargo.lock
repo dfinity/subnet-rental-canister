@@ -816,6 +816,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ic-xrc-types"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1a2b2eaa332201f4abbd1192a307f7a5b6ea55d077a7f489ac62bf8e358b5a2"
+dependencies = [
+ "candid",
+ "serde",
+]
+
+[[package]]
 name = "ic0"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1991,6 +2001,7 @@ dependencies = [
  "ic-cdk-timers",
  "ic-ledger-types",
  "ic-stable-structures",
+ "ic-xrc-types",
  "icrc-ledger-types",
  "itertools 0.14.0",
  "pocket-ic",
@@ -2761,7 +2772,7 @@ version = "0.1.0"
 dependencies = [
  "candid",
  "ic-cdk",
- "serde",
+ "ic-xrc-types",
 ]
 
 [[package]]

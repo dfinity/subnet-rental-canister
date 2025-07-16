@@ -4,7 +4,7 @@ use ic_ledger_types::{
     DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_GOVERNANCE_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
-use pocket_ic::{PocketIc, PocketIcBuilder};
+use pocket_ic::{PocketIc, PocketIcBuilder, Time};
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -12,15 +12,13 @@ use std::{
     time::Duration,
 };
 use subnet_rental_canister::{
-    external_canister_interfaces::{
-        exchange_rate_canister::EXCHANGE_RATE_CANISTER_ID,
-        governance_canister::GOVERNANCE_CANISTER_ID,
-    },
+    external_calls::EXCHANGE_RATE_CANISTER_ID,
     external_types::{
-        CmcInitPayload, FeatureFlags, NnsLedgerCanisterInitPayload, NnsLedgerCanisterPayload,
+        CmcInitPayload, ExchangeRateCanister, FeatureFlags, NnsLedgerCanisterInitPayload,
+        NnsLedgerCanisterPayload, PrincipalsAuthorizedToCreateCanistersToSubnetsResponse,
     },
-    EventPage, ExecuteProposalError, RentalConditionId, RentalConditions, RentalRequest,
-    SubnetRentalProposalPayload, E8S, TRILLION,
+    CreateRentalAgreementPayload, EventPage, ExecuteProposalError, RentalAgreement,
+    RentalConditionId, RentalConditions, RentalRequest, SubnetRentalProposalPayload, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
@@ -29,40 +27,41 @@ const CMC_WASM: &str = "./tests/cycles-minting-canister.wasm.gz";
 const XRC_WASM: &str = "./tests/exchange-rate-canister.wasm";
 const SRC_ID: Principal = Principal::from_slice(b"\x00\x00\x00\x00\x00\x00\x00\x0D\x01\x01"); // qvhpv-4qaaa-aaaaa-aaagq-cai
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
-const _SUBNET_FOR_RENT: &str = "fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae";
+const SUBNET_FOR_RENT: Principal = Principal::from_slice(b"\xBA\x58\xB2\x11\x25\x38\x1B\x05\x67\xE6\x1F\x3F\x2E\xCD\x65\xF3\x77\x10\x31\x60\x84\xEE\x79\x1C\xDF\xDB\x4A\x1A\x02"); // fuqsr-in2lc-zbcjj-ydmcw-pzq7h-4xm2z-pto4i-dcyee-5z4rz-x63ji-nae
 const USER_1: Principal = Principal::from_slice(b"user1");
 const USER_1_INITIAL_BALANCE: Tokens = Tokens::from_e8s(1_000_000_000 * E8S);
 const USER_2: Principal = Principal::from_slice(b"user2");
 const USER_2_INITIAL_BALANCE: Tokens = Tokens::from_e8s(DEFAULT_FEE.e8s() * 2);
+const INITIAL_SRC_CYCLES_BALANCE: u128 = 100 * TRILLION;
 
-fn install_cmc(pic: &PocketIc) {
+fn install_xrc_and_cmc(pic: &PocketIc) {
+    // install XRC
+    pic.create_canister_with_id(None, None, EXCHANGE_RATE_CANISTER_ID)
+        .unwrap();
+    let xrc_wasm =
+        fs::read(XRC_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
+    pic.install_canister(EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
+
+    // install CMC
     pic.create_canister_with_id(None, None, MAINNET_CYCLES_MINTING_CANISTER_ID)
         .unwrap();
-    let cmc_wasm = fs::read(CMC_WASM).expect("Could not find the patched CMC wasm");
+    let cmc_wasm =
+        fs::read(CMC_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
     let minter = AccountIdentifier::new(&MAINNET_GOVERNANCE_CANISTER_ID, &DEFAULT_SUBACCOUNT);
     let init_arg = CmcInitPayload {
         governance_canister_id: Some(MAINNET_GOVERNANCE_CANISTER_ID),
         minting_account_id: minter.to_string(),
         ledger_canister_id: Some(MAINNET_LEDGER_CANISTER_ID),
         last_purged_notification: None,
-        exchange_rate_canister: None,
+        exchange_rate_canister: Some(ExchangeRateCanister::Set(EXCHANGE_RATE_CANISTER_ID)),
         cycles_ledger_canister_id: None,
     };
-
     pic.install_canister(
         MAINNET_CYCLES_MINTING_CANISTER_ID,
         cmc_wasm,
         encode_args((Some(init_arg),)).unwrap(),
         None,
     );
-}
-
-fn install_xrc(pic: &PocketIc) {
-    pic.create_canister_with_id(None, None, EXCHANGE_RATE_CANISTER_ID)
-        .unwrap();
-    let xrc_wasm =
-        fs::read(XRC_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
-    pic.install_canister(EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
 }
 
 fn install_ledger(pic: &PocketIc) {
@@ -103,15 +102,18 @@ fn setup() -> PocketIc {
         .with_ii_subnet()
         .build();
 
+    pic.set_time(Time::from_nanos_since_unix_epoch(
+        1_620_633_600 * 1_000_000_000,
+    )); // set time to make CMC fetch the first rate properly from the XRC
+
     install_ledger(&pic);
-    install_cmc(&pic);
-    install_xrc(&pic);
+    install_xrc_and_cmc(&pic);
 
     // Install subnet rental canister.
     let subnet_rental_canister = pic.create_canister_with_id(None, None, SRC_ID).unwrap();
     let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
     pic.install_canister(subnet_rental_canister, src_wasm, vec![], None);
-    pic.add_cycles(subnet_rental_canister, 1_000 * TRILLION);
+    pic.add_cycles(subnet_rental_canister, INITIAL_SRC_CYCLES_BALANCE);
     pic
 }
 
@@ -124,7 +126,8 @@ fn get_todays_price(pic: &PocketIc) -> Tokens {
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
-    let (rental_condition_id, ref _rental_conditions) = res[0];
+    assert_eq!(res.len(), 1);
+    let (rental_condition_id, _rental_conditions) = res.first().unwrap();
     // user finds current price by consulting SRC
     update::<Result<Tokens, String>>(pic, SRC_ID, None, "get_todays_price", rental_condition_id)
         .unwrap()
@@ -163,22 +166,40 @@ fn pay_src(pic: &PocketIc, user_principal: Principal, amount: Tokens) -> Tokens 
     amount
 }
 
-fn set_mock_exchange_rate(
-    pic: &PocketIc,
-    time_secs: u64,
-    exchange_rate_icp_per_xdr: u64,
-    decimals: u32,
-) {
-    let midnight = time_secs - time_secs % 86400;
-    let arg: Vec<(u64, (u64, u32))> = vec![(midnight, (exchange_rate_icp_per_xdr, decimals))];
+fn set_xrc_exchange_rate_last_midnight(pic: &PocketIc, exchange_rate_xdr_per_icp: u64) {
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
+    let midnight = now - now % 86400;
     update::<()>(
         pic,
         EXCHANGE_RATE_CANISTER_ID,
         None,
         "set_exchange_rate_data",
-        arg,
+        vec![(midnight, exchange_rate_xdr_per_icp)],
     )
     .unwrap();
+}
+
+/// Sets the exchange rate for the CMC to the given value and advances time by 5 minutes.
+/// NOTE: The CMC will only have a precision of e.g. 1 ICP = 3.4979 XDR (4 decimal places).
+fn set_cmc_exchange_rate(pic: &PocketIc, exchange_rate_xdr_per_icp: u64) {
+    // set initial exchange rate to XRC and make CMC fetch it
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
+    let fetch_time = now + 5 * 60;
+
+    update::<()>(
+        pic,
+        EXCHANGE_RATE_CANISTER_ID,
+        None,
+        "set_exchange_rate_data",
+        vec![(fetch_time, exchange_rate_xdr_per_icp)],
+    )
+    .unwrap();
+
+    // advance time by 5 minutes
+    pic.advance_time(Duration::from_secs(5 * 60));
+    for _ in 0..2 {
+        pic.tick();
+    }
 }
 
 #[test]
@@ -190,32 +211,29 @@ fn test_initial_proposal() {
     let initial_user_balance = check_balance(&pic, user_principal, DEFAULT_SUBACCOUNT);
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
+    set_xrc_exchange_rate_last_midnight(&pic, 5_000_000_000); // 1 ICP = 5 XDR
     let price1 = get_todays_price(&pic);
 
     // advance time by one day
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
+    set_xrc_exchange_rate_last_midnight(&pic, 10_000_000_000); // 1 ICP = 10 XDR
     let price2 = get_todays_price(&pic);
 
     // advance time by one day
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
-    let final_price = get_todays_price(&pic);
+    set_xrc_exchange_rate_last_midnight(&pic, 12_503_823_284); // 1 ICP = 12.503823284 XDR
+    let final_subnet_price = get_todays_price(&pic);
 
     // price should keep declining
     assert!(price1 > price2);
-    assert!(price2 > final_price);
+    assert!(price2 > final_subnet_price);
 
     let extra_amount = Tokens::from_e8s(200 * E8S); // Users might send more than is actually needed
-    let total_amount_sent_to_src = final_price + extra_amount;
+    let total_amount_sent_to_src = final_subnet_price + extra_amount;
     // transfer the initial payment plus some extra amount
     pay_src(&pic, user_principal, total_amount_sent_to_src);
 
@@ -232,27 +250,25 @@ fn test_initial_proposal() {
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 10_000_000_000, 9);
+    set_xrc_exchange_rate_last_midnight(&pic, 10_000_000_000); // 1 ICP = 10 XDR
     let price4 = get_todays_price(&pic);
 
     // advance time by one day
     pic.advance_time(Duration::from_secs(86400));
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 5_000_000_000, 9);
+    set_xrc_exchange_rate_last_midnight(&pic, 5_000_000_000); // 1 ICP = 5 XDR
     let price5 = get_todays_price(&pic);
 
     // price should keep increasing
-    assert!(final_price < price4);
+    assert!(final_subnet_price < price4);
     assert!(price4 < price5);
 
     // the proposal has only been voted two days after its creation
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -280,12 +296,13 @@ fn test_initial_proposal() {
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
     assert_eq!(rental_requests.len(), 1);
-    assert_eq!(rental_requests[0].user, user_principal);
+    let rental_request = rental_requests.first().unwrap();
+    assert_eq!(rental_request.user, user_principal);
     assert_eq!(
-        rental_requests[0].rental_condition_id,
+        rental_request.rental_condition_id,
         RentalConditionId::App13CH
     );
-    assert_eq!(rental_requests[0].initial_cost_icp, final_price);
+    assert_eq!(rental_request.initial_cost_icp, final_subnet_price);
 
     // get refund as anonymous principal (should fail)
     let res = update::<Result<u64, String>>(&pic, SRC_ID, None, "refund", ());
@@ -300,7 +317,7 @@ fn test_initial_proposal() {
     let res = update::<Result<u64, String>>(&pic, SRC_ID, Some(user_principal), "refund", ());
     assert!(res.unwrap().is_ok());
 
-    let immediately_locked_amount = Tokens::from_e8s(final_price.e8s() / 10); // 10% of ICP are locked immediately
+    let immediately_locked_amount = Tokens::from_e8s(final_subnet_price.e8s() / 10); // 10% of ICP are locked immediately
 
     // check that transfer has succeeded and has correct amount
     let refundable_icp =
@@ -329,14 +346,241 @@ fn test_initial_proposal() {
 }
 
 #[test]
+fn test_create_rental_agreement() {
+    let pic = setup();
+
+    // set an exchange rate for the current time on the XRC mock
+    set_xrc_exchange_rate_last_midnight(&pic, 3_593_382_591); // 1 ICP = 3.593382591 XDR
+    let final_subnet_price = get_todays_price(&pic);
+
+    // transfer the initial payment
+    let paid_to_src = final_subnet_price + Tokens::from_e8s(100 * E8S); // 100 ICP extra
+    pay_src(&pic, USER_1, paid_to_src);
+
+    // create rental request proposal
+    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
+    let payload = SubnetRentalProposalPayload {
+        user: USER_1,
+        rental_condition_id: RentalConditionId::App13CH,
+        proposal_id: 136408,
+        proposal_creation_time_seconds: now,
+    };
+
+    // 1 day passes ...
+    pic.advance_time(Duration::from_secs(86400));
+    for _ in 0..3 {
+        pic.tick();
+    }
+
+    // set a different current exchange rate the CMC
+    let cmc_exchange_rate_xdr_per_billion_icp_at_proposal_execution = 3_497_900_000; // 1 ICP = 3.4979 XDR
+    set_cmc_exchange_rate(
+        &pic,
+        cmc_exchange_rate_xdr_per_billion_icp_at_proposal_execution,
+    );
+
+    // run proposal
+    update::<()>(
+        &pic,
+        SRC_ID,
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
+        "execute_rental_request_proposal",
+        payload.clone(),
+    )
+    .unwrap();
+
+    // check that the rental request is created
+    let rental_requests =
+        query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
+    assert_eq!(rental_requests.len(), 1);
+    let rental_request = rental_requests.first().unwrap();
+    assert_eq!(rental_request.user, USER_1);
+    assert_eq!(
+        rental_request.rental_condition_id,
+        RentalConditionId::App13CH
+    );
+    assert_eq!(rental_request.initial_cost_icp, final_subnet_price);
+
+    // check all balances are correct
+    let locked_icp = rental_request.locked_amount_icp;
+    let locked_cycles = rental_request.locked_amount_cycles;
+    let initial_cost_icp = rental_request.initial_cost_icp;
+
+    // 10% of the initial cost is converted to cycles, minus the fee
+    let icp_to_be_locked = (final_subnet_price.e8s() as u128 / 10) - DEFAULT_FEE.e8s() as u128;
+    let expected_locked_cycles_first_locking = (icp_to_be_locked
+        * cmc_exchange_rate_xdr_per_billion_icp_at_proposal_execution as u128)
+        / 100_000;
+
+    assert_eq!(initial_cost_icp, final_subnet_price); // initial cost is the final price
+    assert_eq!(locked_icp.e8s(), final_subnet_price.e8s() / 10); // 10% of the initial cost is locked
+    assert_eq!(locked_cycles, expected_locked_cycles_first_locking);
+
+    let src_cycles_balance_after_first_locking = pic.canister_status(SRC_ID, None).unwrap().cycles;
+
+    assert_eq!(
+        src_cycles_balance_after_first_locking,
+        INITIAL_SRC_CYCLES_BALANCE + expected_locked_cycles_first_locking - 1_000_000_000 // call of get_todays_price()
+    );
+
+    // set a different exchange rate for the second locking event (ICP fell)
+    let cmc_exchange_rate_at_second_locking = 3_197_900_000; // 1 ICP = 3.1979 XDR
+    set_cmc_exchange_rate(&pic, cmc_exchange_rate_at_second_locking);
+
+    // advance time by 31 days
+    pic.advance_time(Duration::from_secs(31 * 86400));
+    for _ in 0..3 {
+        pic.tick();
+    }
+
+    let expected_locked_cycles_second_locking =
+        (icp_to_be_locked * cmc_exchange_rate_at_second_locking as u128) / 100_000;
+
+    let src_cycles_balance_after_second_locking = pic.canister_status(SRC_ID, None).unwrap().cycles;
+
+    assert_eq!(
+        src_cycles_balance_after_second_locking,
+        INITIAL_SRC_CYCLES_BALANCE
+            + expected_locked_cycles_first_locking
+            + expected_locked_cycles_second_locking
+            - 1_000_000_000 // call of get_todays_price()
+    );
+
+    // at this point, 2 lockings have occured, the initial one and a second one after a month.
+
+    // execute create rental agreement
+    // set a different exchange rate for the proposal execution time (ICP rose)
+    let cmc_exchange_rate_execute_rental_agreement = 3_897_900_000; // 1 ICP = 3.8979 XDR
+    set_cmc_exchange_rate(&pic, cmc_exchange_rate_execute_rental_agreement);
+
+    // get rental request before executing the create rental agreement
+    let rental_requests =
+        query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
+    assert_eq!(rental_requests.len(), 1);
+    let rental_request = rental_requests.first().unwrap();
+
+    let payload = CreateRentalAgreementPayload {
+        user: USER_1,
+        subnet_id: SUBNET_FOR_RENT,
+        proposal_id: 137322,
+    };
+    update::<()>(
+        &pic,
+        SRC_ID,
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
+        "execute_create_rental_agreement",
+        payload.clone(),
+    )
+    .unwrap();
+
+    let now_nanos = pic.get_time().as_nanos_since_unix_epoch();
+
+    // check whitelisting on CMC
+    let cmc_whitelisted_subnets = query::<PrincipalsAuthorizedToCreateCanistersToSubnetsResponse>(
+        &pic,
+        MAINNET_CYCLES_MINTING_CANISTER_ID,
+        None,
+        "get_principals_authorized_to_create_canisters_to_subnets",
+        (),
+    );
+    let entries = cmc_whitelisted_subnets.data;
+    assert_eq!(entries.len(), 1);
+    let entry = entries.first().unwrap();
+    assert_eq!(entry.0, USER_1);
+    assert_eq!(entry.1, vec![SUBNET_FOR_RENT]);
+
+    // check that the rental request is removed
+    let rental_requests =
+        query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
+    assert!(rental_requests.is_empty());
+
+    // check that the rental agreement is created
+    let rental_agreements =
+        query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
+    assert_eq!(rental_agreements.len(), 1);
+
+    let rental_agreement = rental_agreements.first().unwrap();
+
+    // get rental condition (should still be there)
+    let rental_conditions = query::<Vec<(RentalConditionId, RentalConditions)>>(
+        &pic,
+        SRC_ID,
+        None,
+        "list_rental_conditions",
+        encode_one(()).unwrap(),
+    );
+    let rental_condition = rental_conditions.first().unwrap().1.clone();
+
+    // check total cycles created
+    let remaining_icp_to_be_converted = final_subnet_price.e8s()
+        - (final_subnet_price.e8s() / 10)
+        - (final_subnet_price.e8s() / 10); // 10% got locked twice
+
+    assert_eq!(
+        rental_request.initial_cost_icp.e8s() - rental_request.locked_amount_icp.e8s(),
+        remaining_icp_to_be_converted
+    );
+
+    let expected_locked_cycles_execute_rental_agreement = (remaining_icp_to_be_converted as u128
+        - DEFAULT_FEE.e8s() as u128) // minus the fee to convert ICP to cycles
+        * cmc_exchange_rate_execute_rental_agreement as u128
+        / 100_000;
+
+    let expected_total_cycles = expected_locked_cycles_first_locking
+        + expected_locked_cycles_second_locking
+        + expected_locked_cycles_execute_rental_agreement;
+
+    let expected_rental_agreement = RentalAgreement {
+        user: USER_1,
+        rental_request_proposal_id: 136408,
+        subnet_creation_proposal_id: Some(137322),
+        subnet_id: SUBNET_FOR_RENT,
+        rental_condition_id: RentalConditionId::App13CH,
+        creation_time_nanos: now_nanos,
+        paid_until_nanos: rental_agreement.creation_time_nanos
+            + rental_condition.initial_rental_period_days * 86400 * NANOS_PER_SECOND,
+        total_icp_paid: final_subnet_price,
+        total_cycles_created: expected_total_cycles,
+        total_cycles_burned: 0,
+    };
+
+    assert_eq!(rental_agreement, &expected_rental_agreement);
+
+    // check SRC cycles balance
+    let src_cycles_balance_after_execute_rental_agreement =
+        pic.canister_status(SRC_ID, None).unwrap().cycles;
+    assert_eq!(
+        src_cycles_balance_after_execute_rental_agreement,
+        INITIAL_SRC_CYCLES_BALANCE + expected_total_cycles - 1_000_000_000 // call of get_todays_price()
+    );
+
+    // try a refund, should give back the 100 ICP extra - fee, and leave the agreement in place
+    let user_icp_balance_before_refund = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
+    update::<Result<u64, String>>(&pic, SRC_ID, Some(USER_1), "refund", ())
+        .unwrap()
+        .unwrap();
+    let user_icp_balance_after_refund = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
+    assert_eq!(
+        user_icp_balance_after_refund,
+        user_icp_balance_before_refund + Tokens::from_e8s(100 * E8S) - DEFAULT_FEE
+    );
+
+    // check that the rental agreement is still in place
+    let rental_agreements =
+        query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
+    assert_eq!(rental_agreements.len(), 1);
+    let rental_agreement = rental_agreements.first().unwrap();
+    assert_eq!(rental_agreement, &expected_rental_agreement);
+}
+
+#[test]
 fn test_failed_initial_proposal() {
     let pic = setup();
 
     let user_principal = USER_1;
 
-    // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+    // set an exchange rate for the last midnight on the XRC mock
+    set_xrc_exchange_rate_last_midnight(&pic, 12_503_823_284); // 1 ICP = 12.503823284 XDR
 
     // transfer a bit too little to trigger a failure
     let initial_payment = get_todays_price(&pic);
@@ -364,7 +608,7 @@ fn test_failed_initial_proposal() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -393,8 +637,7 @@ fn test_duplicate_request_fails() {
     let user_principal = USER_1;
 
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+    set_xrc_exchange_rate_last_midnight(&pic, 12_503_823_284); // 1 ICP = 12.503823284 XDR
 
     // user performs preparations
     let initial_payment = get_todays_price(&pic);
@@ -412,7 +655,7 @@ fn test_duplicate_request_fails() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )
@@ -422,7 +665,7 @@ fn test_duplicate_request_fails() {
     let res = update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload,
     );
@@ -437,8 +680,7 @@ fn test_locking() {
     let pic = setup();
     let user_principal = USER_1;
     // set an exchange rate for the current time on the XRC mock
-    let now = pic.get_time().as_nanos_since_unix_epoch() / NANOS_PER_SECOND;
-    set_mock_exchange_rate(&pic, now, 12_503_823_284, 9);
+    set_xrc_exchange_rate_last_midnight(&pic, 12_503_823_284); // 1 ICP = 12.503823284 XDR
 
     // transfer the initial payment
     let initial_payment = get_todays_price(&pic);
@@ -458,7 +700,7 @@ fn test_locking() {
     update::<()>(
         &pic,
         SRC_ID,
-        Some(GOVERNANCE_CANISTER_ID),
+        Some(MAINNET_GOVERNANCE_CANISTER_ID),
         "execute_rental_request_proposal",
         payload.clone(),
     )

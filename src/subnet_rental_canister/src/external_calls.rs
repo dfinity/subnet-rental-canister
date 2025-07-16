@@ -1,27 +1,29 @@
 use crate::canister_state::{cache_rate, get_cached_rate};
-use crate::external_canister_interfaces::exchange_rate_canister::{
-    Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
-    GetExchangeRateRequest, GetExchangeRateResult, EXCHANGE_RATE_CANISTER_ID,
-};
 use crate::external_types::{NotifyError, NotifyTopUpArg, SetAuthorizedSubnetworkListArgs};
 use crate::{ExecuteProposalError, MEMO_TOP_UP_CANISTER};
 use candid::Principal;
-use ic_cdk::call::Call;
-use ic_cdk::println;
+use ic_cdk::{call::Call, println};
 use ic_ledger_types::{
     transfer, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs,
     TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_LEDGER_CANISTER_ID,
 };
+use ic_xrc_types::{
+    Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
+    GetExchangeRateRequest, GetExchangeRateResult,
+};
 
-pub async fn whitelist_principals(subnet_id: Principal, user: &Principal) {
+pub const EXCHANGE_RATE_CANISTER_ID: Principal =
+    Principal::from_slice(b"\x00\x00\x00\x00\x02\x10\x00\x01\x01\x01"); // uf6dk-hyaaa-aaaaq-qaaaq-cai
+
+pub async fn set_authorized_subnetwork_list(user: &Principal, subnet_id: &Principal) {
     Call::unbounded_wait(
         MAINNET_CYCLES_MINTING_CANISTER_ID,
         "set_authorized_subnetwork_list",
     )
     .with_arg(SetAuthorizedSubnetworkListArgs {
         who: Some(*user),
-        subnets: vec![subnet_id], // TODO: Add to the current list, don't overwrite
+        subnets: vec![*subnet_id], // TODO: Add to the current list, don't overwrite
     })
     .await
     .expect("Failed to call CMC");
