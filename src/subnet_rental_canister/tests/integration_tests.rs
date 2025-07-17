@@ -571,6 +571,79 @@ fn test_create_rental_agreement() {
     assert_eq!(rental_agreements.len(), 1);
     let rental_agreement = rental_agreements.first().unwrap();
     assert_eq!(rental_agreement, &expected_rental_agreement);
+
+    // advance time by 1 minute
+    pic.advance_time(Duration::from_secs(60));
+    for _ in 0..3 {
+        pic.tick();
+    }
+
+    // check that the rental agreement is updated
+    let rental_agreements =
+        query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
+    assert_eq!(rental_agreements.len(), 1);
+    let rental_agreement = rental_agreements.first().unwrap();
+    // check that total cycles created is unchanged
+    assert_eq!(rental_agreement.total_cycles_created, expected_total_cycles);
+
+    // check that total cycles burned is non-zero
+    let amount_burned_in_first_minute = rental_agreement.total_cycles_burned;
+    assert!(amount_burned_in_first_minute > 0);
+
+    // check that the SRC cycles balance has decreased by the same amount as the total cycles burned
+    let src_cycles_balance_after_burning = pic.canister_status(SRC_ID, None).unwrap().cycles;
+    assert_eq!(
+        src_cycles_balance_after_burning,
+        src_cycles_balance_after_execute_rental_agreement - amount_burned_in_first_minute
+    );
+
+    // advance time by 1 minute
+    pic.advance_time(Duration::from_secs(60));
+    for _ in 0..3 {
+        pic.tick();
+    }
+
+    // check that the amount burned in the second minute is the same as the first minute
+    let rental_agreements =
+        query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
+    assert_eq!(rental_agreements.len(), 1);
+    let rental_agreement = rental_agreements.first().unwrap();
+    let amount_burned_in_second_minute =
+        rental_agreement.total_cycles_burned - amount_burned_in_first_minute;
+
+    assert_eq!(
+        amount_burned_in_second_minute,
+        amount_burned_in_first_minute
+    );
+
+    // check that during the entire 180 days, roughly all cycles are burned at the current pace (1 TC as margin)
+    let total_cycles_burned_expected = amount_burned_in_first_minute * 60 * 24 * 180;
+    assert!(
+        total_cycles_burned_expected.abs_diff(rental_agreement.total_cycles_created) < TRILLION
+    );
+
+    // advance time to after the 180 days
+    pic.advance_time(Duration::from_secs(180 * 86400));
+    for _ in 0..3 {
+        pic.tick();
+    }
+
+    // check that the SRC cycles balance is back to the initial balance minus the one call of get_todays_price() that was made
+    let src_cycles_balance_after_burning = pic.canister_status(SRC_ID, None).unwrap().cycles;
+    assert_eq!(
+        src_cycles_balance_after_burning,
+        INITIAL_SRC_CYCLES_BALANCE - 1_000_000_000 // call of get_todays_price()
+    );
+
+    // check that the rental agreement is updated, stating that all cycles are burned
+    let rental_agreements =
+        query::<Vec<RentalAgreement>>(&pic, SRC_ID, None, "list_rental_agreements", ());
+    assert_eq!(rental_agreements.len(), 1);
+    let rental_agreement = rental_agreements.first().unwrap();
+    assert_eq!(
+        rental_agreement.total_cycles_burned,
+        rental_agreement.total_cycles_created
+    );
 }
 
 #[test]
