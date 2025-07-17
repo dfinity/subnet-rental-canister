@@ -649,7 +649,7 @@ fn test_create_rental_agreement() {
         &pic,
         SRC_ID,
         None,
-        "subnet_topup_estimate",
+        "subnet_top_up_estimate",
         (SUBNET_FOR_RENT, Tokens::from_e8s(1_000 * E8S)),
     )
     .unwrap()

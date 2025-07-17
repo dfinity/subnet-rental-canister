@@ -685,7 +685,7 @@ pub async fn refund() -> Result<u64, String> {
 /// Estimates how many cycles and days a given ICP amount would provide for a subnet rental.
 /// Uses the (potentially cached) exchange rate from the previous midnight to calculate the conversion.
 #[update]
-pub async fn subnet_topup_estimate(
+pub async fn subnet_top_up_estimate(
     subnet_id: Principal,
     icp: Tokens,
 ) -> Result<TopUpSummary, String> {
@@ -696,7 +696,7 @@ pub async fn subnet_topup_estimate(
     let now_secs = ic_cdk::api::time() / BILLION;
     let prev_midnight = round_to_previous_midnight(now_secs);
 
-    let Ok((scaled_exchange_rate_xdr_per_icp, _decimals)) = // decimals is always 9 for XDR
+    let Ok((scaled_exchange_rate_xdr_per_icp, decimals)) =
         get_exchange_rate_icp_per_xdr_at_time(prev_midnight).await
     else {
         return Err("Failed to get exchange rate".to_string());
@@ -711,9 +711,9 @@ pub async fn subnet_topup_estimate(
 
     let to_be_topped_up = icp - DEFAULT_FEE; // User pays the default fee to send funds to the SRC.
 
-    let estimated_cycles = (to_be_topped_up - DEFAULT_FEE).e8s() as u128 // account for internal transfer to CMC cost
+    let estimated_cycles = (to_be_topped_up - DEFAULT_FEE).e8s() as u128 // Account for internal transfer to CMC cost.
         * scaled_exchange_rate_xdr_per_icp as u128
-        / 100_000; // Make sure units check out
+        / (u128::pow(10, decimals) / 10_000); // Factor 10_000 to go from trillion cycles (10^12) to e8s (10^8).
 
     let rental_condition = get_rental_conditions(rental_agreement.rental_condition_id)
         .ok_or("Rental condition not found")?;
