@@ -721,7 +721,8 @@ pub async fn subnet_top_up_estimate(
     let estimated_days = (estimated_cycles / rental_condition.daily_cost_cycles) as u64;
 
     let description = format!(
-        "Estimate: {} ICP would provide approximately {} cycles, extending the rental for subnet {} by about {} days.
+        "Estimate: {} ICP would provide approximately {} cycles, \
+        extending the rental for subnet {} for about {} days. \
         Note that this is an estimate and the actual amount will vary.",
         icp, estimated_cycles, subnet_id, estimated_days
     );
@@ -783,7 +784,8 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
             // The user topped up the subnet beyond the year 2554.
             // At that point, u64 is too small to represent the number of nanoseconds since 1970.
             println!(
-                "Warning: Top-up amount of {icp_amount_for_cycles} ICP = {actual_cycles} cycles for {subnet_id}
+                "Warning: Top-up amount of {icp_amount_for_cycles} ICP = {actual_cycles} \
+                cycles for {subnet_id} \
                 caused a u64 overflow, capping at maximum possible u64 value"
             );
             u64::MAX
@@ -807,7 +809,8 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
     .unwrap(); // Safe because we checked above that the rental agreement exists.
 
     let description = format!(
-        "Topped up subnet {} with {} ICP corresponding to {} cycles, extending the rental agreement by {} days",
+        "Topped up subnet {} with {} ICP corresponding to {} cycles, \
+        extending the rental agreement by {} days",
         subnet_id, user_icp_balance, actual_cycles, days_added,
     );
 
