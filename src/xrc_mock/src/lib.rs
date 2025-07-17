@@ -8,6 +8,8 @@ thread_local! {
     static RATES: RefCell<Vec<(u64, u64)>> = const { RefCell::new(vec![]) } // (timestamp, rate) where rate is 1 ICP = X XDR (10^9 precision)
 }
 
+// See https://github.com/dfinity/exchange-rate-canister/blob/2f2a08f36fa6d043da9751d61d77952b36a59006/src/xrc/src/lib.rs#L56
+// for this constant.
 const CALL_CYCLES_COST: u128 = 1_000_000_000;
 
 #[ic_cdk::update]

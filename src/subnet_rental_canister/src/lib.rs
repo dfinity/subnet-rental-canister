@@ -176,6 +176,22 @@ pub struct PriceCalculationData {
     decimals: u32,
 }
 
+#[derive(CandidType, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
+pub struct TopUpSummary {
+    /// A human-readable description of the topup
+    pub description: String,
+    pub cycles_added: u128,
+    pub days_added: u64,
+}
+
+#[derive(CandidType, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
+pub struct RentalAgreementStatus {
+    /// A human-readable description of the subnet status
+    pub description: String,
+    pub cycles_left: u128,
+    pub days_left: u64,
+}
+
 /// The return type of the query methods `get_history_page` and
 /// `get_rental_conditions_history_page`.
 #[derive(CandidType, Debug, Clone, Deserialize)]
