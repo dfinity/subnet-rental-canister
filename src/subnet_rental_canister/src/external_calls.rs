@@ -16,6 +16,7 @@ use ic_xrc_types::{
 pub const EXCHANGE_RATE_CANISTER_ID: Principal =
     Principal::from_slice(b"\x00\x00\x00\x00\x02\x10\x00\x01\x01\x01"); // uf6dk-hyaaa-aaaaq-qaaaq-cai
 
+/// Override/set the authorized subnetwork list of the CMC of a user to one specific subnet.
 pub async fn set_authorized_subnetwork_list(user: &Principal, subnet_id: &Principal) {
     Call::unbounded_wait(
         MAINNET_CYCLES_MINTING_CANISTER_ID,
@@ -29,7 +30,7 @@ pub async fn set_authorized_subnetwork_list(user: &Principal, subnet_id: &Princi
     .expect("Failed to call CMC");
 }
 
-pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
+async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
     Call::unbounded_wait(MAINNET_CYCLES_MINTING_CANISTER_ID, "notify_top_up")
         .with_arg(NotifyTopUpArg {
             block_index,
@@ -41,7 +42,7 @@ pub async fn notify_top_up(block_index: u64) -> Result<u128, NotifyError> {
         .expect("Failed to decode result")
 }
 
-pub async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, TransferError> {
+async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, TransferError> {
     transfer(
         MAINNET_LEDGER_CANISTER_ID,
         &TransferArgs {
@@ -53,28 +54,6 @@ pub async fn transfer_to_cmc(amount: Tokens, source: Subaccount) -> Result<u64, 
             from_subaccount: Some(source),
             amount,
             memo: MEMO_TOP_UP_CANISTER,
-            created_at_time: None,
-        },
-    )
-    .await
-    .expect("Failed to call ledger canister")
-}
-
-/// Transfer ICP from user-derived subaccount to SRC default subaccount
-pub async fn transfer_to_src_main(
-    source: Subaccount,
-    amount: Tokens,
-    proposal_id: u64,
-) -> Result<u64, TransferError> {
-    transfer(
-        MAINNET_LEDGER_CANISTER_ID,
-        &TransferArgs {
-            to: AccountIdentifier::new(&ic_cdk::api::canister_self(), &DEFAULT_SUBACCOUNT),
-            fee: DEFAULT_FEE,
-            from_subaccount: Some(source),
-            amount,
-            // deduplication
-            memo: Memo(proposal_id),
             created_at_time: None,
         },
     )
@@ -101,7 +80,7 @@ pub async fn refund_user(user_principal: Principal, amount: Tokens) -> Result<u6
 /// Query the XDR/ICP exchange rate at the given time in seconds since epoch.
 /// Returns (rate, decimals), where the rate is scaled by 10^decimals.
 /// This function attempts to read from the global RATES cache and updates it.
-pub async fn get_exchange_rate_xdr_per_icp_at_time(
+pub async fn get_exchange_rate_icp_per_xdr_at_time(
     time_secs_since_epoch: u64,
 ) -> Result<(u64, u32), ExchangeRateError> {
     // The SRC keeps a cache of exchange rates
@@ -122,10 +101,14 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(
         quote_asset: xdr_asset,
         base_asset: icp_asset,
     };
+
+    // Since the SRC is not "privileged" on the XRC, we need to pay 1B cycles to call the XRC.
+    // See https://github.com/dfinity/exchange-rate-canister/blob/2f2a08f36fa6d043da9751d61d77952b36a59006/src/xrc/src/lib.rs#L56
+    // for the constant.
     let response: GetExchangeRateResult =
         Call::unbounded_wait(EXCHANGE_RATE_CANISTER_ID, "get_exchange_rate")
             .with_arg(request)
-            .with_cycles(10_000_000_000)
+            .with_cycles(1_000_000_000)
             .await
             .expect("Failed to call ExchangeRateCanister")
             .candid()
@@ -144,6 +127,8 @@ pub async fn get_exchange_rate_xdr_per_icp_at_time(
     }
 }
 
+/// Converts ICP from a user's SRC subaccount to cycles.
+/// Returns the actual amount of cycles created.
 pub async fn convert_icp_to_cycles(
     amount: Tokens,
     source: Subaccount,
@@ -166,6 +151,7 @@ pub async fn convert_icp_to_cycles(
     Ok(actual_cycles)
 }
 
+/// Check balance of a user's SRC subaccount.
 pub async fn check_subaccount_balance(subaccount: Subaccount) -> Tokens {
     Call::unbounded_wait(MAINNET_LEDGER_CANISTER_ID, "account_balance")
         .with_arg(AccountBalanceArgs {
