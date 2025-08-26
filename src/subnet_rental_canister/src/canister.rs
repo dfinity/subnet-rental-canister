@@ -406,6 +406,10 @@ fn calculate_subnet_price(
 
 #[update(manual_reply = true)]
 pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayload) {
+    // Note: The NNS Governance canister makes sure that there is only one open subnet rental request proposal open
+    // at a time, effectively preventing concurrent calls to this method.
+    // See [here](https://github.com/dfinity/ic/blob/d8fb1363ef39bae56493a8e48907c76b50d914e6/rs/nns/governance/src/governance.rs#L5061).
+
     if let Err(e) = execute_rental_request_proposal_(payload).await {
         msg_reject(format!("Subnet rental request proposal failed: {:?}", e));
     } else {
