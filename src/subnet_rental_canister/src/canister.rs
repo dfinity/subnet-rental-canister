@@ -441,8 +441,8 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
         // make sure no concurrent calls to this method can exist, in addition to governance's check.
         let _guard_request =
             CallerGuard::new(user, "request").expect("Fatal: Concurrent call on user");
-        let _guard_subnet = CallerGuard::new(Principal::anonymous(), "nns")
-            .expect("Fatal: Concurrent call on subnet");
+        let _guard = CallerGuard::new(Principal::anonymous(), "execute_rental_request_proposal")
+            .expect("Fatal: Concurrent call on execute_rental_request_proposal");
 
         // Fail if user has an existing rental request going on
         if get_rental_request(&user).is_some() {
