@@ -23,3 +23,7 @@ sha2 = "0.10.9"
 
 [dev-dependencies]
 pocket-ic = "9.0.2"
+
+[features]
+default = ["canister"]
+canister = []
