@@ -4,7 +4,6 @@ use ic_ledger_types::{Memo, Tokens};
 use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
 
-pub mod canister;
 pub mod canister_state;
 pub mod external_calls;
 pub mod external_types;
