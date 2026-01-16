@@ -57,10 +57,13 @@ async fn post_upgrade() {
     // This will fail on a blank state, but it should succeed with the current mainnet state which contains
     // the rental request associated with proposal 139961.
     // TODO: Remove.
-    match internal_execute_create_rental_agreement(swiss_subnet_payload()).await {
-        Ok(_) => println!("One-time execution for proposal 139961 succeeded."),
-        Err(e) => println!("One-time execution for proposal 139961 failed with error {e:?}"),
-    }
+    ic_cdk_timers::set_timer(Duration::from_secs(0), async {
+        println!("Starting one-time execution for proposal 139961");
+        match internal_execute_create_rental_agreement(swiss_subnet_payload()).await {
+            Ok(_) => println!("One-time execution for proposal 139961 succeeded."),
+            Err(e) => println!("One-time execution for proposal 139961 failed with error {e:?}"),
+        }
+    });
 }
 
 /// Persist initial rental conditions in global map and history.
