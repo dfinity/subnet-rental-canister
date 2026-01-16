@@ -12,6 +12,6 @@ RUN curl -sL https://github.com/dfinity/candid-extractor/releases/download/${CAN
 RUN tar -xzf candid-extractor.tar.gz
 RUN rm candid-extractor.tar.gz
 RUN chmod +x candid-extractor
-#RUN mv candid-extractor /usr/local/bin/candid-extractor
+RUN mv candid-extractor /usr/local/bin/candid-extractor
 
 WORKDIR /app
