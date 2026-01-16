@@ -54,6 +54,8 @@ async fn post_upgrade() {
     start_timers();
     // One-time execution to fix failed proposal 139961.
     // While this will only work once, this call should be removed before the next code deployment.
+    // This will fail on a blank state, but it should succeed with the current mainnet state which contains
+    // the rental request associated with proposal 139961.
     // TODO: Remove.
     match internal_execute_create_rental_agreement(swiss_subnet_payload()).await {
         Ok(_) => println!("One-time execution for proposal 139961 succeeded."),
@@ -88,14 +90,13 @@ fn set_initial_conditions() {
 
 fn start_timers() {
     // Check if any ICP should be locked every hour.
-    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), || {
-        ic_cdk::futures::spawn(locking())
-    });
+    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), async || locking().await);
 
     // Burn cycles every minute.
-    ic_cdk_timers::set_timer_interval(Duration::from_secs(CYCLES_BURN_INTERVAL_SECONDS), || {
-        ic_cdk::futures::spawn(burn_cycles())
-    });
+    ic_cdk_timers::set_timer_interval(
+        Duration::from_secs(CYCLES_BURN_INTERVAL_SECONDS),
+        async || burn_cycles().await,
+    );
 }
 
 async fn burn_cycles() {
