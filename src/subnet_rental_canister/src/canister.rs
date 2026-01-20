@@ -27,18 +27,6 @@ use std::{cmp::min, time::Duration};
 const CYCLES_BURN_INTERVAL_SECONDS: u64 = 60;
 const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
 
-// Data for a one-time execution to fix failed proposal 139961.
-fn swiss_subnet_payload() -> CreateRentalAgreementPayload {
-    CreateRentalAgreementPayload {
-        user: Principal::from_text("yebeg-uqaaa-aaaar-qbk7a-cai").unwrap(),
-        proposal_id: 139961,
-        subnet_id: Principal::from_text(
-            "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe",
-        )
-        .unwrap(),
-    }
-}
-
 ////////// CANISTER METHODS //////////
 
 #[init]
@@ -52,18 +40,6 @@ fn init() {
 async fn post_upgrade() {
     set_initial_conditions();
     start_timers();
-    // One-time execution to fix failed proposal 139961.
-    // While this will only work once, this call should be removed before the next code deployment.
-    // This will fail on a blank state, but it should succeed with the current mainnet state which contains
-    // the rental request associated with proposal 139961.
-    // TODO: Remove.
-    ic_cdk_timers::set_timer(Duration::from_secs(0), async {
-        println!("Starting one-time execution for proposal 139961");
-        match internal_execute_create_rental_agreement(swiss_subnet_payload()).await {
-            Ok(_) => println!("One-time execution for proposal 139961 succeeded."),
-            Err(e) => println!("One-time execution for proposal 139961 failed with error {e:?}"),
-        }
-    });
 }
 
 /// Persist initial rental conditions in global map and history.
