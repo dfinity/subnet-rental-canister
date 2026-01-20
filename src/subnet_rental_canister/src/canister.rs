@@ -27,18 +27,6 @@ use std::{cmp::min, time::Duration};
 const CYCLES_BURN_INTERVAL_SECONDS: u64 = 60;
 const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
 
-// Data for a one-time execution to fix failed proposal 139961.
-fn swiss_subnet_payload() -> CreateRentalAgreementPayload {
-    CreateRentalAgreementPayload {
-        user: Principal::from_text("yebeg-uqaaa-aaaar-qbk7a-cai").unwrap(),
-        proposal_id: 139961,
-        subnet_id: Principal::from_text(
-            "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe",
-        )
-        .unwrap(),
-    }
-}
-
 ////////// CANISTER METHODS //////////
 
 #[init]
@@ -52,18 +40,6 @@ fn init() {
 async fn post_upgrade() {
     set_initial_conditions();
     start_timers();
-    // One-time execution to fix failed proposal 139961.
-    // While this will only work once, this call should be removed before the next code deployment.
-    // This will fail on a blank state, but it should succeed with the current mainnet state which contains
-    // the rental request associated with proposal 139961.
-    // TODO: Remove.
-    ic_cdk_timers::set_timer(Duration::from_secs(0), async {
-        println!("Starting one-time execution for proposal 139961");
-        match internal_execute_create_rental_agreement(swiss_subnet_payload()).await {
-            Ok(_) => println!("One-time execution for proposal 139961 succeeded."),
-            Err(e) => println!("One-time execution for proposal 139961 failed with error {e:?}"),
-        }
-    });
 }
 
 /// Persist initial rental conditions in global map and history.
@@ -605,60 +581,55 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
         payload: CreateRentalAgreementPayload,
     ) -> Result<(), ExecuteProposalError> {
         verify_caller_is_governance()?;
-        internal_execute_create_rental_agreement(payload).await
+        let _guard = CallerGuard::new(payload.user, "request").expect("Fatal: Concurrent call");
+        let _guard = CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call");
+
+        // Check if the user has an active rental request.
+        let Some(rental_request) = get_rental_request(&payload.user) else {
+            return Err(ExecuteProposalError::RentalRequestNotFound);
+        };
+
+        // Fail if the subnet is already being rented.
+        if get_rental_agreement(&payload.subnet_id).is_some() {
+            return Err(ExecuteProposalError::SubnetAlreadyRented);
+        }
+
+        let rental_condition = get_rental_conditions(rental_request.rental_condition_id)
+            .expect("Fatal: Rental condition not found");
+        let initial_rental_period_nanos =
+            rental_condition.initial_rental_period_days * SECONDS_PER_DAY * BILLION;
+
+        // Convert all remaining ICP to cycles.
+        let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
+        let converted_cycles =
+            convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
+        let total_cycles_created =
+            converted_cycles.saturating_add(rental_request.locked_amount_cycles);
+
+        // Create the rental agreement.
+        let now_nanos = ic_cdk::api::time();
+        let rental_agreement = RentalAgreement {
+            user: payload.user,
+            subnet_id: payload.subnet_id,
+            rental_request_proposal_id: rental_request.initial_proposal_id,
+            subnet_creation_proposal_id: Some(payload.proposal_id),
+            rental_condition_id: rental_request.rental_condition_id,
+            creation_time_nanos: now_nanos,
+            paid_until_nanos: now_nanos + initial_rental_period_nanos,
+            total_icp_paid: rental_request.initial_cost_icp,
+            total_cycles_created,
+            total_cycles_burned: 0,
+        };
+
+        set_authorized_subnetwork_list(&payload.user, &payload.subnet_id).await;
+
+        // Removing the rental request will also stop the monthly locking process which locks 10% of the initial cost.
+        remove_rental_request(&payload.user).unwrap(); // It is checked above that the user has a rental request.
+
+        persist_rental_agreement(rental_agreement).unwrap(); // It is checked above that the subnet is not being rented.
+
+        Ok(())
     }
-}
-
-async fn internal_execute_create_rental_agreement(
-    payload: CreateRentalAgreementPayload,
-) -> Result<(), ExecuteProposalError> {
-    let _guard = CallerGuard::new(payload.user, "request").expect("Fatal: Concurrent call");
-    let _guard = CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call");
-
-    // Check if the user has an active rental request.
-    let Some(rental_request) = get_rental_request(&payload.user) else {
-        return Err(ExecuteProposalError::RentalRequestNotFound);
-    };
-
-    // Fail if the subnet is already being rented.
-    if get_rental_agreement(&payload.subnet_id).is_some() {
-        return Err(ExecuteProposalError::SubnetAlreadyRented);
-    }
-
-    let rental_condition = get_rental_conditions(rental_request.rental_condition_id)
-        .expect("Fatal: Rental condition not found");
-    let initial_rental_period_nanos =
-        rental_condition.initial_rental_period_days * SECONDS_PER_DAY * BILLION;
-
-    // Convert all remaining ICP to cycles.
-    let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
-    let converted_cycles =
-        convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
-    let total_cycles_created = converted_cycles.saturating_add(rental_request.locked_amount_cycles);
-
-    // Create the rental agreement.
-    let now_nanos = ic_cdk::api::time();
-    let rental_agreement = RentalAgreement {
-        user: payload.user,
-        subnet_id: payload.subnet_id,
-        rental_request_proposal_id: rental_request.initial_proposal_id,
-        subnet_creation_proposal_id: Some(payload.proposal_id),
-        rental_condition_id: rental_request.rental_condition_id,
-        creation_time_nanos: now_nanos,
-        paid_until_nanos: now_nanos + initial_rental_period_nanos,
-        total_icp_paid: rental_request.initial_cost_icp,
-        total_cycles_created,
-        total_cycles_burned: 0,
-    };
-
-    set_authorized_subnetwork_list(&payload.user, &payload.subnet_id).await;
-
-    // Removing the rental request will also stop the monthly locking process which locks 10% of the initial cost.
-    remove_rental_request(&payload.user).unwrap(); // It is checked above that the user has a rental request.
-
-    persist_rental_agreement(rental_agreement).unwrap(); // It is checked above that the subnet is not being rented.
-
-    Ok(())
 }
 
 /// If the calling user has a rental request, the rental request will be deleted,
