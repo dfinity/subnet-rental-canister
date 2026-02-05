@@ -38,11 +38,11 @@ const SECONDS_PER_DAY: u64 = 60 * 60 * 24;
 
 fn install_xrc_and_cmc(pic: &PocketIc) {
     // install XRC
-    pic.create_canister_with_id(None, None, EXCHANGE_RATE_CANISTER_ID)
+    pic.create_canister_with_id(None, None, *EXCHANGE_RATE_CANISTER_ID)
         .unwrap();
     let xrc_wasm =
         fs::read(XRC_WASM).expect("Get the Wasm dependencies with ./scripts/get_wasms.sh");
-    pic.install_canister(EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
+    pic.install_canister(*EXCHANGE_RATE_CANISTER_ID, xrc_wasm, vec![], None);
 
     // install CMC
     pic.create_canister_with_id(None, None, MAINNET_CYCLES_MINTING_CANISTER_ID)
@@ -55,7 +55,7 @@ fn install_xrc_and_cmc(pic: &PocketIc) {
         minting_account_id: minter.to_string(),
         ledger_canister_id: Some(MAINNET_LEDGER_CANISTER_ID),
         last_purged_notification: None,
-        exchange_rate_canister: Some(ExchangeRateCanister::Set(EXCHANGE_RATE_CANISTER_ID)),
+        exchange_rate_canister: Some(ExchangeRateCanister::Set(*EXCHANGE_RATE_CANISTER_ID)),
         cycles_ledger_canister_id: None,
     };
     pic.install_canister(
@@ -173,7 +173,7 @@ fn set_xrc_exchange_rate_last_midnight(pic: &PocketIc, exchange_rate_xdr_per_icp
     let midnight = now - now % SECONDS_PER_DAY;
     update::<()>(
         pic,
-        EXCHANGE_RATE_CANISTER_ID,
+        *EXCHANGE_RATE_CANISTER_ID,
         None,
         "set_exchange_rate_data",
         vec![(midnight, exchange_rate_xdr_per_icp)],
@@ -190,7 +190,7 @@ fn set_cmc_exchange_rate(pic: &PocketIc, exchange_rate_xdr_per_icp: u64) {
 
     update::<()>(
         pic,
-        EXCHANGE_RATE_CANISTER_ID,
+        *EXCHANGE_RATE_CANISTER_ID,
         None,
         "set_exchange_rate_data",
         vec![(fetch_time, exchange_rate_xdr_per_icp)],

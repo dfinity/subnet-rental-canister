@@ -13,8 +13,12 @@ use ic_xrc_types::{
     GetExchangeRateRequest, GetExchangeRateResult,
 };
 
-pub const EXCHANGE_RATE_CANISTER_ID: Principal =
-    Principal::from_slice(b"\x00\x00\x00\x00\x02\x10\x00\x01\x01\x01"); // uf6dk-hyaaa-aaaaq-qaaaq-cai
+use lazy_static::lazy_static;
+
+lazy_static! {
+    pub static ref EXCHANGE_RATE_CANISTER_ID: Principal =
+        Principal::from_text("uf6dk-hyaaa-aaaaq-qaaaq-cai").expect("Invalid XRC canister ID");
+}
 
 /// Override/set the authorized subnetwork list of the CMC of a user to one specific subnet.
 pub async fn set_authorized_subnetwork_list(user: &Principal, subnet_id: &Principal) {
@@ -106,7 +110,7 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(
     // See https://github.com/dfinity/exchange-rate-canister/blob/2f2a08f36fa6d043da9751d61d77952b36a59006/src/xrc/src/lib.rs#L56
     // for the constant.
     let response: GetExchangeRateResult =
-        Call::unbounded_wait(EXCHANGE_RATE_CANISTER_ID, "get_exchange_rate")
+        Call::unbounded_wait(*EXCHANGE_RATE_CANISTER_ID, "get_exchange_rate")
             .with_arg(request)
             .with_cycles(1_000_000_000)
             .await
