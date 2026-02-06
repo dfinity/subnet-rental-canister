@@ -15,7 +15,7 @@ use ic_xrc_types::{
 use std::cell::RefCell;
 
 thread_local! {
-    pub static EXCHANGE_RATE_CANISTER_ID: RefCell<Principal> =
+    static EXCHANGE_RATE_CANISTER_ID: RefCell<Principal> =
         RefCell::new(Principal::from_text("uf6dk-hyaaa-aaaaq-qaaaq-cai").expect("Invalid XRC canister ID"));
 }
 
