@@ -12,12 +12,15 @@ use ic_xrc_types::{
     Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
     GetExchangeRateRequest, GetExchangeRateResult,
 };
+use std::cell::RefCell;
 
-use lazy_static::lazy_static;
+thread_local! {
+    pub static EXCHANGE_RATE_CANISTER_ID: RefCell<Principal> =
+        RefCell::new(Principal::from_text("uf6dk-hyaaa-aaaaq-qaaaq-cai").expect("Invalid XRC canister ID"));
+}
 
-lazy_static! {
-    pub static ref EXCHANGE_RATE_CANISTER_ID: Principal =
-        Principal::from_text("uf6dk-hyaaa-aaaaq-qaaaq-cai").expect("Invalid XRC canister ID");
+pub fn get_exchange_rate_canister_id() -> Principal {
+    EXCHANGE_RATE_CANISTER_ID.with_borrow(|p| *p)
 }
 
 /// Override/set the authorized subnetwork list of the CMC of a user to one specific subnet.
@@ -110,7 +113,7 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(
     // See https://github.com/dfinity/exchange-rate-canister/blob/2f2a08f36fa6d043da9751d61d77952b36a59006/src/xrc/src/lib.rs#L56
     // for the constant.
     let response: GetExchangeRateResult =
-        Call::unbounded_wait(*EXCHANGE_RATE_CANISTER_ID, "get_exchange_rate")
+        Call::unbounded_wait(get_exchange_rate_canister_id(), "get_exchange_rate")
             .with_arg(request)
             .with_cycles(1_000_000_000)
             .await

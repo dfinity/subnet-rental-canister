@@ -1986,7 +1986,6 @@ dependencies = [
  "ic-xrc-types",
  "icrc-ledger-types",
  "itertools 0.14.0",
- "lazy_static",
  "pocket-ic",
  "serde",
  "serde_bytes",
