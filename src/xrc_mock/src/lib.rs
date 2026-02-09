@@ -1,3 +1,17 @@
+//! A mock implementation of the exchange rate canister, which allows us to get
+//! exchange rates for testing purposes.
+//!
+//! Ideally, the real canister would be used, however, since the real canister
+//! performs HTTPS outcalls, it creates a complication in PocketIC tests as
+//! mocking these would be more demanding as one would need to understand the
+//! exact format of the outcalls the XRC performs and provide mock responses
+//! in their tests accordingly.
+//!
+//! For now and until another better solution is found (e.g. PocketIC providing a way
+//! to mock calls to a certain canister or the XRC providing a dedicated mock which
+//! does not perform HTTPS outcalls), this mock is used to provide exchange rates
+//! to the subnet rental canister in PocketIC tests.
+
 use ic_xrc_types::{
     Asset, AssetClass, ExchangeRate, ExchangeRateMetadata, GetExchangeRateRequest,
     GetExchangeRateResult,
