@@ -4,11 +4,11 @@ use ic_ledger_types::{Memo, Tokens};
 use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
 
-pub mod canister;
-pub mod canister_state;
+mod canister;
+mod canister_state;
 pub mod external_calls;
 pub mod external_types;
-pub mod history;
+mod history;
 
 pub const BILLION: u64 = 1_000_000_000;
 pub const TRILLION: u128 = 1_000_000_000_000;

@@ -37,7 +37,7 @@ fn init() {
 }
 
 #[post_upgrade]
-fn post_upgrade() {
+async fn post_upgrade() {
     set_initial_conditions();
     start_timers();
 }
@@ -69,14 +69,13 @@ fn set_initial_conditions() {
 
 fn start_timers() {
     // Check if any ICP should be locked every hour.
-    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), || {
-        ic_cdk::futures::spawn(locking())
-    });
+    ic_cdk_timers::set_timer_interval(Duration::from_secs(60 * 60), async || locking().await);
 
     // Burn cycles every minute.
-    ic_cdk_timers::set_timer_interval(Duration::from_secs(CYCLES_BURN_INTERVAL_SECONDS), || {
-        ic_cdk::futures::spawn(burn_cycles())
-    });
+    ic_cdk_timers::set_timer_interval(
+        Duration::from_secs(CYCLES_BURN_INTERVAL_SECONDS),
+        async || burn_cycles().await,
+    );
 }
 
 async fn burn_cycles() {
@@ -406,6 +405,10 @@ fn calculate_subnet_price(
 
 #[update(manual_reply = true)]
 pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayload) {
+    // Note: The NNS Governance canister makes sure that there is only one non-terminal subnet rental request proposal
+    // at a time, effectively preventing concurrent calls to this method.
+    // See [here](https://github.com/dfinity/ic/blob/d8fb1363ef39bae56493a8e48907c76b50d914e6/rs/nns/governance/src/governance.rs#L5061).
+
     if let Err(e) = execute_rental_request_proposal_(payload).await {
         msg_reject(format!("Subnet rental request proposal failed: {:?}", e));
     } else {
