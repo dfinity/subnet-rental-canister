@@ -3,9 +3,9 @@
 //!
 //! Ideally, the real canister would be used, however, since the real canister
 //! performs HTTPS outcalls, it creates a complication in PocketIC tests as
-//! mocking these is not supported when made by a dependency of the canister
-//! under test (one can only mock the HTTPS outcalls made by the canister under
-//! test itself).
+//! mocking these would be more demanding as one would need to understand the
+//! exact format of the outcalls the XRC performs and provide mock responses
+//! in their tests accordingly.
 //!
 //! For now and until another better solution is found (e.g. PocketIC providing a way
 //! to mock calls to a certain canister or the XRC providing a dedicated mock which
