@@ -234,10 +234,6 @@ pub fn persist_rental_request(rental_request: RentalRequest) -> Result<(), Strin
     })
 }
 
-pub fn take_rental_request(user: Principal) -> Option<RentalRequest> {
-    RENTAL_REQUESTS.with_borrow_mut(|requests| requests.remove(&user))
-}
-
 /// Create a RentalAgreement if it does not already exist, and persist the corresponding event.
 pub fn persist_rental_agreement(rental_agreement: RentalAgreement) -> Result<(), String> {
     RENTAL_AGREEMENTS.with_borrow_mut(|agreements| {
