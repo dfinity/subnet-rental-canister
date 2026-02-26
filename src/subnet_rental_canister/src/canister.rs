@@ -80,7 +80,7 @@ fn start_timers() {
 
 async fn burn_cycles() {
     for rental_agreement in iter_rental_agreements().into_iter().map(|(_, v)| v) {
-        let Ok(_guard_res) = CallerGuard::new(rental_agreement.subnet_id, "agreement") else {
+        let Ok(_guard_agreement) = CallerGuard::new(rental_agreement.subnet_id, "agreement") else {
             println!(
                 "Busy processing another request. Skipping cycles burn for subnet {}",
                 rental_agreement.subnet_id
@@ -183,7 +183,7 @@ async fn locking() {
             continue;
         }
 
-        let Ok(_guard_res) = CallerGuard::new(user, "request") else {
+        let Ok(_guard_request) = CallerGuard::new(user, "request") else {
             println!("Busy processing another request. Skipping.");
             continue;
         };
@@ -442,7 +442,10 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
         verify_caller_is_governance()?;
 
         // make sure no concurrent calls to this method can exist, in addition to governance's check.
-        let _guard = CallerGuard::new(user, "request").expect("Fatal: Concurrent call");
+        let _guard_request =
+            CallerGuard::new(user, "request").expect("Fatal: Concurrent call on user");
+        let _guard = CallerGuard::new(Principal::anonymous(), "execute_rental_request_proposal")
+            .expect("Fatal: Concurrent call on execute_rental_request_proposal");
 
         // Fail if user has an existing rental request going on
         if get_rental_request(&user).is_some() {
@@ -581,8 +584,10 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
         payload: CreateRentalAgreementPayload,
     ) -> Result<(), ExecuteProposalError> {
         verify_caller_is_governance()?;
-        let _guard = CallerGuard::new(payload.user, "request").expect("Fatal: Concurrent call");
-        let _guard = CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call");
+        let _guard_user =
+            CallerGuard::new(payload.user, "request").expect("Fatal: Concurrent call on user");
+        let _guard_subnet =
+            CallerGuard::new(payload.subnet_id, "nns").expect("Fatal: Concurrent call on subnet");
 
         // Check if the user has an active rental request.
         let Some(rental_request) = get_rental_request(&payload.user) else {
@@ -641,11 +646,11 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
 pub async fn refund() -> Result<u64, String> {
     let caller = msg_caller();
     // To not flood the ledger canister, we only do one refund at a time.
-    let Ok(_guard_res) = CallerGuard::new(Principal::anonymous(), "refund") else {
+    let Ok(_guard_refund) = CallerGuard::new(Principal::anonymous(), "refund") else {
         return Err("Busy processing another request. Try again.".to_string());
     };
     // We might remove a rental request, so we need to acquire a lock on it.
-    let Ok(_guard_res) = CallerGuard::new(caller, "request") else {
+    let Ok(_guard_request) = CallerGuard::new(caller, "request") else {
         return Err("Busy processing another request. Try again.".to_string());
     };
 
@@ -740,7 +745,7 @@ pub async fn subnet_top_up_estimate(
 /// Callable by anyone to trigger the conversion of ICP to cycles and the extension of the rental agreement.
 #[update]
 pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String> {
-    let Ok(_guard) = CallerGuard::new(subnet_id, "agreement") else {
+    let Ok(_guard_agreement) = CallerGuard::new(subnet_id, "agreement") else {
         return Err("Concurrent call, aborting".to_string());
     };
 
@@ -767,8 +772,8 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
     .await
     .map_err(|e| format!("Failed to convert ICP to cycles: {:?}", e))?;
     println!(
-        "Converted {} ICP to {} cycles",
-        icp_amount_for_cycles, actual_cycles
+        "Converted {} ICP to {} cycles for subnet {}",
+        icp_amount_for_cycles, actual_cycles, subnet_id
     );
 
     // calculate the new paid_until_nanos
