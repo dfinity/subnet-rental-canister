@@ -1188,6 +1188,41 @@ fn do_not_allow_concurrent_subnet_admin_updates() {
 // fn test_burning() {
 // fn accept_test_rental_agreement(
 
+#[test]
+fn test_top_up_estimate_round_trip_consistency() {
+    let pic = setup_with_rented_subnet();
+
+    let exchange_rate = 3_593_382_591; // 1 ICP = 3.593382591 XDR
+
+    // Rent a subnet so we have a rental agreement to estimate against.
+    rent_subnet_helper(&pic, SUBNET_FOR_RENT, USER_1);
+
+    // Set the exchange rate for the top-up estimate.
+    set_xrc_exchange_rate_last_midnight(&pic, exchange_rate);
+
+    // Get today's price (180 days worth of ICP).
+    let price_for_180_days = get_todays_price(&pic);
+
+    // Now ask: how many days would that ICP amount buy?
+    let estimate = update_multi_arg::<Result<TopUpSummary, String>>(
+        &pic,
+        SRC_ID,
+        None,
+        "subnet_top_up_estimate",
+        (SUBNET_FOR_RENT, price_for_180_days),
+    )
+    .unwrap()
+    .unwrap();
+
+    // The estimate should give back at least 180 days (the initial rental period).
+    assert!(
+        estimate.days_added >= 180,
+        "Expected >= 180 days but got {} days for {} ICP",
+        estimate.days_added,
+        price_for_180_days,
+    );
+}
+
 // ====================================================================================================================
 // Helpers
 fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
