@@ -191,9 +191,9 @@ async fn locking() {
         };
 
         // Convert ICP to cycles.
-        let locked_cycles =
+        let (block_index, locked_cycles) =
             match convert_icp_to_cycles(ten_percent_icp, Subaccount::from(user)).await {
-                Ok(locked_cycles) => locked_cycles,
+                Ok(result) => result,
                 Err(error) => {
                     println!("Failed to convert ICP to cycles for rental request of user {user}.");
                     persist_event(
@@ -207,6 +207,13 @@ async fn locking() {
                 }
             };
 
+        persist_event(
+            EventType::TransferSuccess {
+                amount: ten_percent_icp,
+                block_index,
+            },
+            Some(user),
+        );
         println!("SRC gained {locked_cycles} cycles from the locked ICP.");
         persist_event(
             EventType::LockingSuccess {
@@ -539,11 +546,18 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
         );
 
         let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
-        let Ok(locked_cycles) = res else {
+        let Ok((block_index, locked_cycles)) = res else {
             println!("Fatal: Failed to convert ICP to cycles");
             let e = res.unwrap_err();
             return with_error(user, proposal_id, e);
         };
+        persist_event(
+            EventType::TransferSuccess {
+                amount: lock_amount_icp,
+                block_index,
+            },
+            Some(user),
+        );
         println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
 
         let now_nanos = ic_cdk::api::time();
@@ -603,8 +617,15 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
 
         // Convert all remaining ICP to cycles.
         let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
-        let converted_cycles =
+        let (block_index, converted_cycles) =
             convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
+        persist_event(
+            EventType::TransferSuccess {
+                amount: remaining_icp,
+                block_index,
+            },
+            Some(payload.user),
+        );
         let total_cycles_created =
             converted_cycles.saturating_add(rental_request.locked_amount_cycles);
 
@@ -665,6 +686,13 @@ pub async fn refund() -> Result<u64, String> {
             to_be_refunded, caller, e
         )
     })?;
+    persist_event(
+        EventType::TransferSuccess {
+            amount: to_be_refunded,
+            block_index: block_id,
+        },
+        Some(caller),
+    );
 
     // If the user has a rental request, burn the locked cycles and remove the request.
     if let Some(rental_request) = get_rental_request(&caller) {
@@ -762,12 +790,19 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
     let icp_amount_for_cycles = user_icp_balance - DEFAULT_FEE;
 
     // If the user were to withdraw before this call, the function would return an error.
-    let actual_cycles = convert_icp_to_cycles(
+    let (block_index, actual_cycles) = convert_icp_to_cycles(
         icp_amount_for_cycles,
         Subaccount::from(rental_agreement.user),
     )
     .await
     .map_err(|e| format!("Failed to convert ICP to cycles: {:?}", e))?;
+    persist_event(
+        EventType::TransferSuccess {
+            amount: icp_amount_for_cycles,
+            block_index,
+        },
+        Some(subnet_id),
+    );
     println!(
         "Converted {} ICP to {} cycles",
         icp_amount_for_cycles, actual_cycles
@@ -813,6 +848,18 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
     })
     .unwrap(); // Safe because we checked above that the rental agreement exists.
 
+    persist_event(
+        EventType::SubnetTopUp {
+            subnet_id,
+            user: rental_agreement.user,
+            icp_amount: user_icp_balance,
+            cycles_added: actual_cycles,
+            days_added,
+            new_paid_until_nanos,
+        },
+        Some(subnet_id),
+    );
+
     let description = format!(
         "Topped up subnet {} with {} ICP corresponding to {} cycles, \
         extending the rental agreement by {} days",
@@ -854,7 +901,7 @@ pub async fn update_subnet_admins(payload: UpdateSubnetAdminsPayload) -> UpdateS
         )));
     };
 
-    match &payload.operation_type {
+    let operation = match &payload.operation_type {
         None => {
             return UpdateSubnetAdminsResult::Err(Some(
                 UpdateSubnetAdminsError::UnknownOperationType(candid::Reserved),
@@ -867,14 +914,36 @@ pub async fn update_subnet_admins(payload: UpdateSubnetAdminsPayload) -> UpdateS
                     UpdateSubnetAdminsError::PrincipalListEmpty(candid::Reserved),
                 ));
             }
+            payload.operation_type.clone().unwrap()
         }
-        Some(OperationType::Clear(_)) => {}
+        Some(OperationType::Clear(_)) => payload.operation_type.clone().unwrap(),
     };
 
+    let caller = msg_caller();
     let res = crate::external_calls::update_subnet_admins(payload.into()).await;
     match res {
-        Ok(()) => UpdateSubnetAdminsResult::Ok(candid::Reserved),
-        Err(e) => UpdateSubnetAdminsResult::Err(Some(UpdateSubnetAdminsError::RegistryError(e))),
+        Ok(()) => {
+            persist_event(
+                EventType::SubnetAdminsUpdated {
+                    subnet_id,
+                    caller,
+                    operation,
+                },
+                Some(subnet_id),
+            );
+            UpdateSubnetAdminsResult::Ok(candid::Reserved)
+        }
+        Err(e) => {
+            persist_event(
+                EventType::SubnetAdminsUpdateFailed {
+                    subnet_id,
+                    caller,
+                    reason: e.clone(),
+                },
+                Some(subnet_id),
+            );
+            UpdateSubnetAdminsResult::Err(Some(UpdateSubnetAdminsError::RegistryError(e)))
+        }
     }
 }
 

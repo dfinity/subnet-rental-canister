@@ -324,9 +324,10 @@ fn test_initial_proposal() {
         "get_history_page",
         (user_principal, None::<Option<u64>>),
     );
-    // think of a better test than length
+    // 1 RentalConditionsChanged
     assert_eq!(src_history.events.len(), 1);
-    assert_eq!(user_history.events.len(), 1);
+    // 1 RentalRequestCreated + 1 TransferSuccess (initial 10% lock)
+    assert_eq!(user_history.events.len(), 2);
 
     let rental_requests =
         query::<Vec<RentalRequest>>(&pic, SRC_ID, None, "list_rental_requests", ());
@@ -977,7 +978,9 @@ fn test_locking() {
 
     // in total, we might have an error of strictly less than 10 e8s
     assert!(updated_rental_request.locked_amount_icp >= initial_payment - Tokens::from_e8s(10));
-    // there should be 1 rental request created event + 9 locking events (the last call should not have caused an event)
+    // 1 RentalRequestCreated + 1 TransferSuccess (initial lock) +
+    // 9 successful locking iterations * (1 TransferSuccess + 1 LockingSuccess) = 20
+    // (the last iteration should not have caused an event since 100% is already locked)
     let user_history = query_multi_arg::<EventPage>(
         &pic,
         SRC_ID,
@@ -985,7 +988,7 @@ fn test_locking() {
         "get_history_page",
         (user_principal, None::<Option<u64>>),
     );
-    assert_eq!(user_history.events.len(), 10);
+    assert_eq!(user_history.events.len(), 20);
 }
 
 #[test]

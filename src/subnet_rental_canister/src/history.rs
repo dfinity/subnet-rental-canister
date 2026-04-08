@@ -1,4 +1,4 @@
-use crate::{Principal, RentalConditionId, RentalConditions, RentalRequest};
+use crate::{OperationType, Principal, RentalConditionId, RentalConditions, RentalRequest};
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
@@ -8,7 +8,7 @@ use std::borrow::Cow;
 /// Important events are persisted for auditing by the community.
 /// Create events via EventType::SomeVariant.into()
 /// so that system time is captured automatically.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, CandidType, Deserialize)]
 pub struct Event {
     time_nanos: u64,
     event: EventType,
@@ -50,7 +50,7 @@ impl From<EventType> for Event {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, CandidType, Deserialize)]
 pub enum EventType {
     /// Changed via code upgrade, which should create this event in the post-upgrade hook.
     /// A None value means that the entry has been removed from the map.
@@ -80,6 +80,7 @@ pub enum EventType {
         subnet_creation_proposal_id: Option<u64>,
         rental_condition_id: RentalConditionId,
     },
+    /// Not yet emitted. Reserved for future rental agreement termination logic.
     RentalAgreementTerminated {
         user: Principal,
         initial_proposal_id: u64,
@@ -91,11 +92,13 @@ pub enum EventType {
         amount: Tokens,
         block_index: u64,
     },
+    /// Not yet emitted. Reserved for future recurring payment logic.
     PaymentSuccess {
         amount: Tokens,
         cycles: u128,
         covered_until_nanos: u64,
     },
+    /// Not yet emitted. Reserved for future recurring payment logic.
     PaymentFailure {
         reason: String,
     },
@@ -110,7 +113,27 @@ pub enum EventType {
         user: Principal,
         reason: String,
     },
+    SubnetTopUp {
+        subnet_id: Principal,
+        user: Principal,
+        icp_amount: Tokens,
+        cycles_added: u128,
+        days_added: u64,
+        new_paid_until_nanos: u64,
+    },
+    SubnetAdminsUpdated {
+        subnet_id: Principal,
+        caller: Principal,
+        operation: OperationType,
+    },
+    SubnetAdminsUpdateFailed {
+        subnet_id: Principal,
+        caller: Principal,
+        reason: String,
+    },
+    /// Not yet emitted. Reserved for future canister degradation detection.
     Degraded,
+    /// Not yet emitted. Reserved for future canister degradation recovery.
     Undegraded,
     Other {
         message: String,
