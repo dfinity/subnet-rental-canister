@@ -10,10 +10,13 @@ use ic_ledger_types::{
     TransferError, DEFAULT_FEE, DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID,
     MAINNET_LEDGER_CANISTER_ID,
 };
+use ic_protobuf::registry::subnet::v1::SubnetRecord;
+use ic_registry_transport::pb::v1::RegistryGetValueRequest;
 use ic_xrc_types::{
     Asset, AssetClass, ExchangeRate, ExchangeRateError, ExchangeRateMetadata,
     GetExchangeRateRequest, GetExchangeRateResult,
 };
+use prost::Message;
 use std::cell::RefCell;
 
 thread_local! {
@@ -183,4 +186,51 @@ pub async fn update_subnet_admins(payload: UpdateSubnetAdminsPayload) -> Result<
     .await
     .map(|_| ())
     .map_err(|err| err.to_string())
+}
+
+pub async fn get_subnet_admins(subnet_id: Principal) -> Result<Vec<Principal>, String> {
+    let key = format!("subnet_record_{subnet_id}");
+    let request = RegistryGetValueRequest {
+        key: key.into_bytes(),
+        version: None,
+    };
+    let request_bytes = request.encode_to_vec();
+
+    let response = Call::unbounded_wait(
+        REGISTRY_CANISTER_ID.with_borrow(|p| *p),
+        "get_value",
+    )
+    .with_raw_args(&request_bytes)
+    .await
+    .map_err(|err| err.to_string())?;
+
+    let response_bytes = response.into_bytes();
+    let registry_response =
+        ic_registry_transport::pb::v1::HighCapacityRegistryGetValueResponse::decode(
+            response_bytes.as_slice(),
+        )
+        .map_err(|e| format!("failed to decode registry response: {e}"))?;
+
+    if let Some(error) = registry_response.error {
+        return Err(format!("registry error: {:?}", error));
+    }
+
+    let value = match registry_response.content {
+        Some(ic_registry_transport::pb::v1::high_capacity_registry_get_value_response::Content::Value(v)) => v,
+        _ => return Err("no value in registry response".to_string()),
+    };
+
+    let subnet_record = SubnetRecord::decode(value.as_slice())
+        .map_err(|e| format!("failed to decode SubnetRecord: {e}"))?;
+
+    let admins = subnet_record
+        .subnet_admins
+        .into_iter()
+        .map(|pid| {
+            Principal::try_from_slice(&pid.raw)
+                .map_err(|e| format!("invalid principal in subnet_admins: {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(admins)
 }
