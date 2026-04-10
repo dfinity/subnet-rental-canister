@@ -1214,12 +1214,11 @@ fn test_top_up_estimate_round_trip_consistency() {
     .unwrap()
     .unwrap();
 
-    // The estimate should give back at least 180 days (the initial rental period).
-    assert!(
-        estimate.days_added >= 180,
-        "Expected >= 180 days but got {} days for {} ICP",
-        estimate.days_added,
-        price_for_180_days,
+    // The estimate should give back exactly 180 days (the initial rental period).
+    assert_eq!(
+        estimate.days_added, 180,
+        "Expected 180 days but got {} days for {} ICP",
+        estimate.days_added, price_for_180_days,
     );
 }
 
