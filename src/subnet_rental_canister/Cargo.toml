@@ -11,7 +11,6 @@ crate-type = ["cdylib", "rlib"]
 candid = "0.10.24"
 hex = "0.4.3"
 ic-cdk = "0.19.0"
-prost = "0.13"
 ic-cdk-timers = "1.0.0"
 ic-ledger-types = "0.16.0"
 ic-stable-structures = "0.6.9"
@@ -21,9 +20,6 @@ itertools = "0.14.0"
 serde = "1.0.219"
 serde_bytes = "0.11.17"
 sha2 = "0.10.9"
-
-ic-protobuf = { git = "https://github.com/dfinity/ic.git", rev = "606cab75d9840e2e1c5ef1ce734a7e6a4f754f0b" }
-ic-registry-transport = { git = "https://github.com/dfinity/ic.git", rev = "606cab75d9840e2e1c5ef1ce734a7e6a4f754f0b" }
 
 [dev-dependencies]
 pocket-ic = "13.0.0"

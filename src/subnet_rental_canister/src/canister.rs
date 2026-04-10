@@ -13,8 +13,7 @@ use crate::{
     CreateRentalAgreementPayload, EventPage, ExecuteProposalError, OperationType,
     PriceCalculationData, RentalAgreement, RentalAgreementStatus, RentalConditionId,
     RentalConditions, RentalRequest, SubnetRentalProposalPayload, TopUpSummary,
-    ListSubnetAdminsError, ListSubnetAdminsResult, UpdateSubnetAdminsError,
-    UpdateSubnetAdminsPayload, UpdateSubnetAdminsResult, BILLION,
+    UpdateSubnetAdminsError, UpdateSubnetAdminsPayload, UpdateSubnetAdminsResult, BILLION,
     TRILLION,
 };
 use candid::Principal;
@@ -876,21 +875,6 @@ pub async fn update_subnet_admins(payload: UpdateSubnetAdminsPayload) -> UpdateS
     match res {
         Ok(()) => UpdateSubnetAdminsResult::Ok(candid::Reserved),
         Err(e) => UpdateSubnetAdminsResult::Err(Some(UpdateSubnetAdminsError::RegistryError(e))),
-    }
-}
-
-/// Callable by any principal that is renting a subnet to list the current subnet admins.
-#[update]
-pub async fn list_subnet_admins(subnet_id: Principal) -> ListSubnetAdminsResult {
-    if verify_caller_is_renting_subnet(subnet_id).is_err() {
-        return ListSubnetAdminsResult::Err(ListSubnetAdminsError::CallerNotRentingSubnet(
-            candid::Reserved,
-        ));
-    }
-
-    match crate::external_calls::get_subnet_admins(subnet_id).await {
-        Ok(admins) => ListSubnetAdminsResult::Ok(admins),
-        Err(e) => ListSubnetAdminsResult::Err(ListSubnetAdminsError::RegistryError(e)),
     }
 }
 

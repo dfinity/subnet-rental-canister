@@ -26,11 +26,10 @@ use subnet_rental_canister::{
         CmcInitPayload, ExchangeRateCanister, FeatureFlags, NnsLedgerCanisterInitPayload,
         NnsLedgerCanisterPayload, PrincipalsAuthorizedToCreateCanistersToSubnetsResponse,
     },
-    CreateRentalAgreementPayload, EmptyRecord, EventPage, ExecuteProposalError,
-    ListSubnetAdminsError, ListSubnetAdminsResult, OperationType, RentalAgreement,
-    RentalAgreementStatus,
-    RentalConditionId, RentalConditions, RentalRequest, SubnetRentalProposalPayload, TopUpSummary,
-    UpdateSubnetAdminsError, UpdateSubnetAdminsPayload, UpdateSubnetAdminsResult, E8S, TRILLION,
+    CreateRentalAgreementPayload, EmptyRecord, EventPage, ExecuteProposalError, OperationType,
+    RentalAgreement, RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
+    SubnetRentalProposalPayload, TopUpSummary, UpdateSubnetAdminsError, UpdateSubnetAdminsPayload,
+    UpdateSubnetAdminsResult, E8S, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
@@ -1184,131 +1183,16 @@ fn do_not_allow_concurrent_subnet_admin_updates() {
     );
 }
 
+// Regression test: the Clear variant used to be encoded as `candid::Reserved`,
+// which does not match the registry's expected `record {}` on the wire and
+// caused the registry to reject the call with "unknown operation type".
 #[test]
-fn list_subnet_admins_cannot_be_called_by_non_renting_principal() {
-    let pic = setup();
-    let res = update::<ListSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(USER_1),
-        "list_subnet_admins",
-        SUBNET_FOR_RENT,
-    );
-    assert_eq!(
-        res.unwrap(),
-        ListSubnetAdminsResult::Err(ListSubnetAdminsError::CallerNotRentingSubnet(
-            candid::Reserved
-        )),
-    );
-}
-
-#[test]
-fn can_list_subnet_admins_across_multiple_operations() {
-    let pic = setup_with_rented_subnet();
-    let subnet_id = *pic.topology().get_app_subnets().first().unwrap();
-    let renting_principal = USER_1;
-    let admin_3 = Principal::from_slice(b"admin3");
-    rent_subnet_helper(&pic, subnet_id, renting_principal);
-
-    let list_admins = |pic: &PocketIc| -> Vec<Principal> {
-        let res = update::<ListSubnetAdminsResult>(
-            pic,
-            SRC_ID,
-            Some(renting_principal),
-            "list_subnet_admins",
-            subnet_id,
-        );
-        match res.unwrap() {
-            ListSubnetAdminsResult::Ok(mut admins) => {
-                admins.sort();
-                admins
-            }
-            ListSubnetAdminsResult::Err(e) => panic!("expected Ok, got {e:?}"),
-        }
-    };
-
-    // Initially no admins
-    assert_eq!(list_admins(&pic), vec![]);
-
-    // First call: add USER_1
-    let payload = UpdateSubnetAdminsPayload {
-        subnet_id,
-        operation_type: Some(OperationType::Add(BoundedVec::new(vec![renting_principal]))),
-    };
-    update::<UpdateSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "update_subnet_admins",
-        payload,
-    )
-    .unwrap();
-
-    assert_eq!(list_admins(&pic), vec![renting_principal]);
-
-    // Second call: add USER_2 and admin_3
-    let payload = UpdateSubnetAdminsPayload {
-        subnet_id,
-        operation_type: Some(OperationType::Add(BoundedVec::new(vec![USER_2, admin_3]))),
-    };
-    update::<UpdateSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "update_subnet_admins",
-        payload,
-    )
-    .unwrap();
-
-    let mut expected = vec![renting_principal, USER_2, admin_3];
-    expected.sort();
-    assert_eq!(list_admins(&pic), expected);
-
-    // Remove USER_2
-    let payload = UpdateSubnetAdminsPayload {
-        subnet_id,
-        operation_type: Some(OperationType::Remove(BoundedVec::new(vec![USER_2]))),
-    };
-    update::<UpdateSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "update_subnet_admins",
-        payload,
-    )
-    .unwrap();
-
-    let mut expected = vec![renting_principal, admin_3];
-    expected.sort();
-    assert_eq!(list_admins(&pic), expected);
-
-    // Add USER_2 back
-    let payload = UpdateSubnetAdminsPayload {
-        subnet_id,
-        operation_type: Some(OperationType::Add(BoundedVec::new(vec![USER_2]))),
-    };
-    update::<UpdateSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "update_subnet_admins",
-        payload,
-    )
-    .unwrap();
-
-    let mut expected = vec![renting_principal, USER_2, admin_3];
-    expected.sort();
-    assert_eq!(list_admins(&pic), expected);
-}
-
-#[test]
-fn list_subnet_admins_after_remove_all() {
+fn clear_subnet_admins_succeeds() {
     let pic = setup_with_rented_subnet();
     let subnet_id = *pic.topology().get_app_subnets().first().unwrap();
     let renting_principal = USER_1;
     rent_subnet_helper(&pic, subnet_id, renting_principal);
 
-    // Add admins
     let payload = UpdateSubnetAdminsPayload {
         subnet_id,
         operation_type: Some(OperationType::Add(BoundedVec::new(vec![
@@ -1325,64 +1209,11 @@ fn list_subnet_admins_after_remove_all() {
     )
     .unwrap();
 
-    // Remove all admins explicitly
-    let payload = UpdateSubnetAdminsPayload {
-        subnet_id,
-        operation_type: Some(OperationType::Remove(BoundedVec::new(vec![
-            renting_principal,
-            USER_2,
-        ]))),
-    };
-    update::<UpdateSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "update_subnet_admins",
-        payload,
-    )
-    .unwrap();
-
-    // List should be empty
-    let res = update::<ListSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "list_subnet_admins",
-        subnet_id,
-    );
-    assert_eq!(res.unwrap(), ListSubnetAdminsResult::Ok(vec![]));
-}
-
-#[test]
-fn list_subnet_admins_after_clear() {
-    let pic = setup_with_rented_subnet();
-    let subnet_id = *pic.topology().get_app_subnets().first().unwrap();
-    let renting_principal = USER_1;
-    rent_subnet_helper(&pic, subnet_id, renting_principal);
-
-    // Add admins
-    let payload = UpdateSubnetAdminsPayload {
-        subnet_id,
-        operation_type: Some(OperationType::Add(BoundedVec::new(vec![
-            renting_principal,
-            USER_2,
-        ]))),
-    };
-    update::<UpdateSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "update_subnet_admins",
-        payload,
-    )
-    .unwrap();
-
-    // Clear all admins
     let payload = UpdateSubnetAdminsPayload {
         subnet_id,
         operation_type: Some(OperationType::Clear(EmptyRecord {})),
     };
-    update::<UpdateSubnetAdminsResult>(
+    let res = update::<UpdateSubnetAdminsResult>(
         &pic,
         SRC_ID,
         Some(renting_principal),
@@ -1390,39 +1221,7 @@ fn list_subnet_admins_after_clear() {
         payload,
     )
     .unwrap();
-
-    // List should be empty
-    let res = update::<ListSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "list_subnet_admins",
-        subnet_id,
-    );
-    assert_eq!(res.unwrap(), ListSubnetAdminsResult::Ok(vec![]));
-
-    // Add admin after clear
-    let payload = UpdateSubnetAdminsPayload {
-        subnet_id,
-        operation_type: Some(OperationType::Add(BoundedVec::new(vec![USER_2]))),
-    };
-    update::<UpdateSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "update_subnet_admins",
-        payload,
-    )
-    .unwrap();
-
-    let res = update::<ListSubnetAdminsResult>(
-        &pic,
-        SRC_ID,
-        Some(renting_principal),
-        "list_subnet_admins",
-        subnet_id,
-    );
-    assert_eq!(res.unwrap(), ListSubnetAdminsResult::Ok(vec![USER_2]));
+    assert_eq!(res, UpdateSubnetAdminsResult::Ok(candid::Reserved));
 }
 
 // TODO

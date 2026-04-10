@@ -239,15 +239,3 @@ pub enum UpdateSubnetAdminsResult {
     Ok(candid::Reserved),
     Err(Option<UpdateSubnetAdminsError>),
 }
-
-#[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
-pub enum ListSubnetAdminsError {
-    CallerNotRentingSubnet(candid::Reserved),
-    RegistryError(String),
-}
-
-#[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
-pub enum ListSubnetAdminsResult {
-    Ok(Vec<Principal>),
-    Err(ListSubnetAdminsError),
-}
