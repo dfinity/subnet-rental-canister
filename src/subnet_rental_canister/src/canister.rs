@@ -781,21 +781,44 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
     let user_icp_balance = check_subaccount_balance(Subaccount::from(rental_agreement.user)).await;
 
     if user_icp_balance < DEFAULT_FEE {
-        return Err(format!(
+        let reason = format!(
             "Failed to top up: {} has insufficient funds {}",
             rental_agreement.user, user_icp_balance
-        ));
+        );
+        persist_event(
+            EventType::SubnetTopUpFailed {
+                subnet_id,
+                user: rental_agreement.user,
+                reason: reason.clone(),
+            },
+            Some(subnet_id),
+        );
+        return Err(reason);
     }
 
     let icp_amount_for_cycles = user_icp_balance - DEFAULT_FEE;
 
     // If the user were to withdraw before this call, the function would return an error.
-    let (block_index, actual_cycles) = convert_icp_to_cycles(
+    let (block_index, actual_cycles) = match convert_icp_to_cycles(
         icp_amount_for_cycles,
         Subaccount::from(rental_agreement.user),
     )
     .await
-    .map_err(|e| format!("Failed to convert ICP to cycles: {:?}", e))?;
+    {
+        Ok(v) => v,
+        Err(e) => {
+            let reason = format!("Failed to convert ICP to cycles: {:?}", e);
+            persist_event(
+                EventType::SubnetTopUpFailed {
+                    subnet_id,
+                    user: rental_agreement.user,
+                    reason: reason.clone(),
+                },
+                Some(subnet_id),
+            );
+            return Err(reason);
+        }
+    };
     persist_event(
         EventType::TransferSuccess {
             amount: icp_amount_for_cycles,

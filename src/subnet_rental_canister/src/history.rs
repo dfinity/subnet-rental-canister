@@ -92,16 +92,6 @@ pub enum EventType {
         amount: Tokens,
         block_index: u64,
     },
-    /// Not yet emitted. Reserved for future recurring payment logic.
-    PaymentSuccess {
-        amount: Tokens,
-        cycles: u128,
-        covered_until_nanos: u64,
-    },
-    /// Not yet emitted. Reserved for future recurring payment logic.
-    PaymentFailure {
-        reason: String,
-    },
     /// A successfull locking of 10% during the wait until subnet creation.
     LockingSuccess {
         user: Principal,
@@ -113,6 +103,7 @@ pub enum EventType {
         user: Principal,
         reason: String,
     },
+    /// A successful top-up of a rented subnet, converting ICP to cycles and extending the rental period.
     SubnetTopUp {
         subnet_id: Principal,
         user: Principal,
@@ -121,11 +112,19 @@ pub enum EventType {
         days_added: u64,
         new_paid_until_nanos: u64,
     },
+    /// A failed top-up attempt for a rented subnet (insufficient funds or ICP-to-cycles conversion error).
+    SubnetTopUpFailed {
+        subnet_id: Principal,
+        user: Principal,
+        reason: String,
+    },
+    /// A successful update of the subnet admins list by the renting principal.
     SubnetAdminsUpdated {
         subnet_id: Principal,
         caller: Principal,
         operation: OperationType,
     },
+    /// A failed attempt to update the subnet admins list.
     SubnetAdminsUpdateFailed {
         subnet_id: Principal,
         caller: Principal,

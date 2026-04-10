@@ -689,6 +689,16 @@ fn test_create_rental_agreement() {
     .unwrap()
     .unwrap();
 
+    // capture the subnet history length before attempting top-ups
+    let subnet_history_before = query_multi_arg::<EventPage>(
+        &pic,
+        SRC_ID,
+        None,
+        "get_history_page",
+        (SUBNET_FOR_RENT, None::<Option<u64>>),
+    );
+    let subnet_events_before = subnet_history_before.events.len();
+
     // try to do topup with insufficient funds
     let res = update::<Result<TopUpSummary, String>>(
         &pic,
@@ -701,6 +711,19 @@ fn test_create_rental_agreement() {
 
     // the conversion should fail as the user does not have any ICP
     assert!(res.unwrap_err().contains("insufficient funds"));
+
+    // the failed top-up should persist a SubnetTopUpFailed event on the subnet
+    let subnet_history_after_failure = query_multi_arg::<EventPage>(
+        &pic,
+        SRC_ID,
+        None,
+        "get_history_page",
+        (SUBNET_FOR_RENT, None::<Option<u64>>),
+    );
+    assert_eq!(
+        subnet_history_after_failure.events.len(),
+        subnet_events_before + 1
+    );
 
     // top up SRC account with 1000 ICP
     let topup = Tokens::from_e8s(1_000 * E8S);
@@ -715,6 +738,19 @@ fn test_create_rental_agreement() {
     )
     .unwrap()
     .unwrap();
+
+    // the successful top-up should persist TransferSuccess + SubnetTopUp events on the subnet
+    let subnet_history_after_success = query_multi_arg::<EventPage>(
+        &pic,
+        SRC_ID,
+        None,
+        "get_history_page",
+        (SUBNET_FOR_RENT, None::<Option<u64>>),
+    );
+    assert_eq!(
+        subnet_history_after_success.events.len(),
+        subnet_events_before + 3
+    );
 
     // check that the user's balance has decreased by exactly the amount for the topup plus the fee
     let users_balance_after_topup = check_balance(&pic, USER_1, DEFAULT_SUBACCOUNT);
