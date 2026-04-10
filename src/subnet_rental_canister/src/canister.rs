@@ -723,7 +723,8 @@ pub async fn subnet_top_up_estimate(
     let rental_condition = get_rental_conditions(rental_agreement.rental_condition_id)
         .ok_or("Rental condition not found")?;
 
-    let estimated_days = (estimated_cycles / rental_condition.daily_cost_cycles) as u64;
+    let daily = rental_condition.daily_cost_cycles;
+    let estimated_days = ((estimated_cycles + daily / 2) / daily) as u64;
 
     let description = format!(
         "Estimate: {} ICP would provide approximately {} cycles, \
