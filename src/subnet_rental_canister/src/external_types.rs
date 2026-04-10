@@ -109,8 +109,9 @@ impl From<crate::UpdateSubnetAdminsPayload> for UpdateSubnetAdminsPayload {
             Some(crate::OperationType::Remove(principal_list)) => {
                 OperationType::Remove(principal_list)
             }
-            Some(crate::OperationType::Clear(e)) => OperationType::Clear(e),
-            None => OperationType::Clear(crate::EmptyRecord {}),
+            Some(crate::OperationType::Clear(_)) | None => {
+                OperationType::Clear(crate::EmptyRecord {})
+            }
         };
         UpdateSubnetAdminsPayload {
             subnet_id: payload.subnet_id,
