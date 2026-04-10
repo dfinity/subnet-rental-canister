@@ -26,8 +26,8 @@ use subnet_rental_canister::{
         CmcInitPayload, ExchangeRateCanister, FeatureFlags, NnsLedgerCanisterInitPayload,
         NnsLedgerCanisterPayload, PrincipalsAuthorizedToCreateCanistersToSubnetsResponse,
     },
-    CreateRentalAgreementPayload, EventPage, ExecuteProposalError, OperationType, RentalAgreement,
-    RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
+    CreateRentalAgreementPayload, EmptyRecord, EventPage, ExecuteProposalError, OperationType,
+    RentalAgreement, RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
     SubnetRentalProposalPayload, TopUpSummary, UpdateSubnetAdminsError, UpdateSubnetAdminsPayload,
     UpdateSubnetAdminsResult, E8S, TRILLION,
 };
@@ -1181,6 +1181,47 @@ fn do_not_allow_concurrent_subnet_admin_updates() {
         ))),
         "One call should have failed due to concurrent changes but got {results:?}"
     );
+}
+
+// Regression test: the Clear variant used to be encoded as `candid::Reserved`,
+// which does not match the registry's expected `record {}` on the wire and
+// caused the registry to reject the call with "unknown operation type".
+#[test]
+fn clear_subnet_admins_succeeds() {
+    let pic = setup_with_rented_subnet();
+    let subnet_id = *pic.topology().get_app_subnets().first().unwrap();
+    let renting_principal = USER_1;
+    rent_subnet_helper(&pic, subnet_id, renting_principal);
+
+    let payload = UpdateSubnetAdminsPayload {
+        subnet_id,
+        operation_type: Some(OperationType::Add(BoundedVec::new(vec![
+            renting_principal,
+            USER_2,
+        ]))),
+    };
+    update::<UpdateSubnetAdminsResult>(
+        &pic,
+        SRC_ID,
+        Some(renting_principal),
+        "update_subnet_admins",
+        payload,
+    )
+    .unwrap();
+
+    let payload = UpdateSubnetAdminsPayload {
+        subnet_id,
+        operation_type: Some(OperationType::Clear(EmptyRecord {})),
+    };
+    let res = update::<UpdateSubnetAdminsResult>(
+        &pic,
+        SRC_ID,
+        Some(renting_principal),
+        "update_subnet_admins",
+        payload,
+    )
+    .unwrap();
+    assert_eq!(res, UpdateSubnetAdminsResult::Ok(candid::Reserved));
 }
 
 // TODO

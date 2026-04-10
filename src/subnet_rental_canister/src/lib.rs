@@ -210,10 +210,13 @@ pub struct EventPage {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
+pub struct EmptyRecord {}
+
+#[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
 pub enum OperationType {
     Add(BoundedVec<MAX_ALLOWED_SUBNET_ADMINS, UNBOUNDED, UNBOUNDED, Principal>),
     Remove(BoundedVec<MAX_ALLOWED_SUBNET_ADMINS, UNBOUNDED, UNBOUNDED, Principal>),
-    Clear(candid::Reserved),
+    Clear(EmptyRecord),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
