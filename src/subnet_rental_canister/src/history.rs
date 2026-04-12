@@ -1,4 +1,4 @@
-use crate::{OperationType, Principal, RentalConditionId, RentalConditions, RentalRequest};
+use crate::{Principal, RentalConditionId, RentalConditions, RentalRequest};
 use candid::{CandidType, Decode, Encode};
 use ic_ledger_types::Tokens;
 use ic_stable_structures::{storable::Bound, Storable};
@@ -116,18 +116,6 @@ pub enum EventType {
     SubnetTopUpFailed {
         subnet_id: Principal,
         user: Principal,
-        reason: String,
-    },
-    /// A successful update of the subnet admins list by the renting principal.
-    SubnetAdminsUpdated {
-        subnet_id: Principal,
-        caller: Principal,
-        operation: OperationType,
-    },
-    /// A failed attempt to update the subnet admins list.
-    SubnetAdminsUpdateFailed {
-        subnet_id: Principal,
-        caller: Principal,
         reason: String,
     },
     /// Not yet emitted. Reserved for future canister degradation detection.

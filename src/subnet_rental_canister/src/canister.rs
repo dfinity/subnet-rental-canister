@@ -924,7 +924,7 @@ pub async fn update_subnet_admins(payload: UpdateSubnetAdminsPayload) -> UpdateS
         )));
     };
 
-    let operation = match &payload.operation_type {
+    match &payload.operation_type {
         None => {
             return UpdateSubnetAdminsResult::Err(Some(
                 UpdateSubnetAdminsError::UnknownOperationType(candid::Reserved),
@@ -937,36 +937,14 @@ pub async fn update_subnet_admins(payload: UpdateSubnetAdminsPayload) -> UpdateS
                     UpdateSubnetAdminsError::PrincipalListEmpty(candid::Reserved),
                 ));
             }
-            payload.operation_type.clone().unwrap()
         }
-        Some(OperationType::Clear(_)) => payload.operation_type.clone().unwrap(),
-    };
+        Some(OperationType::Clear(_)) => {}
+    }
 
-    let caller = msg_caller();
     let res = crate::external_calls::update_subnet_admins(payload.into()).await;
     match res {
-        Ok(()) => {
-            persist_event(
-                EventType::SubnetAdminsUpdated {
-                    subnet_id,
-                    caller,
-                    operation,
-                },
-                Some(subnet_id),
-            );
-            UpdateSubnetAdminsResult::Ok(candid::Reserved)
-        }
-        Err(e) => {
-            persist_event(
-                EventType::SubnetAdminsUpdateFailed {
-                    subnet_id,
-                    caller,
-                    reason: e.clone(),
-                },
-                Some(subnet_id),
-            );
-            UpdateSubnetAdminsResult::Err(Some(UpdateSubnetAdminsError::RegistryError(e)))
-        }
+        Ok(()) => UpdateSubnetAdminsResult::Ok(candid::Reserved),
+        Err(e) => UpdateSubnetAdminsResult::Err(Some(UpdateSubnetAdminsError::RegistryError(e))),
     }
 }
 
