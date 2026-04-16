@@ -118,9 +118,9 @@ pub enum EventType {
         user: Principal,
         reason: String,
     },
-    /// Not yet emitted. Reserved for future canister degradation detection.
+    /// Not yet emitted. Reserved for future subnet degradation.
     Degraded,
-    /// Not yet emitted. Reserved for future canister degradation recovery.
+    /// Not yet emitted. Reserved for future subnet degradation recovery.
     Undegraded,
     Other {
         message: String,
