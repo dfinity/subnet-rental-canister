@@ -191,9 +191,9 @@ async fn locking() {
         };
 
         // Convert ICP to cycles.
-        let locked_cycles =
+        let (block_index, locked_cycles) =
             match convert_icp_to_cycles(ten_percent_icp, Subaccount::from(user)).await {
-                Ok(locked_cycles) => locked_cycles,
+                Ok(result) => result,
                 Err(error) => {
                     println!("Failed to convert ICP to cycles for rental request of user {user}.");
                     persist_event(
@@ -207,6 +207,13 @@ async fn locking() {
                 }
             };
 
+        persist_event(
+            EventType::TransferSuccess {
+                amount: ten_percent_icp,
+                block_index,
+            },
+            Some(user),
+        );
         println!("SRC gained {locked_cycles} cycles from the locked ICP.");
         persist_event(
             EventType::LockingSuccess {
@@ -539,11 +546,18 @@ pub async fn execute_rental_request_proposal(payload: SubnetRentalProposalPayloa
         );
 
         let res = convert_icp_to_cycles(lock_amount_icp, Subaccount::from(user)).await;
-        let Ok(locked_cycles) = res else {
+        let Ok((block_index, locked_cycles)) = res else {
             println!("Fatal: Failed to convert ICP to cycles");
             let e = res.unwrap_err();
             return with_error(user, proposal_id, e);
         };
+        persist_event(
+            EventType::TransferSuccess {
+                amount: lock_amount_icp,
+                block_index,
+            },
+            Some(user),
+        );
         println!("SRC gained {} cycles from the locked ICP.", locked_cycles);
 
         let now_nanos = ic_cdk::api::time();
@@ -603,8 +617,15 @@ pub async fn execute_create_rental_agreement(payload: CreateRentalAgreementPaylo
 
         // Convert all remaining ICP to cycles.
         let remaining_icp = rental_request.initial_cost_icp - rental_request.locked_amount_icp;
-        let converted_cycles =
+        let (block_index, converted_cycles) =
             convert_icp_to_cycles(remaining_icp, Subaccount::from(payload.user)).await?;
+        persist_event(
+            EventType::TransferSuccess {
+                amount: remaining_icp,
+                block_index,
+            },
+            Some(payload.user),
+        );
         let total_cycles_created =
             converted_cycles.saturating_add(rental_request.locked_amount_cycles);
 
@@ -665,6 +686,13 @@ pub async fn refund() -> Result<u64, String> {
             to_be_refunded, caller, e
         )
     })?;
+    persist_event(
+        EventType::TransferSuccess {
+            amount: to_be_refunded,
+            block_index: block_id,
+        },
+        Some(caller),
+    );
 
     // If the user has a rental request, burn the locked cycles and remove the request.
     if let Some(rental_request) = get_rental_request(&caller) {
@@ -754,21 +782,51 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
     let user_icp_balance = check_subaccount_balance(Subaccount::from(rental_agreement.user)).await;
 
     if user_icp_balance < DEFAULT_FEE {
-        return Err(format!(
+        let reason = format!(
             "Failed to top up: {} has insufficient funds {}",
             rental_agreement.user, user_icp_balance
-        ));
+        );
+        persist_event(
+            EventType::SubnetTopUpFailed {
+                subnet_id,
+                user: rental_agreement.user,
+                reason: reason.clone(),
+            },
+            Some(subnet_id),
+        );
+        return Err(reason);
     }
 
     let icp_amount_for_cycles = user_icp_balance - DEFAULT_FEE;
 
     // If the user were to withdraw before this call, the function would return an error.
-    let actual_cycles = convert_icp_to_cycles(
+    let (block_index, actual_cycles) = match convert_icp_to_cycles(
         icp_amount_for_cycles,
         Subaccount::from(rental_agreement.user),
     )
     .await
-    .map_err(|e| format!("Failed to convert ICP to cycles: {:?}", e))?;
+    {
+        Ok(v) => v,
+        Err(e) => {
+            let reason = format!("Failed to convert ICP to cycles: {:?}", e);
+            persist_event(
+                EventType::SubnetTopUpFailed {
+                    subnet_id,
+                    user: rental_agreement.user,
+                    reason: reason.clone(),
+                },
+                Some(subnet_id),
+            );
+            return Err(reason);
+        }
+    };
+    persist_event(
+        EventType::TransferSuccess {
+            amount: icp_amount_for_cycles,
+            block_index,
+        },
+        Some(subnet_id),
+    );
     println!(
         "Converted {} ICP to {} cycles",
         icp_amount_for_cycles, actual_cycles
@@ -813,6 +871,18 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
         agreement
     })
     .unwrap(); // Safe because we checked above that the rental agreement exists.
+
+    persist_event(
+        EventType::SubnetTopUp {
+            subnet_id,
+            user: rental_agreement.user,
+            icp_amount: user_icp_balance,
+            cycles_added: actual_cycles,
+            days_added,
+            new_paid_until_nanos,
+        },
+        Some(subnet_id),
+    );
 
     let description = format!(
         "Topped up subnet {} with {} ICP corresponding to {} cycles, \
@@ -870,7 +940,7 @@ pub async fn update_subnet_admins(payload: UpdateSubnetAdminsPayload) -> UpdateS
             }
         }
         Some(OperationType::Clear(_)) => {}
-    };
+    }
 
     let res = crate::external_calls::update_subnet_admins(payload.into()).await;
     match res {
