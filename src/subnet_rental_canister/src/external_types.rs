@@ -93,7 +93,7 @@ pub struct FeatureFlags {
 pub enum OperationType {
     Add(BoundedVec<{ super::MAX_ALLOWED_SUBNET_ADMINS }, UNBOUNDED, UNBOUNDED, Principal>),
     Remove(BoundedVec<{ super::MAX_ALLOWED_SUBNET_ADMINS }, UNBOUNDED, UNBOUNDED, Principal>),
-    Clear(candid::Reserved),
+    Clear(crate::EmptyRecord),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
@@ -109,8 +109,9 @@ impl From<crate::UpdateSubnetAdminsPayload> for UpdateSubnetAdminsPayload {
             Some(crate::OperationType::Remove(principal_list)) => {
                 OperationType::Remove(principal_list)
             }
-            Some(crate::OperationType::Clear(_)) => OperationType::Clear(candid::Reserved),
-            None => OperationType::Clear(candid::Reserved),
+            Some(crate::OperationType::Clear(_)) | None => {
+                OperationType::Clear(crate::EmptyRecord {})
+            }
         };
         UpdateSubnetAdminsPayload {
             subnet_id: payload.subnet_id,

@@ -26,8 +26,8 @@ use subnet_rental_canister::{
         CmcInitPayload, ExchangeRateCanister, FeatureFlags, NnsLedgerCanisterInitPayload,
         NnsLedgerCanisterPayload, PrincipalsAuthorizedToCreateCanistersToSubnetsResponse,
     },
-    CreateRentalAgreementPayload, EventPage, ExecuteProposalError, OperationType, RentalAgreement,
-    RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
+    CreateRentalAgreementPayload, EmptyRecord, EventPage, ExecuteProposalError, OperationType,
+    RentalAgreement, RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
     SubnetRentalProposalPayload, TopUpSummary, UpdateSubnetAdminsError, UpdateSubnetAdminsPayload,
     UpdateSubnetAdminsResult, E8S, TRILLION,
 };
@@ -1222,10 +1222,85 @@ fn do_not_allow_concurrent_subnet_admin_updates() {
     );
 }
 
+// Regression test: the Clear variant used to be encoded as `candid::Reserved`,
+// which does not match the registry's expected `record {}` on the wire and
+// caused the registry to reject the call with "unknown operation type".
+#[test]
+fn clear_subnet_admins_succeeds() {
+    let pic = setup_with_rented_subnet();
+    let subnet_id = *pic.topology().get_app_subnets().first().unwrap();
+    let renting_principal = USER_1;
+    rent_subnet_helper(&pic, subnet_id, renting_principal);
+
+    let payload = UpdateSubnetAdminsPayload {
+        subnet_id,
+        operation_type: Some(OperationType::Add(BoundedVec::new(vec![
+            renting_principal,
+            USER_2,
+        ]))),
+    };
+    update::<UpdateSubnetAdminsResult>(
+        &pic,
+        SRC_ID,
+        Some(renting_principal),
+        "update_subnet_admins",
+        payload,
+    )
+    .unwrap();
+
+    let payload = UpdateSubnetAdminsPayload {
+        subnet_id,
+        operation_type: Some(OperationType::Clear(EmptyRecord {})),
+    };
+    let res = update::<UpdateSubnetAdminsResult>(
+        &pic,
+        SRC_ID,
+        Some(renting_principal),
+        "update_subnet_admins",
+        payload,
+    )
+    .unwrap();
+    assert_eq!(res, UpdateSubnetAdminsResult::Ok(candid::Reserved));
+}
+
 // TODO
 // fn test_proposal_rejected_if_already_rented() {
 // fn test_burning() {
 // fn accept_test_rental_agreement(
+
+#[test]
+fn test_top_up_estimate_round_trip_consistency() {
+    let pic = setup_with_rented_subnet();
+
+    let exchange_rate = 3_593_382_591; // 1 ICP = 3.593382591 XDR
+
+    // Rent a subnet so we have a rental agreement to estimate against.
+    rent_subnet_helper(&pic, SUBNET_FOR_RENT, USER_1);
+
+    // Set the exchange rate for the top-up estimate.
+    set_xrc_exchange_rate_last_midnight(&pic, exchange_rate);
+
+    // Get today's price (180 days worth of ICP).
+    let price_for_180_days = get_todays_price(&pic);
+
+    // Now ask: how many days would that ICP amount buy?
+    let estimate = update_multi_arg::<Result<TopUpSummary, String>>(
+        &pic,
+        SRC_ID,
+        None,
+        "subnet_top_up_estimate",
+        (SUBNET_FOR_RENT, price_for_180_days),
+    )
+    .unwrap()
+    .unwrap();
+
+    // The estimate should give back exactly 180 days (the initial rental period).
+    assert_eq!(
+        estimate.days_added, 180,
+        "Expected 180 days but got {} days for {} ICP",
+        estimate.days_added, price_for_180_days,
+    );
+}
 
 // ====================================================================================================================
 // Helpers
