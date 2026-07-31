@@ -788,7 +788,6 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
         );
         persist_event(
             EventType::SubnetTopUpFailed {
-                subnet_id,
                 user: rental_agreement.user,
                 reason: reason.clone(),
             },
@@ -811,7 +810,6 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
             let reason = format!("Failed to convert ICP to cycles: {:?}", e);
             persist_event(
                 EventType::SubnetTopUpFailed {
-                    subnet_id,
                     user: rental_agreement.user,
                     reason: reason.clone(),
                 },
@@ -874,7 +872,6 @@ pub async fn top_up_subnet(subnet_id: Principal) -> Result<TopUpSummary, String>
 
     persist_event(
         EventType::SubnetTopUp {
-            subnet_id,
             user: rental_agreement.user,
             icp_amount: user_icp_balance,
             cycles_added: actual_cycles,

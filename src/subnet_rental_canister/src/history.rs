@@ -105,7 +105,6 @@ pub enum EventType {
     },
     /// A successful top-up of a rented subnet, converting ICP to cycles and extending the rental period.
     SubnetTopUp {
-        subnet_id: Principal,
         user: Principal,
         icp_amount: Tokens,
         cycles_added: u128,
@@ -114,7 +113,6 @@ pub enum EventType {
     },
     /// A failed top-up attempt for a rented subnet (insufficient funds or ICP-to-cycles conversion error).
     SubnetTopUpFailed {
-        subnet_id: Principal,
         user: Principal,
         reason: String,
     },
