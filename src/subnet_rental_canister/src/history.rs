@@ -119,7 +119,6 @@ pub enum EventType {
     /// A rental agreement moved to another rental condition, repricing the
     /// unburned cycles at the new daily cost.
     RentalConditionSwitched {
-        subnet_id: Principal,
         user: Principal,
         old_condition_id: RentalConditionId,
         new_condition_id: RentalConditionId,

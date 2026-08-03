@@ -32,8 +32,6 @@ use candid::Principal;
 use ic_cdk::println;
 
 /// The Swiss Subnet, whose rental agreement moves from App13CH to App7CH.
-/// Re-exported as `MIGRATION_TARGET_SUBNET` so the integration test drives the real
-/// principal rather than a copy that could drift from it.
 pub const TARGET_SUBNET: &str = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe";
 
 /// Moves `TARGET_SUBNET`'s rental agreement from App13CH to App7CH, repricing the
@@ -42,10 +40,9 @@ pub const TARGET_SUBNET: &str = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq
 /// Idempotent through the condition id itself: only agreements still on App13CH are
 /// touched, so the second upgrade finds none.
 ///
-/// This is not a payment. The unburned cycles the user already owns are repriced at the
-/// cheaper App7CH daily cost, which extends the paid period. Pricing starts at the
-/// migration time rather than scaling the old `paid_until_nanos`, because the elapsed part
-/// of the period was already burned at the old rate.
+/// No payment is involved: the unburned cycles just buy more days at App7CH's cheaper rate.
+/// The new deadline is `now + remaining_cycles / new_daily_cost` rather than a scaling of the
+/// old one, because cycles burned before the migration were already charged at the old rate.
 pub fn app13ch_to_app7ch() {
     let Ok(subnet_id) = Principal::from_text(TARGET_SUBNET) else {
         println!("Migration to App7CH skipped: TARGET_SUBNET is not a valid principal");
@@ -90,7 +87,6 @@ pub fn app13ch_to_app7ch() {
 
     persist_event(
         EventType::RentalConditionSwitched {
-            subnet_id,
             user: agreement.user,
             old_condition_id: RentalConditionId::App13CH,
             new_condition_id: RentalConditionId::App7CH,

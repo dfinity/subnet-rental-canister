@@ -1318,9 +1318,6 @@ fn test_top_up_estimate_round_trip_consistency() {
     );
 }
 
-/// Rents the migration's real target principal so the test cannot drift from it. A rental
-/// agreement's subnet id is only ever data (it is forwarded to the CMC, never called), so
-/// it does not need to be a subnet PocketIC actually hosts.
 #[test]
 fn upgrade_migrates_target_subnet_to_app7ch() {
     let pic = setup_with_rented_subnet();
