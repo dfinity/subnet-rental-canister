@@ -12,8 +12,12 @@ mod canister_state;
 pub mod external_calls;
 pub mod external_types;
 mod history;
+mod migration;
+
+pub use migration::TARGET_SUBNET as MIGRATION_TARGET_SUBNET;
 
 pub const BILLION: u64 = 1_000_000_000;
+pub const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
 pub const TRILLION: u128 = 1_000_000_000_000;
 pub const E8S: u64 = 100_000_000;
 const MAX_ALLOWED_SUBNET_ADMINS: usize = 10;
@@ -26,6 +30,7 @@ const MEMO_TOP_UP_CANISTER: Memo = Memo(0x50555054); // == 'TPUP'
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, CandidType, Deserialize, Hash)]
 pub enum RentalConditionId {
     App13CH,
+    App7CH,
 }
 
 /// Set of conditions for a subnet up for rent.
