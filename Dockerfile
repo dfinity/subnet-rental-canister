@@ -14,4 +14,8 @@ RUN rm candid-extractor.tar.gz
 RUN chmod +x candid-extractor
 RUN mv candid-extractor /usr/local/bin/candid-extractor
 
+# Install toolchain from rust-toolchain.toml (includes wasm target, clippy, rustfmt)
+COPY rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN cd /tmp && rustup show
+
 WORKDIR /app

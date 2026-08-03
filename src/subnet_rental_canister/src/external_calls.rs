@@ -139,11 +139,11 @@ pub async fn get_exchange_rate_icp_per_xdr_at_time(
 }
 
 /// Converts ICP from a user's SRC subaccount to cycles.
-/// Returns the actual amount of cycles created.
+/// Returns the block index of the transfer and the actual amount of cycles created.
 pub async fn convert_icp_to_cycles(
     amount: Tokens,
     source: Subaccount,
-) -> Result<u128, ExecuteProposalError> {
+) -> Result<(u64, u128), ExecuteProposalError> {
     // Transfer the ICP from the SRC to the CMC.
     let transfer_to_cmc_result = transfer_to_cmc(amount - DEFAULT_FEE, source).await;
     let Ok(block_index) = transfer_to_cmc_result else {
@@ -159,7 +159,7 @@ pub async fn convert_icp_to_cycles(
         println!("Notify top-up failed: {:?}", e);
         return Err(ExecuteProposalError::NotifyTopUpError(format!("{:?}", e)));
     };
-    Ok(actual_cycles)
+    Ok((block_index, actual_cycles))
 }
 
 /// Check balance of a user's SRC subaccount.
