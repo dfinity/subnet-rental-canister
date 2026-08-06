@@ -116,6 +116,16 @@ pub enum EventType {
         user: Principal,
         reason: String,
     },
+    /// A rental agreement moved to another rental condition, repricing the
+    /// unburned cycles at the new daily cost.
+    RentalConditionSwitched {
+        user: Principal,
+        old_condition_id: RentalConditionId,
+        new_condition_id: RentalConditionId,
+        cycles_remaining: u128,
+        old_paid_until_nanos: u64,
+        new_paid_until_nanos: u64,
+    },
     /// Not yet emitted. Reserved for future subnet degradation.
     Degraded,
     /// Not yet emitted. Reserved for future subnet degradation recovery.

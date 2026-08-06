@@ -29,7 +29,7 @@ use subnet_rental_canister::{
     CreateRentalAgreementPayload, EmptyRecord, EventPage, ExecuteProposalError, OperationType,
     RentalAgreement, RentalAgreementStatus, RentalConditionId, RentalConditions, RentalRequest,
     SubnetRentalProposalPayload, TopUpSummary, UpdateSubnetAdminsError, UpdateSubnetAdminsPayload,
-    UpdateSubnetAdminsResult, E8S, TRILLION,
+    UpdateSubnetAdminsResult, E8S, MIGRATION_TARGET_SUBNET, TRILLION,
 };
 
 const SRC_WASM: &str = "../../subnet_rental_canister.wasm.gz";
@@ -161,8 +161,11 @@ fn get_todays_price(pic: &PocketIc) -> Tokens {
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
-    assert_eq!(res.len(), 1);
-    let (rental_condition_id, _rental_conditions) = res.first().unwrap();
+    let rental_condition_id = res
+        .iter()
+        .map(|(id, _)| *id)
+        .find(|id| *id == RentalConditionId::App13CH)
+        .expect("App13CH condition missing");
     // user finds current price by consulting SRC
     update::<Result<Tokens, String>>(pic, SRC_ID, None, "get_todays_price", rental_condition_id)
         .unwrap()
@@ -324,8 +327,16 @@ fn test_initial_proposal() {
         "get_history_page",
         (user_principal, None::<Option<u64>>),
     );
-    // 1 RentalConditionsChanged
-    assert_eq!(src_history.events.len(), 1);
+    // 1 RentalConditionsChanged per rental condition
+    let condition_count = query::<Vec<(RentalConditionId, RentalConditions)>>(
+        &pic,
+        SRC_ID,
+        None,
+        "list_rental_conditions",
+        (),
+    )
+    .len();
+    assert_eq!(src_history.events.len(), condition_count);
     // 1 RentalRequestCreated + 1 TransferSuccess (initial 10% lock)
     assert_eq!(user_history.events.len(), 2);
 
@@ -545,7 +556,12 @@ fn test_create_rental_agreement() {
         "list_rental_conditions",
         encode_one(()).unwrap(),
     );
-    let rental_condition = rental_conditions.first().unwrap().1.clone();
+    let rental_condition = rental_conditions
+        .iter()
+        .find(|(id, _)| *id == RentalConditionId::App13CH)
+        .expect("App13CH condition missing")
+        .1
+        .clone();
 
     // check total cycles created
     let remaining_icp_to_be_converted = final_subnet_price.e8s()
@@ -1302,8 +1318,114 @@ fn test_top_up_estimate_round_trip_consistency() {
     );
 }
 
+#[test]
+fn upgrade_migrates_target_subnet_to_app7ch() {
+    let pic = setup_with_rented_subnet();
+    let subnet_id = Principal::from_text(MIGRATION_TARGET_SUBNET).unwrap();
+    rent_subnet_helper(&pic, subnet_id, USER_1);
+
+    let before = get_rental_agreement(&pic, subnet_id);
+    assert_eq!(before.rental_condition_id, RentalConditionId::App13CH);
+
+    // Burn some cycles so the migration reprices a partially consumed agreement rather
+    // than the full initial amount.
+    pic.advance_time(Duration::from_secs(30 * SECONDS_PER_DAY));
+    for _ in 0..5 {
+        pic.tick();
+    }
+    let burned = get_rental_agreement(&pic, subnet_id);
+    assert!(burned.total_cycles_burned > 0);
+    let events_before = subnet_event_count(&pic, subnet_id);
+
+    let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
+    pic.upgrade_canister(SRC_ID, src_wasm.clone(), encode_one(()).unwrap(), None)
+        .unwrap();
+
+    let after = get_rental_agreement(&pic, subnet_id);
+    assert_eq!(after.rental_condition_id, RentalConditionId::App7CH);
+
+    // The remaining cycles are unchanged; only their price per day is.
+    let cycles_remaining = burned.total_cycles_created - burned.total_cycles_burned;
+    assert_eq!(after.total_cycles_created, burned.total_cycles_created);
+    assert_eq!(after.total_cycles_burned, burned.total_cycles_burned);
+
+    // Repricing runs from the upgrade time, not from the old deadline.
+    let app7ch_daily = get_rental_condition(&pic, RentalConditionId::App7CH).daily_cost_cycles;
+    let now_nanos = pic.get_time().as_nanos_since_unix_epoch();
+    let expected_seconds = cycles_remaining / (app7ch_daily / SECONDS_PER_DAY as u128);
+    assert_eq!(
+        after.paid_until_nanos,
+        now_nanos + (expected_seconds as u64 * NANOS_PER_SECOND)
+    );
+    // The cheaper condition must buy more time than was left before.
+    assert!(after.paid_until_nanos > burned.paid_until_nanos);
+
+    // The switch is recorded against the subnet. EventType is private to the crate, so
+    // the count is all the test can assert on.
+    assert_eq!(subnet_event_count(&pic, subnet_id), events_before + 1);
+
+    // A second upgrade must not reprice again, nor record a second switch.
+    pic.upgrade_canister(SRC_ID, src_wasm, encode_one(()).unwrap(), None)
+        .unwrap();
+    let after_second = get_rental_agreement(&pic, subnet_id);
+    assert_eq!(after_second.rental_condition_id, RentalConditionId::App7CH);
+    assert_eq!(after_second.paid_until_nanos, after.paid_until_nanos);
+    assert_eq!(subnet_event_count(&pic, subnet_id), events_before + 1);
+}
+
+/// PocketIC never assigns the migration's hardcoded mainnet subnet id.
+#[test]
+fn upgrade_does_not_migrate_unrelated_agreements() {
+    let pic = setup_with_rented_subnet();
+    let subnet_id = *pic.topology().get_app_subnets().first().unwrap();
+    rent_subnet_helper(&pic, subnet_id, USER_1);
+
+    let before = get_rental_agreement(&pic, subnet_id);
+    assert_eq!(before.rental_condition_id, RentalConditionId::App13CH);
+
+    let src_wasm = fs::read(SRC_WASM).expect("Build the wasm with ./scripts/build.sh");
+    pic.upgrade_canister(SRC_ID, src_wasm, encode_one(()).unwrap(), None)
+        .unwrap();
+
+    let after = get_rental_agreement(&pic, subnet_id);
+    assert_eq!(after, before);
+}
+
 // ====================================================================================================================
 // Helpers
+fn subnet_event_count(pic: &PocketIc, subnet_id: Principal) -> usize {
+    query_multi_arg::<EventPage>(
+        pic,
+        SRC_ID,
+        None,
+        "get_history_page",
+        (subnet_id, None::<Option<u64>>),
+    )
+    .events
+    .len()
+}
+
+fn get_rental_condition(pic: &PocketIc, id: RentalConditionId) -> RentalConditions {
+    query::<Vec<(RentalConditionId, RentalConditions)>>(
+        pic,
+        SRC_ID,
+        None,
+        "list_rental_conditions",
+        (),
+    )
+    .into_iter()
+    .find(|(k, _)| *k == id)
+    .expect("Rental condition not found")
+    .1
+}
+
+fn get_rental_agreement(pic: &PocketIc, subnet_id: Principal) -> RentalAgreement {
+    query::<Vec<RentalAgreement>>(pic, SRC_ID, None, "list_rental_agreements", ())
+        .into_iter()
+        .find(|a| a.subnet_id == subnet_id)
+        .expect("Rental agreement not found")
+}
+
 fn query<T: for<'a> Deserialize<'a> + candid::CandidType>(
     pic: &PocketIc,
     canister_id: Principal,

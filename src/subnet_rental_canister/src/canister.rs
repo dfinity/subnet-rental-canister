@@ -10,11 +10,11 @@ use crate::{
         refund_user, set_authorized_subnetwork_list,
     },
     history::EventType,
-    CreateRentalAgreementPayload, EventPage, ExecuteProposalError, OperationType,
+    migration, CreateRentalAgreementPayload, EventPage, ExecuteProposalError, OperationType,
     PriceCalculationData, RentalAgreement, RentalAgreementStatus, RentalConditionId,
     RentalConditions, RentalRequest, SubnetRentalProposalPayload, TopUpSummary,
     UpdateSubnetAdminsError, UpdateSubnetAdminsPayload, UpdateSubnetAdminsResult, BILLION,
-    TRILLION,
+    SECONDS_PER_DAY, TRILLION,
 };
 use candid::Principal;
 use ic_cdk::{
@@ -27,7 +27,8 @@ use ic_ledger_types::{
 use std::{cmp::min, time::Duration};
 
 const CYCLES_BURN_INTERVAL_SECONDS: u64 = 60;
-const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+const INITIAL_RENTAL_PERIOD_DAYS: u64 = 180;
+const SWISS_NODES_DESCRIPTION: &str = "All nodes must be in Switzerland or Liechtenstein.";
 
 ////////// CANISTER METHODS //////////
 
@@ -41,20 +42,33 @@ fn init() {
 #[post_upgrade]
 async fn post_upgrade() {
     set_initial_conditions();
+    migration::app13ch_to_app7ch();
     start_timers();
 }
 
 /// Persist initial rental conditions in global map and history.
 fn set_initial_conditions() {
-    let initial_conditions = [(
-        RentalConditionId::App13CH,
-        RentalConditions {
-            description: "All nodes must be in Switzerland or Liechtenstein.".to_string(),
-            subnet_id: None,
-            daily_cost_cycles: 820 * TRILLION,
-            initial_rental_period_days: 180,
-        },
-    )];
+    let initial_conditions = [
+        (
+            RentalConditionId::App13CH,
+            RentalConditions {
+                description: SWISS_NODES_DESCRIPTION.to_string(),
+                subnet_id: None,
+                daily_cost_cycles: 820 * TRILLION,
+                initial_rental_period_days: INITIAL_RENTAL_PERIOD_DAYS,
+            },
+        ),
+        (
+            RentalConditionId::App7CH,
+            RentalConditions {
+                description: SWISS_NODES_DESCRIPTION.to_string(),
+                subnet_id: None,
+                // TODO: check. Approximates 820 / 13 * 7 (441.54), rounded down.
+                daily_cost_cycles: 440 * TRILLION,
+                initial_rental_period_days: INITIAL_RENTAL_PERIOD_DAYS,
+            },
+        ),
+    ];
     for (k, v) in initial_conditions.iter() {
         println!("Created initial rental condition {:?}: {:?}", k, v);
         insert_rental_condition(*k, v.clone());
