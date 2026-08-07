@@ -12,9 +12,6 @@ mod canister_state;
 pub mod external_calls;
 pub mod external_types;
 mod history;
-mod migration;
-
-pub use migration::TARGET_SUBNET as MIGRATION_TARGET_SUBNET;
 
 pub const BILLION: u64 = 1_000_000_000;
 pub const SECONDS_PER_DAY: u64 = 24 * 60 * 60;

@@ -10,7 +10,7 @@ use crate::{
         refund_user, set_authorized_subnetwork_list,
     },
     history::EventType,
-    migration, CreateRentalAgreementPayload, EventPage, ExecuteProposalError, OperationType,
+    CreateRentalAgreementPayload, EventPage, ExecuteProposalError, OperationType,
     PriceCalculationData, RentalAgreement, RentalAgreementStatus, RentalConditionId,
     RentalConditions, RentalRequest, SubnetRentalProposalPayload, TopUpSummary,
     UpdateSubnetAdminsError, UpdateSubnetAdminsPayload, UpdateSubnetAdminsResult, BILLION,
@@ -42,7 +42,6 @@ fn init() {
 #[post_upgrade]
 async fn post_upgrade() {
     set_initial_conditions();
-    migration::app13ch_to_app7ch();
     start_timers();
 }
 
